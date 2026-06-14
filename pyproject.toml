@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aic2026"
+version = "0.1.0"
+description = "AIC 2026 — RGB+Depth+Infrared 三模态融合目标检测"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    {name = "Air-0000"},
+]
+
+dynamic = ["dependencies"]
+
+[project.urls]
+Repository = "https://github.com/Air-0000/AIC2026-multimodal-detection"
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["aic2026*"]

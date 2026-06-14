@@ -9,43 +9,141 @@
 - **评价指标**：mAP@50-95
 - **场景**：城市场景多源异构数据
 
-## 技术方案
+## 双 Track 策略
 
-### 核心架构
+本项目采用 **两阶段推进** 策略：
+
+### 🟢 Track 1: M2I2HA Baseline（当前阶段）
+
+纯 M2I2HA 复现，RGB + IR 双模态检测。
+
+| 组件 | 来源 | 状态 |
+|------|------|------|
+| 超图增强 (Intra-Hypergraph) | M2I2HA 官方代码 | ✅ 直接可用 |
+| 跨模态融合 (Inter-Hypergraph) | M2I2HA 官方代码 | ✅ 直接可用 |
+| 训练 Pipeline | M2I2HA Trainer | ✅ 直接可用 |
+| AIC 数据集适配 | 自定义 YAML config | 🟡 需配置路径 |
+| Baseline 训练 | `train_baseline.sh` | 🟡 需在服务器运行 |
+
+### 🔵 Track 2: 三模态扩展（Baseline 后推进）
+
+RGB + Depth + IR 三模态 + 质量评估模块。
+
+| 组件 | 状态 |
+|------|------|
+| Depth 第三模态集成 | 🔲 待实现 |
+| 三模态 Inter-Hypergraph Fusion | 🔲 待实现 |
+| Uncertainty Head + Quality Head | 🔲 待实现 |
+| Depth log 归一化预处理 | 🔲 待实现 |
+| 三模态同步 Mosaic | 🔲 待实现 |
+
+## 核心架构
 
 ```
-RGB ─→ FEN-RGB ─→ Intra-Hypergraph Enhancement ──┐
-D   ─→ FEN-D   ─→ Intra-Hypergraph Enhancement ──┼──→ 模态质量评估 → 双向融合 → 检测头
-T   ─→ FEN-T   ─→ Intra-Hypergraph Enhancement ──┘
+RGB ─→ FEN-RGB ─→ Intra-Hypergraph ──┐
+D   ─→ FEN-D   ─→ Intra-Hypergraph ──┼──→ 模态质量评估 → 双向融合 → 检测头
+T   ─→ FEN-T   ─→ Intra-Hypergraph ──┘
 ```
 
 ### 关键创新
 
 | 组件 | 参考 | 说明 |
 |------|------|------|
-| 超图增强 (HyperGraph) | CVPR 2023 | 模态内高阶关系建模 |
+| 超图增强 (HyperGraph) | M2I2HA (2024) | 模态内高阶关系建模 |
 | 融合质量评估 | EvaNet (TPAMI 2026) | 评估各模态质量，指导置信度 |
 | 双向融合 + 形变敏感损失 | InfoFusion 2025 | 小目标专用损失函数 |
 | 通道切换 + 空间注意力 | CVPR 2023 | 模态间动态通道选择 |
 
-### 参考文献
+## 项目结构
+
+```
+├── README.md              # 本文件
+├── AGENTS.md              # 开发规范
+├── architecture.md        # 完整技术方案
+├── pretext.md             # 预训练策略论文依据
+├── CHANGELOG.md           # 决策记录
+├── pyproject.toml         # Python 包配置
+├── requirements.txt       # 依赖
+│
+├── configs/
+│   ├── aic_baseline.yaml  # Track 1: 双模态数据集配置
+│   └── aic_triplet.yaml   # Track 2: 三模态数据集配置
+│
+├── src/
+│   └── aic2026/
+│       ├── __init__.py
+│       ├── configs/
+│       │   └── baseline.yaml   # Track 1 训练超参数
+│       ├── models/
+│       │   └── triplet_net.py  # Track 2 三模态网络骨架
+│       ├── data.py             # Track 2 三模态数据加载
+│       ├── quality.py          # Track 2 质量评估模块
+│       └── scripts/
+│           ├── train_baseline.sh  # Track 1 启动脚本
+│           └── train_triplet.sh   # Track 2 启动脚本
+│
+└── data/                  # 数据集（实际路径在 yaml 中配置）
+```
+
+## 部署指南（实验室服务器）
+
+### 1. 安装依赖
+
+```bash
+# 克隆仓库
+git clone https://github.com/Air-0000/AIC2026-multimodal-detection.git
+cd AIC2026-multimodal-detection
+
+# 安装本包
+pip install -e .
+
+# 安装 M2I2HA
+pip install git+https://github.com/WSYANGSX/machine_learning.git
+```
+
+### 2. 准备数据
+
+将竞赛数据按以下目录结构放置：
+
+```
+/path/to/aic2026/data/
+├── images/train/     ← RGB 图像
+├── images/val/
+├── images/test/
+├── ir/train/         ← 红外图像
+├── ir/val/
+├── ir/test/
+├── depth/train/      ← Depth 图像（三模态时）
+├── depth/val/
+├── depth/test/
+├── labels/train/     ← YOLO 格式标签
+├── labels/val/
+└── labels/test/
+```
+
+### 3. 修改配置
+
+编辑 `configs/aic_baseline.yaml`，将 `path` 改为服务器上的实际数据路径。
+
+### 4. 运行训练
+
+```bash
+bash src/aic2026/scripts/train_baseline.sh
+```
+
+## 参考文献
 
 | 文献 | 用途 |
 |------|------|
+| M2I2HA — Multi-modal Hypergraph Attention (2024) | 超图融合检测基础框架 |
 | Channel Switching + Spatial Attention (CVPR 2023) | 多模态特征融合基础 |
 | YOLO (CVPR 2016) | 基线框架设计 |
 | EvaNet (TPAMI 2026) | 融合质量评估模块 |
 | Bi-Directional Fusion (InfoFusion 2025) | 双向融合 + 形变敏感损失 |
 | RGB-D-T Tracking (NeurIPS 2025 D&B) | 三模态任务设计规范 |
 
-## 目录结构
-
-```
-├── AGENTS.md        # 开发规范（代码规范、Git规范、PR规范）
-├── architecture.md  # 技术方案架构设计（完整方案文档）
-└── pretext.md       # 其他说明
-```
-
 ## 状态
 
-🟢 方案设计完成，代码实现中
+🟢 **当前**：Track 1 — M2I2HA Baseline 代码就绪，等待部署训练
+🔲 **下一步**：在实验室服务器运行 Baseline 训练，验证 mAP
+🔲 **后续**：推进 Track 2 — 三模态扩展 + 质量评估

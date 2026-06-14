@@ -1,0 +1,27 @@
+# ===== AIC 2026 依赖 =====
+# 安装方式（在服务器上）：
+#   pip install -e .                # 安装本包
+#   pip install -r requirements.txt # 安装依赖
+
+# ----- 核心框架 -----
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics>=8.4.0
+
+# ----- M2I2HA (Track 1 Baseline) -----
+# 从 GitHub 安装:
+#   pip install git+https://github.com/WSYANGSX/machine_learning.git
+#
+# 或者克隆后本地安装:
+#   git clone https://github.com/WSYANGSX/machine_learning.git vendor/
+#   pip install -e vendor/machine_learning
+#
+# 注意: mamba_ssm 是可选依赖（M2I2HA 检测模型不依赖它）
+
+# ----- 工具 -----
+pyyaml>=6.0
+numpy>=1.24
+matplotlib>=3.7
+tqdm>=4.64
+tensorboard>=2.13
+einops>=0.6

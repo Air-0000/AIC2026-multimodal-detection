@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# 环境
+.venv/
+venv/
+.env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 运行输出
+runs/
+wandb/
+
+# 数据集 (路径在 yaml 中配置)
+data/
+
+# 预训练权重
+pretrained/
+*.pth
+*.pt
+
+# 样本数据（不推送到 GitHub）
+面向城市场景的视觉多模态目标检测-样例/
+*.pdf
+
+# OS
+.DS_Store
+Thumbs.db
