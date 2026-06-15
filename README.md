@@ -87,48 +87,64 @@ T   ─→ FEN-T   ─→ Intra-Hypergraph ──┘
 
 ## 部署指南（实验室服务器）
 
-### 1. 安装依赖
+### 🚀 一键部署（推荐）
 
 ```bash
 # 克隆仓库
 git clone https://github.com/Air-0000/AIC2026-multimodal-detection.git
 cd AIC2026-multimodal-detection
 
-# 安装本包
-pip install -e .
+# 一键部署（自动检测 CUDA、创建环境、安装依赖、配置数据）
+bash setup_linux.sh --data-dir /path/to/aic2026/data
 
-# 安装 M2I2HA
-pip install git+https://github.com/WSYANGSX/machine_learning.git
+# 如果服务器有 Conda，推荐用 Conda 环境
+bash setup_linux.sh --conda --data-dir /path/to/aic2026/data
+
+# 如果显存较小 (<12GB)，脚本会自动调优 batch/scale
+# 也可以手动指定 CUDA 版本
+bash setup_linux.sh --cuda 12.1 --data-dir /path/to/aic2026/data
 ```
 
-### 2. 准备数据
+### 🔧 分步手动安装
 
-将竞赛数据按以下目录结构放置：
-
-```
-/path/to/aic2026/data/
-├── images/train/     ← RGB 图像
-├── images/val/
-├── images/test/
-├── ir/train/         ← 红外图像
-├── ir/val/
-├── ir/test/
-├── depth/train/      ← Depth 图像（三模态时）
-├── depth/val/
-├── depth/test/
-├── labels/train/     ← YOLO 格式标签
-├── labels/val/
-└── labels/test/
-```
-
-### 3. 修改配置
-
-编辑 `configs/aic_baseline.yaml`，将 `path` 改为服务器上的实际数据路径。
-
-### 4. 运行训练
+如果你偏好手动操作：
 
 ```bash
+# 1. 安装依赖
+pip install -e .
+pip install git+https://github.com/WSYANGSX/machine_learning.git
+
+# 2. 准备数据
+# 将竞赛数据按以下目录结构放置：
+# /path/to/aic2026/data/
+# ├── images/{train,val,test}/  ← RGB 图像
+# ├── ir/{train,val,test}/      ← 红外图像
+# ├── depth/{train,val,test}/   ← Depth 图像（三模态时）
+# └── labels/{train,val,test}/  ← YOLO 格式标签
+
+# 3. 修改配置
+# 编辑 configs/aic_baseline.yaml，将 path 改为实际数据路径
+
+# 4. 启动训练
 bash src/aic2026/scripts/train_baseline.sh
+```
+
+### 🎮 训练参数
+
+训练脚本支持命令行参数覆盖，无需改文件：
+
+```bash
+# 默认训练 (s 模型, batch=16)
+bash src/aic2026/scripts/train_baseline.sh
+
+# 低显存模式 (n 模型, batch=8, 开 AMP)
+bash src/aic2026/scripts/train_baseline.sh --scale n --batch 8 --amp
+
+# 多卡训练
+bash src/aic2026/scripts/train_baseline.sh --device 0,1,2,3
+
+# 自定义
+bash src/aic2026/scripts/train_baseline.sh --device 0 --batch 32 --epochs 500
 ```
 
 ## 参考文献
