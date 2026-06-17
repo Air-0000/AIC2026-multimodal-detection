@@ -24,6 +24,7 @@
 | 训练 Pipeline | M2I2HA Trainer | ✅ 直接可用 |
 | AIC 数据集适配 | 自定义 YAML config | 🟡 需配置路径 |
 | Baseline 训练 | `train_baseline.sh` | 🟡 需在服务器运行 |
+| 推理 & 提交 | `predict.sh` | ✅ 已就绪 |
 
 ### 🔵 Track 2: 三模态扩展（Baseline 后推进）
 
@@ -79,7 +80,9 @@ T   ─→ FEN-T   ─→ Intra-Hypergraph ──┘
 │       ├── data.py             # Track 2 三模态数据加载
 │       ├── quality.py          # Track 2 质量评估模块
 │       └── scripts/
-│           ├── train_baseline.sh  # Track 1 启动脚本
+│           ├── predict.py           # 推理 & 提交文件生成
+│           ├── predict.sh           # 推理 shell 封装
+│           ├── train_baseline.sh    # Track 1 启动脚本
 │           └── train_triplet.sh   # Track 2 启动脚本
 │
 └── data/                  # 数据集（实际路径在 yaml 中配置）
@@ -117,10 +120,10 @@ pip install git+https://github.com/WSYANGSX/machine_learning.git
 # 2. 准备数据
 # 将竞赛数据按以下目录结构放置：
 # /path/to/aic2026/data/
-# ├── images/{train,val,test}/  ← RGB 图像
-# ├── ir/{train,val,test}/      ← 红外图像
-# ├── depth/{train,val,test}/   ← Depth 图像（三模态时）
-# └── labels/{train,val,test}/  ← YOLO 格式标签
+# ├── visible/{train,val,test}/  ← RGB 图像
+# ├── infrared/{train,val,test}/ ← 红外图像
+# ├── depth/{train,val,test}/    ← Depth 图像（三模态时）
+# └── labels/{train,val,test}/   ← YOLO 格式标签
 
 # 3. 修改配置
 # 编辑 configs/aic_baseline.yaml，将 path 改为实际数据路径
@@ -146,6 +149,33 @@ bash src/aic2026/scripts/train_baseline.sh --device 0,1,2,3
 # 自定义
 bash src/aic2026/scripts/train_baseline.sh --device 0 --batch 32 --epochs 500
 ```
+
+### 🎯 推理 & 提交
+
+训练完成后，用推理脚本生成竞赛提交文件：
+
+```bash
+# 默认推理（使用 best.pt 权重）
+bash src/aic2026/scripts/predict.sh --data-dir /path/to/aic2026/data
+
+# 指定权重和输出目录
+bash src/aic2026/scripts/predict.sh --ckpt runs/aic2026_baseline/weights/best.pt --data-dir /data --conf 0.25 --iou 0.7
+
+# 提交文件在 submissions/m2i2ha_baseline/submission.zip
+```
+
+推理脚本会：
+1. 读取测试集每个样本的 RGB + IR 图像
+2. 运行 M2I2HA 检测
+3. 输出 TXT 文件（竞赛格式：`class_id cx cy w h confidence`）
+4. 自动打包为 `submission.zip` 供上传
+
+| 输出格式 | 说明 |
+|---------|------|
+| 每张图 1 个 TXT | 同名文件，每行一个检测结果 |
+| 最大 100 框/图 | 超过按置信度截断 |
+| 空图有空 TXT | 预测 0 个目标时也生成空文件 |
+| 提交包 | `submission.zip` 内含所有 TXT |
 
 ## 参考文献
 

@@ -2,18 +2,19 @@
 #
 # 数据目录结构预期:
 #   {path}/
-#     images/train/       ← RGB 图像 (PNG/JPG)
-#     images/val/
-#     depth/train/        ← Depth 图像 (16bit PNG, 单通道)
-#     depth/val/
-#     ir/train/           ← 红外图像 (3-channel 8bit PNG)
-#     ir/val/
-#     labels/train/       ← YOLO 格式标签 (.txt)
-#     labels/val/
+#     visible/{train,val,test}/    ← RGB 图像 (PNG/JPG)
+#     infrared/{train,val,test}/   ← 红外图像 (PNG)
+#     depth/{train,val,test}/      ← Depth 图像 (16bit PNG, 单通道)
+#     labels/{train,val,test}/     ← YOLO 格式标签 (.txt)
 #
 # 注意: M2I2HA 原生 MultiModalYoloDataset 只支持 [img, ir] 两个 modality
 # 这个 config 用于 Track 2 的自定义数据集加载器，需要扩展
 # MultiModalYoloDataset 以支持第三模态
+#
+# 12 类别（竞赛官方定义）:
+#   0: person       1: boat         2: animal       3: seat
+#   4: sign         5: bicycle      6: car          7: ball
+#   8: light        9: garbage_can  10: uav         11: tricycle
 
 name: aic2026_triplet
 path: /path/to/aic2026/data            # ← TODO: 部署时修改
@@ -24,15 +25,15 @@ modalities:
   - ir
 
 # 图像目录（相对于 path）
-train_imgs_dir: images/train
+train_imgs_dir: visible/train
 train_depth_dir: depth/train
-train_irs_dir: ir/train
-val_imgs_dir: images/val
+train_irs_dir: infrared/train
+val_imgs_dir: visible/val
 val_depth_dir: depth/val
-val_irs_dir: ir/val
-test_imgs_dir: images/test
+val_irs_dir: infrared/val
+test_imgs_dir: visible/test
 test_depth_dir: depth/test
-test_irs_dir: ir/test
+test_irs_dir: infrared/test
 
 # 标签目录（相对于 path）
 train_labels_dir: labels/train
@@ -43,18 +44,18 @@ test_labels_dir: labels/test
 depth_normalization: log              # log | linear
 depth_max_mm: 19999
 
-# 类别
+# 类别（竞赛官方 12 类）
 nc: 12
 class_names:
-  - person
-  - car
-  - bicycle
-  - motorcycle
-  - bus
-  - truck
-  - animal
-  - stroller
-  - cart
-  - umbrella
-  - ball
-  - uav
+  - person       # 0
+  - boat         # 1
+  - animal       # 2
+  - seat         # 3
+  - sign         # 4
+  - bicycle      # 5
+  - car          # 6
+  - ball         # 7
+  - light        # 8
+  - garbage_can  # 9
+  - uav          # 10
+  - tricycle     # 11

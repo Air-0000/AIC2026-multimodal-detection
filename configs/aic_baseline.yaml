@@ -1,17 +1,19 @@
 # AIC 2026 数据集配置 — Track 1: M2I2HA RGB+IR 双模态 Baseline
 #
-# 数据目录结构预期:
+# 数据目录结构预期（基于竞赛文档样例数据）:
 #   {path}/
-#     images/train/       ← RGB 图像 (PNG/JPG)
-#     images/val/         ← RGB 验证集
-#     ir/train/           ← 红外图像
-#     ir/val/
-#     labels/train/       ← YOLO 格式标签 (.txt)
-#     labels/val/
+#     visible/{train,val,test}/    ← RGB 图像 (PNG/JPG)
+#     infrared/{train,val,test}/   ← 红外图像 (PNG)
+#     labels/{train,val,test}/     ← YOLO 格式标签 (.txt)
 #
 # 标签格式 (YOLO):
 #   class_id x_center y_center width height
 #   坐标归一化到 [0, 1]
+#
+# 12 类别（竞赛官方定义）:
+#   0: person       1: boat         2: animal       3: seat
+#   4: sign         5: bicycle      6: car          7: ball
+#   8: light        9: garbage_can  10: uav         11: tricycle
 #
 # 部署前将 {path} 改为服务器上的实际路径
 
@@ -23,30 +25,30 @@ modalities:
   - ir
 
 # 图像目录（相对于 path）
-train_imgs_dir: images/train
-train_irs_dir: ir/train
-val_imgs_dir: images/val
-val_irs_dir: ir/val
-test_imgs_dir: images/test
-test_irs_dir: ir/test
+train_imgs_dir: visible/train
+train_irs_dir: infrared/train
+val_imgs_dir: visible/val
+val_irs_dir: infrared/val
+test_imgs_dir: visible/test
+test_irs_dir: infrared/test
 
 # 标签目录（相对于 path）
 train_labels_dir: labels/train
 val_labels_dir: labels/val
 test_labels_dir: labels/test
 
-# 类别
+# 类别（竞赛官方 12 类）
 nc: 12
 class_names:
-  - person
-  - car
-  - bicycle
-  - motorcycle
-  - bus
-  - truck
-  - animal
-  - stroller
-  - cart
-  - umbrella
-  - ball
-  - uav
+  - person       # 0
+  - boat         # 1
+  - animal       # 2
+  - seat         # 3
+  - sign         # 4
+  - bicycle      # 5
+  - car          # 6
+  - ball         # 7
+  - light        # 8
+  - garbage_can  # 9
+  - uav          # 10
+  - tricycle     # 11

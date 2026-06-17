@@ -301,7 +301,7 @@ step "6/7  数据目录配置"
 # 获取数据路径
 if [[ -z "$DATA_DIR" ]]; then
     # 尝试常见位置
-    if [[ -d "$PROJECT_DIR/data/images/train" ]]; then
+    if [[ -d "$PROJECT_DIR/data/visible/train" ]]; then
         DATA_DIR="$PROJECT_DIR/data"
         info "检测到数据已存在: $DATA_DIR"
     else
@@ -317,12 +317,12 @@ if [[ -z "$DATA_DIR" ]]; then
     fi
 fi
 
-# 创建数据目录结构（如果指定了路径且不存在）
+# 创建目录结构（如果指定了路径且不存在）
 if [[ -n "$DATA_DIR" ]]; then
     # 创建目录结构
     for split in train val test; do
-        mkdir -p "$DATA_DIR/images/$split"
-        mkdir -p "$DATA_DIR/ir/$split"
+        mkdir -p "$DATA_DIR/visible/$split"
+        mkdir -p "$DATA_DIR/infrared/$split"
         mkdir -p "$DATA_DIR/depth/$split"   # Track 2 备用
         mkdir -p "$DATA_DIR/labels/$split"
     done
@@ -423,13 +423,13 @@ echo -e "${YELLOW}📋 接下来：${NC}"
 echo ""
 echo -e "  1️⃣  将竞赛数据放入以下目录："
 if [[ -n "$DATA_DIR" ]]; then
-    echo -e "      ${CYAN}$DATA_DIR/images/train/${NC}  ← RGB 图像"
-    echo -e "      ${CYAN}$DATA_DIR/ir/train/${NC}      ← 红外图像"
-    echo -e "      ${CYAN}$DATA_DIR/labels/train/${NC}   ← YOLO 格式标签"
+    echo -e "      ${CYAN}$DATA_DIR/visible/train/${NC}    ← RGB 图像"
+    echo -e "      ${CYAN}$DATA_DIR/infrared/train/${NC}   ← 红外图像"
+    echo -e "      ${CYAN}$DATA_DIR/labels/train/${NC}     ← YOLO 格式标签"
 else
-    echo -e "      ${CYAN}<数据目录>/images/train/${NC}  ← RGB 图像"
-    echo -e "      ${CYAN}<数据目录>/ir/train/${NC}      ← 红外图像"
-    echo -e "      ${CYAN}<数据目录>/labels/train/${NC}   ← YOLO 格式标签"
+    echo -e "      ${CYAN}<数据目录>/visible/train/${NC}    ← RGB 图像"
+    echo -e "      ${CYAN}<数据目录>/infrared/train/${NC}   ← 红外图像"
+    echo -e "      ${CYAN}<数据目录>/labels/train/${NC}     ← YOLO 格式标签"
 fi
 echo ""
 echo -e "  2️⃣  启动训练（Track 1 Baseline）："
