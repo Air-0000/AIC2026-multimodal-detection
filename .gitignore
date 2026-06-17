@@ -23,6 +23,12 @@ wandb/
 # 数据集 (路径在 yaml 中配置)
 data/
 
+# M2I2HA 官方代码（setup_linux.sh 自动克隆）
+vendor/
+
+# 推理输出 & 提交文件
+submissions/
+
 # 预训练权重
 pretrained/
 *.pth

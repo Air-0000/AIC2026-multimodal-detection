@@ -290,6 +290,22 @@ else
 
     if $PYTHON -c "import machine_learning" 2>/dev/null; then
         ok "M2I2HA 安装成功"
+
+        # ⚠️ 打补丁: 替换官方库中的硬编码路径
+        ML_DIR=$($PYTHON -c "import machine_learning; import os; print(os.path.dirname(machine_learning.__file__))")
+        CONSTANTS_FILE="$ML_DIR/utils/constants.py"
+
+        if grep -q "ROOT_PATH = \"/home/yangxf/" "$CONSTANTS_FILE" 2>/dev/null; then
+            # 把 ROOT_PATH 改为项目目录，这样 runs/ 会创建在当前项目下
+            sed -i "s|ROOT_PATH = \"/home/yangxf/WorkSpace/machine_learning\"|ROOT_PATH = \"$PROJECT_DIR\"|g" "$CONSTANTS_FILE"
+            # 把 ALGOCFG_PATH 改为我们的配置目录
+            sed -i "s|ALGOCFG_PATH = \"/home/yangxf/WorkSpace/machine_learning/src/machine_learning/cfg/algorithms\"|ALGOCFG_PATH = \"$PROJECT_DIR/src/aic2026/configs\"|g" "$CONSTANTS_FILE"
+            # 把 DATACFG_PATH 改为我们的配置目录
+            sed -i "s|DATACFG_PATH = \"/home/yangxf/WorkSpace/machine_learning/src/machine_learning/cfg/datasets\"|DATACFG_PATH = \"$PROJECT_DIR/configs\"|g" "$CONSTANTS_FILE"
+            ok "M2I2HA 硬编码路径已修补 → $PROJECT_DIR"
+        else
+            info "M2I2HA 路径似乎已被修补过，跳过"
+        fi
     else
         warn "M2I2HA 安装可能有问题，请检查 vendor/machine_learning 目录"
     fi

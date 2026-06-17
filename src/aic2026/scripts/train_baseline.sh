@@ -13,7 +13,7 @@ set -e
 PROJECT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 
 DATASET_CFG="${PROJECT_DIR}/configs/aic_baseline.yaml"
-ALGO_CFG="src/aic2026/configs/baseline.yaml"
+ALGO_CFG="${PROJECT_DIR}/src/aic2026/configs/baseline.yaml"
 OUTPUT_DIR="runs/aic2026_baseline"
 DEVICE="0"                 # GPU ID 或 "0,1" (多卡)
 BATCH_SIZE=16
