@@ -1,0 +1,140 @@
+__include__: [
+  '../dataset/aic_detection.yml',
+  '../runtime.yml',
+  '../base/dataloader.yml',
+  '../base/optimizer.yml',
+  '../base/deimv2.yml',
+]
+
+# =============================================================================
+# RGB-D DEPTH-PREPROCESSING ABLATION -- variant: inv_eq
+# =============================================================================
+# Input = RGB(3) + Depth(1) = 4 channels, NO infrared. Backbone DINOv3STAsRDT
+# (RDTTrack's prompt injection, IR branch and dt_ort removed).
+#
+# Why this suite exists: AIC depth used to be destroyed by the loader -- the raw
+# 16-bit mm maps were read via Image.open(p).convert("L"), which PIL clips to
+# [0,255]. Measured: ~69% of pixels saturated at 255, ~31% were 0 and <0.001%
+# kept an intermediate value, i.e. a *binary* valid/invalid mask carrying zero
+# depth information. That bug is now FIXED in CocoDetectionMultiModal (raw depth
+# goes through _read_depth_raw16: 16-bit / 19999, 8-bit / 255). What this suite
+# isolates is therefore the DEPTH ENCODING: only `depth_folder` changes between
+# runs. NOTE: `depth_read: clip8` reproduces the old broken read if needed.
+#
+#   inverse depth + CDF equalisation (full 8-bit dynamic range)
+# =============================================================================
+output_dir: ./outputs/deimv2_dinov3_l_aic_rgd_inv_eq
+
+DEIM:
+  backbone: DINOv3STAsRDT
+
+DINOv3STAsRDT:
+  name: dinov3_vits16
+  weights_path: /home/constant/CodeBuddy/Dev/AIC/deimv2_dinov3_l_coco.pth
+  interaction_indexes: [5, 8, 11]
+  conv_inplane: 32
+  hidden_dim: 224
+  depth_drop_prob: 0.15
+  depth_in_chans: 1
+  unfreeze_rgb_stages: 12     # all RGB blocks (+norm), low LR -- matches ufall
+  input_norm: instance        # per-image RGB illumination normalisation
+
+HybridEncoder:
+  in_channels: [224, 224, 224]
+  hidden_dim: 224
+  dim_feedforward: 896
+
+DEIMTransformer:
+  feat_channels: [224, 224, 224]
+  hidden_dim: 224
+  num_layers: 4
+  eval_idx: -1
+  dim_feedforward: 1792
+
+## DEIM LR-Scheduler
+epoches: 68
+lrsheduler: flatcosine
+lr_gamma: 0.5
+warmup_iter: 2000
+flat_epoch: 34
+no_aug_epoch: 8
+
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*.dinov3)(?!.*(?:norm|bn|bias)).*$'
+      lr: 0.00005
+    -
+      params: '^(?=.*.dinov3)(?=.*(?:norm|bn|bias)).*$'
+      lr: 0.00005
+      weight_decay: 0.
+    -
+      params: '^(?=.*(?:sta|encoder|decoder))(?=.*(?:norm|bn|bias)).*$'
+      weight_decay: 0.
+
+  lr: 0.0005
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+## Bimodal dataset: RGB(3) + Depth(1) = 4 channels (no IR).
+train_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/images
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/depth_variants/inv_eq/train
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 4
+    modality: rgb_depth
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomPhotometricDistort5ch, p: 0.5}
+        - {type: RandomZoomOut, fill: 0}
+        - {type: RandomIoUCrop, p: 0.8}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [640, 640]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomNight5ch, p: 0.5, level: [0.005, 0.80], photon_max: 70.0, read_sigma: 0.012, log_level: true, lamps: [1, 4]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5], std: [0.229, 0.224, 0.225, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: True
+  num_workers: 8
+  drop_last: True
+  total_batch_size: 8
+
+  collate_fn:
+    type: BatchImageCollateFunction
+    mixup_epochs: [4, 34]
+    stop_epoch: 59
+    copyblend_epochs: [4, 60]
+    base_size_repeat: 3
+
+val_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/images
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/depth_variants/inv_eq/train
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    n_channels: 4
+    modality: rgb_depth
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [640, 640]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5], std: [0.229, 0.224, 0.225, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: False
+  num_workers: 4
+  drop_last: False
+  total_batch_size: 4
+
+## DEIM Loss
+DEIMCriterion:
+  matcher:
+    matcher_change_epoch: 50

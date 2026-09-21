@@ -39,6 +39,10 @@ class DEIMCriterion(nn.Module):
         share_matched_indices=False,
         mal_alpha=None,
         use_uni_set=True,
+        use_depth_prior=False,
+        depth_bins=(0.33, 0.66),
+        depth_weights=(1.0, 2.0, 4.0),
+        depth_invert=False,
         ):
         """Create the criterion.
         Parameters:
@@ -48,6 +52,17 @@ class DEIMCriterion(nn.Module):
             num_classes: number of object categories, omitting the special no-object category.
             reg_max (int): Max number of the discrete bins in D-FINE.
             boxes_weight_format: format for boxes weight (iou, ).
+            use_depth_prior: DepthPrior switch. When True the box/cls losses are
+                weighted by the GT depth so that far/small targets (where RGB is
+                unreliable at night and depth is the dominant cue) contribute more
+                -- DLS (depth-stratified loss) + DLW (depth-weighted loss).
+            depth_bins / depth_weights: bin boundaries (in raw depth [0,1]) and the
+                weight applied to each bin; len(depth_weights) == len(depth_bins)+1.
+            depth_invert: if True, depth is inverted before binning. AIC depth is
+                now read as ABSOLUTE depth (mm/19999): near = LOW value, far =
+                HIGH value, and depth_weights [1,2,4] must up-weight FAR boxes ->
+                keep this False. Set True only when re-scoring a legacy checkpoint
+                that was trained on the old clipped (binary) depth maps.
         """
         super().__init__()
         self.num_classes = num_classes
@@ -64,8 +79,12 @@ class DEIMCriterion(nn.Module):
         self.num_pos, self.num_neg = None, None
         self.mal_alpha = mal_alpha
         self.use_uni_set = use_uni_set
+        self.use_depth_prior = use_depth_prior
+        self.depth_bins = list(depth_bins)
+        self.depth_weights = list(depth_weights)
+        self.depth_invert = depth_invert
 
-    def loss_labels_focal(self, outputs, targets, indices, num_boxes):
+    def loss_labels_focal(self, outputs, targets, indices, num_boxes, depth_weight=None):
         assert 'pred_logits' in outputs
         src_logits = outputs['pred_logits']
         idx = self._get_src_permutation_idx(indices)
@@ -75,11 +94,13 @@ class DEIMCriterion(nn.Module):
         target_classes[idx] = target_classes_o
         target = F.one_hot(target_classes, num_classes=self.num_classes+1)[..., :-1]
         loss = torchvision.ops.sigmoid_focal_loss(src_logits, target, self.alpha, self.gamma, reduction='none')
+        if depth_weight is not None:
+            loss = loss * depth_weight.view(src_logits.shape[0], src_logits.shape[1], 1)
         loss = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
 
         return {'loss_focal': loss}
 
-    def loss_labels_vfl(self, outputs, targets, indices, num_boxes, values=None):
+    def loss_labels_vfl(self, outputs, targets, indices, num_boxes, values=None, depth_weight=None):
         assert 'pred_boxes' in outputs
         idx = self._get_src_permutation_idx(indices)
         if values is None:
@@ -105,10 +126,12 @@ class DEIMCriterion(nn.Module):
         weight = self.alpha * pred_score.pow(self.gamma) * (1 - target) + target_score
 
         loss = F.binary_cross_entropy_with_logits(src_logits, target_score, weight=weight, reduction='none')
+        if depth_weight is not None:
+            loss = loss * depth_weight.view(src_logits.shape[0], src_logits.shape[1], 1)
         loss = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
         return {'loss_vfl': loss}
 
-    def loss_labels_mal(self, outputs, targets, indices, num_boxes, values=None):
+    def loss_labels_mal(self, outputs, targets, indices, num_boxes, values=None, depth_weight=None):
         assert 'pred_boxes' in outputs
         idx = self._get_src_permutation_idx(indices)
         if values is None:
@@ -139,10 +162,12 @@ class DEIMCriterion(nn.Module):
 
         # print(" ### DEIM-gamma{}-alpha{} ### ".format(self.gamma, self.mal_alpha))
         loss = F.binary_cross_entropy_with_logits(src_logits, target_score, weight=weight, reduction='none')
+        if depth_weight is not None:
+            loss = loss * depth_weight.view(src_logits.shape[0], src_logits.shape[1], 1)
         loss = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
         return {'loss_mal': loss}
 
-    def loss_boxes(self, outputs, targets, indices, num_boxes, boxes_weight=None):
+    def loss_boxes(self, outputs, targets, indices, num_boxes, boxes_weight=None, depth_weight=None):
         """Compute the losses related to the bounding boxes, the L1 regression loss and the GIoU loss
            targets dicts must contain the key "boxes" containing a tensor of dim [nb_target_boxes, 4]
            The target boxes are expected in format (center_x, center_y, w, h), normalized by the image size.
@@ -151,18 +176,56 @@ class DEIMCriterion(nn.Module):
         idx = self._get_src_permutation_idx(indices)
         src_boxes = outputs['pred_boxes'][idx]
         target_boxes = torch.cat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+        dw = depth_weight[idx[0] * outputs['pred_boxes'].shape[1] + idx[1]] if depth_weight is not None else None
         losses = {}
         loss_bbox = F.l1_loss(src_boxes, target_boxes, reduction='none')
+        if dw is not None:
+            loss_bbox = loss_bbox * dw.unsqueeze(-1)
         losses['loss_bbox'] = loss_bbox.sum() / num_boxes
 
         loss_giou = 1 - torch.diag(generalized_box_iou(\
             box_cxcywh_to_xyxy(src_boxes), box_cxcywh_to_xyxy(target_boxes)))
         loss_giou = loss_giou if boxes_weight is None else loss_giou * boxes_weight
+        if dw is not None:
+            loss_giou = loss_giou * dw
         losses['loss_giou'] = loss_giou.sum() / num_boxes
 
         return losses
 
-    def loss_local(self, outputs, targets, indices, num_boxes, T=5):
+    def loss_dssm(self, outputs, targets, indices, num_boxes, boxes_weight=None, depth_weight=None):
+        """Deformation-Sensitive Similarity Metric Loss (paper [4] Tang et al.,
+        Information Fusion 2026, Eq.1-11). Replaces GIoU as the box reg loss.
+        Boxes are (cx,cy,w,h) normalized. NOTE: the paper does NOT report the
+        values of alpha (shape weight) and K (balance constant) -- paywalled; we
+        use SIoU-style defaults alpha=1.0, K=1.0.
+        """
+        assert 'pred_boxes' in outputs
+        idx = self._get_src_permutation_idx(indices)
+        src = outputs['pred_boxes'][idx]
+        tgt = torch.cat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+        x1, y1, w1, h1 = src[:, 0], src[:, 1], src[:, 2], src[:, 3]
+        x2, y2, w2, h2 = tgt[:, 0], tgt[:, 1], tgt[:, 2], tgt[:, 3]
+        eps = 1e-7
+        # Eq.1 center distance, Eq.2 width/height distance
+        d_center2 = (x1 - x2) ** 2 + (y1 - y2) ** 2
+        d_wandh2 = (w1 - w2) ** 2 + (h1 - h2) ** 2
+        # Eq.3-6 diagonal cosine similarity (angle between box vectors)
+        v1 = torch.sqrt(w1 ** 2 + h1 ** 2 + eps)
+        v2 = torch.sqrt(w2 ** 2 + h2 ** 2 + eps)
+        r_cos = (w1 * w2 + h1 * h2) / (v1 * v2 + eps)
+        d_angle = 1.0 * (1.0 - r_cos)              # Eq.7, alpha=1.0 (paper value unknown)
+        # Eq.8 convex-hull diagonal normalisation
+        dx = torch.max(x1 + w1 / 2, x2 + w2 / 2) - torch.min(x1 - w1 / 2, x2 - w2 / 2)
+        dy = torch.max(y1 + h1 / 2, y2 + h2 / 2) - torch.min(y1 - h1 / 2, y2 - h2 / 2)
+        d_diag2 = dx ** 2 + dy ** 2 + eps
+        # Eq.9 composite, Eq.10 loss (negative-exponential similarity mapping)
+        r_comp = (d_center2 + d_wandh2 + d_angle ** 2) / d_diag2
+        loss = r_comp * torch.exp(-1.0 * r_comp)    # K=1.0 (paper value unknown)
+        if boxes_weight is not None:
+            loss = loss * boxes_weight
+        return {'loss_dssm': loss.sum() / num_boxes}
+
+    def loss_local(self, outputs, targets, indices, num_boxes, T=5, depth_weight=None):
         """Compute Fine-Grained Localization (FGL) Loss
             and Decoupled Distillation Focal (DDF) Loss. """
 
@@ -255,6 +318,7 @@ class DEIMCriterion(nn.Module):
     def get_loss(self, loss, outputs, targets, indices, num_boxes, **kwargs):
         loss_map = {
             'boxes': self.loss_boxes,
+            'dssm': self.loss_dssm,
             'focal': self.loss_labels_focal,
             'vfl': self.loss_labels_vfl,
             'mal': self.loss_labels_mal,
@@ -406,9 +470,73 @@ class DEIMCriterion(nn.Module):
         losses = {k:torch.nan_to_num(v, nan=0.0) for k, v in losses.items()}
         return losses
 
+    def _depth_weights(self, targets, indices, num_queries):
+        """Per-query depth weight for DepthPrior (DLS + DLW).
+
+        Returns a flat [B*num_queries] tensor: matched queries get the depth-bin
+        weight of their target (far/small -> heavier), unmatched queries get 1.0.
+        The classification losses are computed over all queries, so the weight
+        must be per-query; the box losses gather it via the matched indices.
+        Returns None when depth prior is off or no depth is available.
+        """
+        if not self.use_depth_prior:
+            return None
+        dev = None
+        for t in targets:
+            d = t.get('depth', None)
+            if d is not None and d.numel() > 0:
+                dev = d.device
+                break
+        if dev is None:
+            return None
+        parts = []
+        for t, (qidx, gidx) in zip(targets, indices):
+            wq = torch.ones(num_queries, device=dev, dtype=torch.float32)
+            d = t.get('depth', None)
+            if d is not None and gidx.numel() > 0:
+                dlen = d.shape[0]
+                if gidx.max() >= dlen:
+                    # gidx are GT indices and must be < dlen (= num GT boxes); if not,
+                    # something is misaligned -- report once and clamp defensively.
+                    if not getattr(type(self), '_depth_dbg', False):
+                        print(f"[DEPTHPRIOR] gidx.max={int(gidx.max())} dlen={int(dlen)} "
+                              f"qidx.max={int(qidx.max())} num_queries={num_queries} "
+                              f"num_gt={int(t['labels'].shape[0])}", flush=True)
+                        type(self)._depth_dbg = True
+                    gidx = gidx.clamp(0, dlen - 1)
+                raw_d = d[gidx].float().to(dev)
+                dt = 1.0 - raw_d if self.depth_invert else raw_d
+                wt = torch.full_like(dt, float(self.depth_weights[0]))
+                for thr, wval in zip(self.depth_bins, self.depth_weights[1:]):
+                    wt = torch.where(dt >= float(thr), torch.full_like(dt, float(wval)), wt)
+                # raw depth == 0 usually means "no depth data" -> keep neutral
+                wt = torch.where(raw_d < 1e-3, torch.ones_like(wt), wt)
+                # CDN (denoising) query counts can occasionally disagree with the
+                # matcher's index range; clamp to stay in-bounds (a few auxiliary
+                # queries get a slightly wrong weight, the main output is untouched).
+                wq[qidx.clamp(0, num_queries - 1)] = wt
+            parts.append(wq)
+        return torch.cat(parts)   # [B*num_queries]
+
     def get_loss_meta_info(self, loss, outputs, targets, indices):
+        meta = {}
+        if self.use_depth_prior:
+            # The matcher's src indices address either the main query set
+            # (outputs['pred_logits'], num_queries) or the denoising query set
+            # (outputs['pred_logits_dn'], a larger count). Size the per-query
+            # weight tensor to the set these indices actually reference, else
+            # the scatter `wq[src] = wt` goes out of bounds on DN queries.
+            main_n = outputs['pred_logits'].shape[1]
+            dn_n = outputs['pred_logits_dn'].shape[1] if 'pred_logits_dn' in outputs else 0
+            max_src = -1
+            for (_, j) in indices:
+                if j.numel() > 0:
+                    max_src = max(max_src, int(j.max().item()))
+            nq = dn_n if (dn_n > 0 and max_src >= main_n) else main_n
+            meta['depth_weight'] = self._depth_weights(targets, indices, nq)
+
         if self.boxes_weight_format is None:
-            return {}
+            return meta
 
         src_boxes = outputs['pred_boxes'][self._get_src_permutation_idx(indices)]
         target_boxes = torch.cat([t['boxes'][j] for t, (_, j) in zip(targets, indices)], dim=0)
@@ -423,11 +551,9 @@ class DEIMCriterion(nn.Module):
             raise AttributeError()
 
         if loss in ('boxes', ):
-            meta = {'boxes_weight': iou}
+            meta['boxes_weight'] = iou
         elif loss in ('vfl', 'mal'):
-            meta = {'values': iou}
-        else:
-            meta = {}
+            meta['values'] = iou
 
         return meta
 
