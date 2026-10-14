@@ -236,7 +236,9 @@ def main():
         return MOD_ORDER.index(m) if m in MOD_ORDER else len(MOD_ORDER)
 
     def dkey(ds):
-        return DS_ORDER.index(ds) if ds in DS_ORDER else len(DS_ORDER)
+        u = ds.upper()
+        idx = DS_ORDER.index(u) if u in DS_ORDER else (DS_ORDER.index(ds) if ds in DS_ORDER else len(DS_ORDER))
+        return (idx, ds)
 
     for ds in sorted({k[1] for k in groups}, key=dkey):
         for mod in sorted({k[0] for k in groups if k[1] == ds}, key=mkey):

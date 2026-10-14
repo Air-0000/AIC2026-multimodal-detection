@@ -114,6 +114,24 @@ _生成自 14 个训练模型 + 517 个 night 评测 log。_
 | `cssa_orig_abrgbblk_eval.log` | orig | 0.0330 | 0.0720 |
 | `deepir_train_cached.log` | ? | 0.0000 | 0.0000 |
 
+### bdd / RGB  （n=1）
+
+| 评测 log | 档位 | AP | AP50 |
+|---|---|---|---|
+| `rgb3ch_bddnight_zs_eval.log` | bdd | 0.2900 | 0.5770 |
+
+### bdd / RGB+IR  （n=1）
+
+| 评测 log | 档位 | AP | AP50 |
+|---|---|---|---|
+| `bdd_night_zs_eval.log` | bdd | 0.2890 | 0.5790 |
+
+### llvip / RGB+IR  （n=1）
+
+| 评测 log | 档位 | AP | AP50 |
+|---|---|---|---|
+| `llvip_eval_result.log` | llvip | 0.2830 | 0.5950 |
+
 ### day / IR(纯红外)  （n=4）
 
 | 评测 log | 档位 | AP | AP50 |
@@ -724,24 +742,6 @@ _生成自 14 个训练模型 + 517 个 night 评测 log。_
 | 评测 log | 档位 | AP | AP50 |
 |---|---|---|---|
 | `midboost_combo_ablate_depth_night0005.log` | night0005 | 0.1040 | 0.1960 |
-
-### llvip / RGB+IR  （n=1）
-
-| 评测 log | 档位 | AP | AP50 |
-|---|---|---|---|
-| `llvip_eval_result.log` | llvip | 0.2830 | 0.5950 |
-
-### bdd / RGB  （n=1）
-
-| 评测 log | 档位 | AP | AP50 |
-|---|---|---|---|
-| `rgb3ch_bddnight_zs_eval.log` | bdd | 0.2900 | 0.5770 |
-
-### bdd / RGB+IR  （n=1）
-
-| 评测 log | 档位 | AP | AP50 |
-|---|---|---|---|
-| `bdd_night_zs_eval.log` | bdd | 0.2890 | 0.5790 |
 
 ---
 
