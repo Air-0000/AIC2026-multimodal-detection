@@ -5,24 +5,39 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 
-# ===== 大权重 / 模型检查点 =====
+# ===== 大权重 / 模型检查点与权重目录 =====
 *.pth
 *.ckpt
 *.pt
 *.onnx
 *.bin
+weights/
+weight/
 
-# ===== 原始数据 & 中间产物 (重生成成本高, 不入库) =====
-# 仅忽略仓库根目录的竞赛原始数据, 不忽略 vendor 内框架自带的 dataset 代码目录
-/dataset/
-work_dir/
+# ===== 原始数据 & 派生数据集 (重生成成本高, 不入库) =====
+dataset/
+/data_aux/
+**/work_dir/
 
-# ===== 系统 / 编辑器 =====
+# ===== 框架训练产物与临时输出 =====
+vendor/DEIMv2/outputs/
+**/*_out/
+**/*_out*/
+
+# ===== 系统 / 编辑器 / 归档 / 独立子模块 / 外部合集 =====
 .codebuddy/
+.workbuddy/
 .idea/
 .vscode/
 .DS_Store
+archive/
+vendor/Depth-Anything-V2/
+vendor/cv-model-improvement-master/
+work/
 
-# ===== 日志 / 缓存 =====
+# ===== 日志 / 临时文件 / 探针产物 =====
 *.log
 *.pkl
+*.out
+*.bak*
+_tmp_*.py
