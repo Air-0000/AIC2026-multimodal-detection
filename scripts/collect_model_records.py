@@ -216,6 +216,8 @@ def main():
     L.append("")
     L.append(f"_生成自 {len(rowsA)} 个训练模型 + {len(rowsB)} 个 night 评测 log。_")
     L.append("")
+    L.append("<!-- AUTO_GENERATED_TABLES_START -->")
+    L.append("")
     L.append("## 表A：训练模型总览（按 模态 / 数据集 分组，组内按 AP 降序）")
     L.append("")
     L.append("> 模态与数据集由 outputs 目录名推断；权重路径见末列。")
@@ -280,6 +282,7 @@ def main():
 
     # 安全保护：提取现存文件中的手写演进总账部分，严禁全量抹杀！
     manual_tail = ""
+    old_manual_len = 0
     target_path = os.path.realpath(RECORDS) if os.path.islink(RECORDS) else RECORDS
     if os.path.exists(target_path):
         with open(target_path, "r", encoding="utf-8") as f:
@@ -307,6 +310,8 @@ def main():
             idx = old_content.find("\n## 十")
             manual_tail = old_content[idx:].strip()
 
+        old_manual_len = len(manual_tail)
+
     final_content = auto_content
     if manual_tail:
         final_content = (
@@ -316,9 +321,19 @@ def main():
             + "\n"
         )
 
-    # 关键防丢失断言验证 (Sanity check)
-    if os.path.exists(target_path) and ("## 十" in old_content):
-        if "## 十" not in final_content:
+    # 关键防丢失硬性断言 (Hard non-regression assertions)
+    if os.path.exists(target_path):
+        if old_manual_len > 0:
+            new_manual_len = len(manual_tail)
+            if new_manual_len < old_manual_len:
+                raise RuntimeError(
+                    f"CRITICAL ERROR: 手写演进总账字符数发生回退 ({new_manual_len} < {old_manual_len})！写入已中止以保护真实数据。"
+                )
+            if len(final_content) < old_manual_len:
+                raise RuntimeError(
+                    f"CRITICAL ERROR: 产出全文长度 ({len(final_content)}) 异常小于历史手写总账 ({old_manual_len})！写入已中止以保护真实数据。"
+                )
+        if "## 十" in old_content and "## 十" not in final_content:
             raise RuntimeError(
                 "CRITICAL ERROR: 手写演进总账章节在合并后丢失！写入已中止以保护真实数据。"
             )

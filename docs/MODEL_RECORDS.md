@@ -10,6 +10,8 @@
 
 _生成自 14 个训练模型 + 517 个 night 评测 log。_
 
+<!-- AUTO_GENERATED_TABLES_START -->
+
 ## 表A：训练模型总览（按 模态 / 数据集 分组，组内按 AP 降序）
 
 > 模态与数据集由 outputs 目录名推断；权重路径见末列。
