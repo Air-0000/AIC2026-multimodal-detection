@@ -21,6 +21,8 @@ dataset/
 
 # ===== 框架训练产物与临时输出 =====
 vendor/DEIMv2/outputs/
+outputs/
+index.html
 **/*_out/
 **/*_out*/
 

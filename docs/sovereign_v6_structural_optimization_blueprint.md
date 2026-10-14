@@ -1,0 +1,1 @@
+03_architecture_designs/03_sovereign_v6_structural_optimization_blueprint.md

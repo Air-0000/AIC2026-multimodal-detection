@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AIC 多模态 · IR 通路攻坚整合报告</title>
+<style>
+:root{
+  --bg:#ffffff; --bg2:#f7f7f5; --bg3:#efeee9;
+  --fg:#1c1c1a; --fg2:#5f5e5a; --fg3:#8a8983;
+  --bd:#e2e1dc; --bd2:#c9c8c2;
+  --ok-bg:#eaf3de; --ok-fg:#3b6d11; --ok-bd:#97c459;
+  --no-bg:#fcebeb; --no-fg:#a32d2d; --no-bd:#f09595;
+  --wait-bg:#faeeda; --wait-fg:#854f0b; --wait-bd:#ef9f27;
+  --info-bg:#e6f1fb; --info-fg:#185fa5; --info-bd:#85b7eb;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#16161a; --bg2:#1e1e23; --bg3:#27272e;
+    --fg:#e8e8e4; --fg2:#a8a8a2; --fg3:#78787a;
+    --bd:#33333a; --bd2:#4a4a52;
+    --ok-bg:#173404; --ok-fg:#c0dd97; --ok-bd:#3b6d11;
+    --no-bg:#501313; --no-fg:#f7c1c1; --no-bd:#a32d2d;
+    --wait-bg:#412402; --wait-fg:#fac775; --wait-bd:#854f0b;
+    --info-bg:#042c53; --info-fg:#b5d4f4; --info-bd:#185fa5;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;padding:0;background:var(--bg);color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-size:14px;line-height:1.7;}
+.wrap{max-width:1080px;margin:0 auto;padding:48px 28px 96px;}
+h1{font-size:26px;font-weight:600;margin:0 0 8px;letter-spacing:-.01em;}
+.sub{color:var(--fg2);font-size:14px;margin-bottom:6px;}
+.meta{color:var(--fg3);font-size:12.5px;margin-bottom:32px;}
+h2{font-size:18px;font-weight:600;margin:52px 0 16px;padding-bottom:10px;border-bottom:1px solid var(--bd);}
+h3{font-size:15px;font-weight:600;margin:28px 0 10px;}
+p{margin:0 0 12px;}
+code{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12.5px;background:var(--bg3);
+  padding:1px 5px;border-radius:4px;}
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13px;}
+th{text-align:left;font-weight:600;padding:9px 10px;border-bottom:1px solid var(--bd2);
+  color:var(--fg2);font-size:12.5px;background:var(--bg2);}
+td{padding:9px 10px;border-bottom:1px solid var(--bd);vertical-align:top;}
+tr:last-child td{border-bottom:none;}
+td.n{font-variant-numeric:tabular-nums;white-space:nowrap;}
+.badge{display:inline-block;padding:1px 8px;border-radius:20px;font-size:11.5px;
+  font-weight:600;white-space:nowrap;border:1px solid;}
+.b-ok{background:var(--ok-bg);color:var(--ok-fg);border-color:var(--ok-bd);}
+.b-no{background:var(--no-bg);color:var(--no-fg);border-color:var(--no-bd);}
+.b-wait{background:var(--wait-bg);color:var(--wait-fg);border-color:var(--wait-bd);}
+.b-info{background:var(--info-bg);color:var(--info-fg);border-color:var(--info-bd);}
+.card{background:var(--bg2);border:1px solid var(--bd);border-radius:12px;padding:18px 20px;margin:14px 0;}
+.card > :last-child{margin-bottom:0;}
+.lead{border-left:3px solid var(--info-bd);padding-left:16px;color:var(--fg2);}
+strong{font-weight:600;}
+.toc{background:var(--bg2);border:1px solid var(--bd);border-radius:12px;padding:16px 20px;margin:24px 0 8px;}
+.toc ol{margin:0;padding-left:20px;columns:2;column-gap:32px;}
+.toc li{margin:3px 0;break-inside:avoid;}
+.toc a{color:var(--fg);text-decoration:none;border-bottom:1px solid var(--bd2);}
+.toc a:hover{color:var(--info-fg);border-color:var(--info-bd);}
+details{border:1px solid var(--bd);border-radius:10px;padding:0;margin:10px 0;background:var(--bg2);}
+summary{padding:11px 16px;cursor:pointer;font-weight:600;font-size:13.5px;list-style:none;}
+summary::-webkit-details-marker{display:none;}
+summary::before{content:"▸ ";color:var(--fg3);}
+details[open] summary::before{content:"▾ ";}
+.dbody{padding:2px 16px 14px;border-top:1px solid var(--bd);}
+.dbody table{margin:10px 0;}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 14px;font-size:13px;margin:8px 0;}
+.kv dt{color:var(--fg3);white-space:nowrap;}
+.kv dd{margin:0;}
+.tl{border-left:2px solid var(--bd);margin:16px 0 16px 8px;padding-left:22px;}
+.tl-item{position:relative;margin-bottom:20px;}
+.tl-item::before{content:"";position:absolute;left:-29px;top:7px;width:9px;height:9px;
+  border-radius:50%;background:var(--info-bd);border:2px solid var(--bg);}
+.tl-t{font-size:12px;color:var(--fg3);font-variant-numeric:tabular-nums;}
+.tl-h{font-weight:600;margin:1px 0 3px;}
+.tl-b{color:var(--fg2);font-size:13px;}
+.hint{font-size:12.5px;color:var(--fg3);margin-top:6px;}
+.num{font-variant-numeric:tabular-nums;}
+@media print{body{background:#fff}.wrap{max-width:none;padding:0}details{border:none}details summary{font-weight:700}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>AIC 多模态 · IR 通路攻坚整合报告</h1>
+<div class="sub">覆盖 2026-09-26 §16 ~ 2026-09-28 晨：数据链路取证、通道/bs 实验、配准反复求证、融合链机制分析、RGB 主干强化线（D-FINE-X DCN 变体）</div>
+<div class="meta">生成 2026-09-27 18:05 · 更新 2026-09-28 07:20 · 证据源为实跑脚本产物与 checkpoint 权重，非推演</div>
+
+<div class="card lead">
+<strong>一句话总纲：</strong>这一轮把「IR 通路为什么学不好」从四个方向同时压缩，最后剩下的答案不是数据错位——而是
+<strong>数据生成脚本自身制造了假错位</strong>，真正未解的是
+<strong>融合机制的注入方式</strong>（逐像素加性、幅度无界、无逐位置门控）与
+<strong>Stage A 零梯度 / 通道重复初始化</strong>的训练侧病根。
+<strong>几何错位这条线已经彻底关死</strong>，不要再往这个方向投时间。
+</div>
+
+<div class="toc">
+<ol>
+<li><a href="#tl">全局时间线</a></li>
+<li><a href="#a">数据链路取证（三条脚本 bug）</a></li>
+<li><a href="#b">通道 / batch-size 实验</a></li>
+<li><a href="#c">配准反复求证（最长的一条）</a></li>
+<li><a href="#d">融合链机制分析</a></li>
+<li><a href="#e">论文适用性核验</a></li>
+<li><a href="#f">结论台账</a></li>
+<li><a href="#g">翻案清单（已作废结论）</a></li>
+<li><a href="#h">待办与优先级</a></li>
+<li><a href="#i">方法论坑清单</a></li>
+<li><a href="#j">D-FINE-X DCN 变体系列</a></li>
+<li><a href="#k">全集对齐审计与叠加数据产品</a></li>
+</ol>
+</div>
+
+<h2 id="tl">1 · 全局时间线</h2>
+
+<div class="tl">
+<div class="tl-item"><div class="tl-t">09-26 全天</div><div class="tl-h">配准方案的四代迭代</div>
+<div class="tl-b">v1 相似变换 → v2 分块一致性守卫 → v3 分块均值直接优化 → GT 框热质量判据 → DIS 稠密光流。
+每一代都比上一代"看起来更好"，最后被<strong>光流有效性自检</strong>整体打折：跨模态往返不一致 96~118%，方法本身不可信。</div></div>
+
+<div class="tl-item"><div class="tl-t">09-26 §29-31</div><div class="tl-h">纯 IR 通道阶梯实验</div>
+<div class="tl-b">raw1ch 0.1100 / heat1ch 0.1184 / 2ch 0.2449 / 2ch_deep 0.2983 / <strong>3ch 0.3369</strong>。
+初判「通道数是增益大头」。</div></div>
+
+<div class="tl-item"><div class="tl-t">09-26 22:42</div><div class="tl-h">补严格单变量：2ch + bs12</div>
+<div class="tl-b">结果 0.3188。<strong>增益分解翻案</strong>：bs 占 80%（+0.074），通道仅占 20%（+0.018）。</div></div>
+
+<div class="tl-item"><div class="tl-t">09-26 §32-34</div><div class="tl-h">数据链路取证（转折）</div>
+<div class="tl-b">发现 <code>align_ir()</code> 有害平移、<code>infrared_deleak/</code> 是 md5 副本、de-leak 物理模型错误。
+整条「配准 / 去鬼影」工作线的<strong>前提被釜底抽薪</strong>。</div></div>
+
+<div class="tl-item"><div class="tl-t">09-27 全天</div><div class="tl-h">对齐问题终审</div>
+<div class="tl-b">用户点名 08-033-01 的鹿"怎么都对不上"，逼出重查。
+ZNCC / ECC / 目标级质心 / Procrustes / 棋盘格 QA / ±120px 大窗 + 正对照，
+<strong>最终钉死：像素级对齐、无旋转</strong>。</div></div>
+
+<div class="tl-item"><div class="tl-t">09-27 17:37 起</div><div class="tl-h">转向融合链机制</div>
+<div class="tl-b">逐行核实 <code>dt_ort</code> / <code>PromptBlock</code>，确认为逐像素加性注入；
+由此发现即使零错位也成立的漏洞，并定位到现成的 <code>CSSA</code> 替代方案。</div></div>
+
+<div class="tl-item"><div class="tl-t">09-27 23:31 ~ 09-28 01:55</div><div class="tl-h">RGB 主干强化线启动：D-FINE-X + DCN(v2)</div>
+<div class="tl-b">HGNetv2-B5 stages[2,3] 移植 DCN（单组共享 offset+mask），从 <code>dfine_x_obj2coco.pth</code> 微调。
+01:55 完成 day + 9 档 night 评测；02:01 补 ep47 checkpoint 一轮。</div></div>
+
+<div class="tl-item"><div class="tl-t">09-28 03:42 ~ 05:39</div><div class="tl-h">dcnv3（G=8）训练 + 评测</div>
+<div class="tl-b">InternImage 式多组机制 G=8。<strong>结论：全面略差于单组 dcn</strong>，多组 offsets 无收益。</div></div>
+
+<div class="tl-item"><div class="tl-t">09-28 06:32 起</div><div class="tl-h">dcng4（G=4）接力训练中</div><div class="tl-b">06:31 曾短暂启动 dcng3（G=8）随即撤下（config 已清理），改跑 G=4 档。
+另：SAM vit_b box-prompt 伪掩码探索（<code>work_dir/sam/</code>）进行中，无结论，暂不进台账。</div></div>
+
+<div class="tl-item"><div class="tl-t">09-28 06:50 ~ 07:05</div><div class="tl-h">热图叠加工具 + 定性证据</div>
+<div class="tl-b"><code>overlay_heat_on_rgb.py</code>（resize→p2/p98 拉伸→JET→0.45 混色）+ 5 样本三联证据页。
+phaseCorrelate 实测：<strong>热图（heat / heat_na）逐像素一致且从未被平移</strong>，被 align_ir() 污染的是 raw IR（<code>deimv2_ir</code>，dy=−86/−76/−46/−72）。</div></div>
+
+<div class="tl-item"><div class="tl-t">09-28 07:00</div><div class="tl-h">GPU 换防</div>
+<div class="tl-b">dcng4（pid 514248）退场；07:00 起 GPU 上为 <code>deim_hgnetv2_x_aic_obj2coco_ft_dcnv3_s1.yml</code>（seed 1，pid 576303，另一会话排队管理）。dcng4 的 10 档评测结果待查。</div></div>
+
+<div class="tl-item"><div class="tl-t">09-28 07:05 ~ 07:20</div><div class="tl-h">全集对齐审计 + 叠加数据产品（§12）</div>
+<div class="tl-b">2000 张逐张审计（见 <a href="#k">第 12 节</a>）：热图溯源 r≥0.994、零缺失零错位；
+<code>rgb_heat_overlay/{train,valid}</code> 2000 张叠加图全量产出。</div></div>
+</div>
+
+<h2 id="a">2 · 数据链路取证：三个脚本级 bug</h2>
+
+<p>这一段的共同特点：<strong>错误不在模型，在数据准备脚本</strong>。每一条都有 md5 / 数值复现级别的证据。</p>
+
+<h3>2.1 <code>align_ir()</code> 制造了 46~86px 的假错位</h3>
+<dl class="kv">
+<dt>位置</dt><dd><code>scripts/prep/prep_ir_heat.py</code>，第 71 行 <code>return best[0]*scale_div, best[1]*scale_div</code></dd>
+<dt>机制</dt><dd>在 1/8 降采样（80×45）、中心 crop 后仅 23×40 的小图上搜 ±12，乘 <code>scale_div=8</code> → 全分辨率 <strong>±96px</strong></dd>
+<dt>根因</dt><dd>L1 目标 <code>|IR_shift − V|.mean()</code> 对两个<strong>负相关</strong>（corr ≈ −0.45）模态无意义；最优解永远撞窗口边界</dd>
+<dt>实测</dt><dd>00000004 dy=86 / 00000098 dy=76 dx=20 / 00000205 dy=46 / 00000401 dy=72，quality gate 全部 PASS（所以真的移动了）</dd>
+<dt>复现</dt><dd><code>work/probe_align_repro.py</code>：脚本重算输出 vs 磁盘数据 corr 0.998~1.000、MAE 0.8~2.1 → 磁盘数据 100% 是该产物</dd>
+</dl>
+
+<h3>2.2 <code>infrared_deleak/</code> 从未处理过</h3>
+<p>md5 三连相同：<code>dataset/train/infrared/</code> == <code>infrared_aligned/</code> == <code>infrared_deleak/</code>。
+所谓"去鬼影数据集"只是原图字节副本，连 Aggregation 都没做过。
+顺带作废了"raw↔deleak corr 0.988 高度冗余"——那个 0.988 是拿<strong>被平移的 raw</strong> 和原图比的另一个东西。</p>
+
+<h3>2.3 de-leak 的物理前提是错的</h3>
+<p>若 <code>IR = 真实热 + k·VIS</code>（k&gt;0），则无热目标区应有正的 slope ≈ k。实测：</p>
+<table>
+<tr><th>检验</th><th>结果</th><th>推论</th></tr>
+<tr><td>无偏分层回归（按 RGB 灰度分 10 档）</td><td class="n">slope = −0.28 ~ −0.53，分层 corr −0.84~−0.98</td><td>强单调<strong>递减</strong></td></tr>
+<tr><td>边缘相关性 corr(∇²IR, ∇²gray)</td><td class="n">−0.038 ~ +0.012 ≈ 0</td><td>高频结构里<strong>完全没有</strong> RGB 痕迹</td></tr>
+</table>
+<div class="hint">→ IR 与 RGB 是<strong>场景物理负相关</strong>（夜间：RGB 暗处 IR 有热辐射），不是泄漏。「去鬼影」这个概念本身不成立。</div>
+
+<h3>2.4 由此重建的干净数据与第三通道</h3>
+<table>
+<tr><th>产物</th><th>定义</th><th>框内外对比度</th><th>状态</th></tr>
+<tr><td><code>deimv2_ir_na</code> (raw)</td><td>IR 原图，跳过 align</td><td class="n">1.37</td><td><span class="badge b-ok">已生成</span></td></tr>
+<tr><td><code>deimv2_heat_na</code> (heat)</td><td><code>clip(IR − gray, 0, 255)</code></td><td class="n">1.50</td><td><span class="badge b-ok">已生成</span></td></tr>
+<tr><td><code>deimv2_lbg_na</code> (localbg)</td><td><code>clip(IR − medianBlur(IR,31), 0, 255)</code></td><td class="n"><strong>4.17</strong></td><td><span class="badge b-ok">已生成</span></td></tr>
+</table>
+<div class="hint">lbg 是 deleak 想达到的效果的正确实现（用 IR 自身局部背景作参考，而非减 RGB）。与前两路 corr 仅 0.587 / 0.552 → 最互补。</div>
+
+<h2 id="b">3 · 通道 / batch-size 实验</h2>
+
+<h3>3.1 纯 IR 基线阶梯</h3>
+<table>
+<tr><th>配置</th><th>mAP</th><th>说明</th></tr>
+<tr><td>raw 1ch</td><td class="n">0.1100</td><td>—</td></tr>
+<tr><td>heat 1ch</td><td class="n">0.1184</td><td>—</td></tr>
+<tr><td>2ch（heat+raw）</td><td class="n">0.2449</td><td>bs8 基线</td></tr>
+<tr><td>2ch_deep</td><td class="n">0.2983</td><td>24 层 backbone</td></tr>
+<tr><td>2ch bs12</td><td class="n">0.3188</td><td><strong>严格单变量</strong>（唯一 diff：bs 8→12）</td></tr>
+<tr><td>3ch bs12</td><td class="n"><strong>0.3369</strong></td><td>+heat / raw / deleak(=干净原图)</td></tr>
+</table>
+
+<h3>3.2 增益分解（已翻案）</h3>
+<div class="card">
+<table>
+<tr><th>分量</th><th>ΔmAP</th><th>占比</th></tr>
+<tr><td>bs 8 → 12</td><td class="n">+0.0739</td><td><strong>80%</strong></td></tr>
+<tr><td>通道 2 → 3</td><td class="n">+0.0181</td><td>20%</td></tr>
+</table>
+<p style="margin:0">注意 3ch 的第三通道恰好是<strong>未被污染的干净 IR 原图</strong>，所以 +0.0181 里可能还混有"补回干净数据"的成分，
+真正的通道数增益可能更小。最终裁定要等 2ch_na vs 3ch_na。</p>
+</div>
+
+<h3>3.3 已排除的干扰项</h3>
+<details><summary>「3ch 是不是偷偷用了 RGB？」——三重证据否定</summary>
+<div class="dbody">
+<ul>
+<li>config：<code>modality: ir</code>（train+val 均设），RGB 只用于解析 bbox 坐标与原图尺寸，不进网络</li>
+<li>checkpoint 权重 shape：2ch <code>patch_embed.proj.weight</code> = <code>(384,2,16,16)</code>，3ch = <code>(384,3,16,16)</code>；差 0.098M ≈ 384×16×16 = 98304，<strong>正好一个输入通道的增量</strong>。掺 RGB 的话会是 5/6/7 通道。</li>
+<li>数值：corr(raw, RGB灰度) = <strong>0.106</strong>；corr(heat, RGB灰度) = <strong>−0.397</strong>（heat 是减掉 RGB 的残差）</li>
+</ul>
+</div></details>
+
+<details><summary>from-scratch 合规性问题</summary>
+<div class="dbody">
+<p><code>multimodal_backbones.py:985-1011</code> 会加载 <code>./ckpts/deimv2_l_coco/dinov3_vits16_stem.pth</code>
+（DINOv3-S 预训练 stem），故 2ch/3ch 都<strong>不是</strong>真 from-scratch。两者共用该初始化，所以对照组结论仍成立，
+但严格台账需要重跑。开关 = <code>weights_path: null</code>（代码 <code>if weights_path and os.path.exists(...)</code>，已验证安全）。</p>
+</div></details>
+
+<details><summary>16GB 卡的批大小上限实测</summary>
+<div class="dbody">
+<table>
+<tr><th>bs</th><th>显存峰值</th><th>结果</th></tr>
+<tr><td class="n">8</td><td class="n">8886 MiB</td><td>稳</td></tr>
+<tr><td class="n">12</td><td class="n">12957 MiB</td><td>稳（nvidia-smi 显示 15.3/16.3 GiB，接近上限）</td></tr>
+<tr><td class="n">16</td><td class="n">—</td><td><strong>OOM</strong>（占 14.23 GiB，差 18 MiB 分配失败）</td></tr>
+</table>
+<p>线性外推：固定开销 ≈ 4.3 GB，每样本 ≈ 0.57 GB。→ 纯 IR vits16/640 在 16GB 卡上 <strong>bs 上限约 12</strong>。</p>
+</div></details>
+
+<h3>3.4 队列实验矩阵（A/B/D/E/F）</h3>
+<table>
+<tr><th>run</th><th>数据</th><th>ch</th><th>bs</th><th>ep</th><th>预训练</th><th>回答的问题</th></tr>
+<tr><td>A</td><td>clean</td><td class="n">2</td><td class="n">12</td><td class="n">68</td><td>有</td><td>配准 bug 代价 = A − 0.3188</td></tr>
+<tr><td>B</td><td>clean</td><td class="n">3</td><td class="n">12</td><td class="n">68</td><td>有</td><td>通道增益 = B − A</td></tr>
+<tr><td>D</td><td>clean</td><td class="n">3</td><td class="n">12</td><td class="n">68</td><td><strong>无</strong></td><td>预训练值多少 = B − D</td></tr>
+<tr><td>E</td><td>clean</td><td class="n">2</td><td class="n">12</td><td class="n">68</td><td><strong>无</strong></td><td>scratch 下通道增益 = D − E</td></tr>
+<tr><td>F</td><td>clean</td><td class="n">3</td><td class="n">12</td><td class="n"><strong>96</strong></td><td><strong>无</strong></td><td>欠训幅度 = F − D，兼最高分候选</td></tr>
+</table>
+
+<h2 id="c">4 · 配准反复求证：一条被推翻四次的线</h2>
+
+<p>这是耗时最长、翻案最多的一条。<strong>每次都是用户的质疑把结论往前推</strong>，最终靠「注入→恢复」的正对照闭环。</p>
+
+<h3>4.1 终审证据链</h3>
+<table>
+<tr><th>方法</th><th>结果</th><th>判定</th></tr>
+<tr><td>±120px 大窗 ZNCC，4 图 × 4×4 分块</td><td>全部 cell <strong>精确 (0,0)</strong>，peak == ZNCC@0 = 0.667</td><td><span class="badge b-ok">核心</span></td></tr>
+<tr><td><strong>正对照</strong>注入 (dy,dx)=(40,60)</td><td>精确恢复 (40,60)，ZNCC@0 从 0.667 跌到 <strong>0.257</strong></td><td><span class="badge b-ok">决定性</span></td></tr>
+<tr><td>旋转检验</td><td>全 cell 为 0 ⇒ 排除（1080p 上 1° 会让角落 cell 偏 ~9px）；上界 &lt;0.3°</td><td><span class="badge b-ok">无旋转</span></td></tr>
+<tr><td>分层（1080p 组，占 92.5%）</td><td>去收缩残差 |d| = <strong>2.52px</strong>（0.23% 图高），dy 0.3σ、dx 0.8σ</td><td><span class="badge b-ok">与 0 无差异</span></td></tr>
+<tr><td>视差检验（远景行 vs 近景行）</td><td>dy 差仅 <strong>1.10px</strong>；棋盘格模式投影 −0.38px（注入 ±8 时应为 +2.76）</td><td><span class="badge b-ok">否决</span></td></tr>
+<tr><td>ECC（旋转+平移）</td><td>θ≈0，但自检显示平移不可靠，仅作旁证</td><td><span class="badge b-info">旁证</span></td></tr>
+</table>
+
+<div class="card lead">
+<strong>为什么这次的结论可信，而前四次不可信：</strong>前四次的方法（"找最佳位移使框内对比度最大"类分数）
+全都<strong>没有通过合成自检</strong>，而且把 GT 打乱的负对照能给出与真实数据相同的结果——
+说明分数被图像的<strong>位置非平稳性</strong>带偏（框整体挪向画面下方/暖区就单调涨分）。
+这次的 <code>measure_big.py</code> 先证明自己能精确找回注入的 (40,60)，再去测真实数据。
+</div>
+
+<h3>4.2 「08-033-01 的鹿对不上」——真实原因</h3>
+<p>用户点名这个样本是关键反例，重查后确认：</p>
+<ol>
+<li><strong>鹿毛在 RGB 里几乎无边缘</strong> —— 绿色（IR）鹿轮廓旁没有红色（RGB）轮廓可对；热斑（体核）与视觉轮廓本来就不重合</li>
+<li><strong>IR 里可见的结构在 RGB 里太细/太暗</strong> —— 发热铁丝网、屋顶底面 → 单侧绿线被误读成"错位"</li>
+<li><strong>RGB / IR 拍摄时刻差</strong> —— 动物移动造成目标级偏移（静态背景完全对齐支持这一点）</li>
+</ol>
+<div class="hint">三者都<strong>不可用几何矫正修复</strong>。这条同样解释了后面第 5、6 节的机制问题。</div>
+
+<h3>4.3 数据集不是视频 —— 时序方法无窗口</h3>
+<table>
+<tr><th>命名模式</th><th class="n">数量</th><th>备注</th></tr>
+<tr><td>纯数字 <code>001628.png</code></td><td class="n">1564</td><td>—</td></tr>
+<tr><td>序列式 <code>{场景}_{片段}_{帧}.png</code></td><td class="n">436</td><td>分散在 <strong>261 个前缀</strong>，<strong>组均仅 1.67 帧</strong>（最多 5 帧）</td></tr>
+</table>
+<p>且同组帧号大跨度跳跃（<code>000003_035_00000001</code> → <code>..._00000179</code>）。
+这是<strong>从视频里随机抽帧后打散</strong>，任何需要相邻帧的方法都构造不出时序窗口。</p>
+
+<h2 id="d">5 · 融合链机制分析（最新）</h2>
+
+<h3>5.1 逐行核实：确认"逐像素"</h3>
+<table>
+<tr><th>模块</th><th>代码事实</th><th>性质</th></tr>
+<tr><td><code>OrthogonalProjectionFusion</code></td><td><code>dot_ab = (a0*b0).sum(dim=1, keepdim=True)</code> → <code>[B,1,H,W]</code></td><td><strong>per-pixel</strong> 通道内积</td></tr>
+<tr><td><code>PromptBlock</code></td><td>1×1 conv + Fovea，末端 <code>rgb_feats[i] + prompt</code></td><td><strong>逐像素加性残差</strong>，幅度无界</td></tr>
+<tr><td>注入点</td><td>backbone 的 <strong>c2 / c3 特征图</strong>（<code>forward</code> 1494-1507 行）</td><td><em>不是</em> decoder query</td></tr>
+</table>
+<div class="hint">α = β = <code>sigmoid(0.5)</code> = <strong>0.62</strong> —— <code>dt_ort</code> 在初始化第一天就把 62% 的互投影砍掉，
+与「冷启动梯度抑制」的诊断完全吻合。</div>
+
+<h3>5.2 关键转折：零错位也成立的漏洞</h3>
+<div class="card">
+<p>错位假说已被证伪，但顺着"逐像素"这个视角暴露出一个<strong>不依赖错位前提</strong>的缺陷：</p>
+<p><code>rgb_feats + prompt</code> 是<strong>加性、幅度无界</strong>的。即使位置完全正确，在"IR 在这里是无效信息"的地方
+（白天、背景、被植被遮挡的热源），prompt 照样被<strong>加</strong>进 RGB。</p>
+<p>现有修补 <code>AUX_GATE=brightness</code> 补不上这个洞 —— 它是 <code>[B,1,1,1]</code> 的<strong>整图标量</strong>，
+处理不了"同一张图里暗处要 IR、亮处不要"。</p>
+</div>
+
+<h3>5.3 现成解决方案：<code>CSSA</code>（零开发成本）</h3>
+<p><code>multimodal_backbones.py:147</code> 已实现 CSD（Cao et al. CVPR 2023）正版，config 里 <code>rgb_gate: cssa</code> 即可切换。</p>
+<table>
+<tr><th></th><th>PromptBlock 加性残差</th><th>CSSA 乘性凸组合</th></tr>
+<tr><td>公式</td><td><code>rgb + conv(cat[rgb, dt])</code></td><td><code>sa × (α·rgb + (1−α)·ir)</code></td></tr>
+<tr><td>IR 无效时</td><td>prompt 仍被加上，幅度无界</td><td><code>α→1</code> 退回 RGB；<code>sa→0</code> 逐位置关门</td></tr>
+<tr><td>输出幅度</td><td>可能远超 ‖rgb‖</td><td>‖switched‖ ≤ max(‖rgb‖,‖ir‖)，再 ×sa ≤ 1</td></tr>
+<tr><td>冷启动</td><td>dt_ort α=β=0.62 先砍互投影</td><td>ECA 由 GAP 驱动，乘性不切断通路</td></tr>
+</table>
+<div class="hint">⚠️ 注意：<code>rgb_gate: cssa</code> <strong>只替换了 PromptBlock</strong>，
+<code>dt = self.dt_ort[i](...)</code> 仍在这条链的上游。要彻底验证需拆两档：<code>cssa</code> 单独 vs <code>cssa + dt_ort 旁路</code>。</div>
+
+<h2 id="e">6 · 论文适用性核验（MGSANet / MSGNet）</h2>
+
+<p>用户提出这两篇作为图对齐方案。前提核验结果：</p>
+<table>
+<tr><th>论文</th><th>宣称解决的问题</th><th>前提在本数据集是否成立</th><th>结论</th></tr>
+<tr><td>MGSANet<br>TGRS 2025</td><td>RGB-T 弱对齐检测：特征图建图 + GAT 学跨模态空间偏移</td><td><span class="badge b-no">不成立</span> 配准残差 ≤4px，单应无东西可矫</td><td>卖点空转，<strong>方法可换靶点保留</strong></td></tr>
+<tr><td>MSGNet<br>AAAI 2025</td><td>alignment-free RGB-T <strong>视频</strong>检测：自适应分区 + 稀疏图学习</td><td><span class="badge b-no">不成立</span> 组均 1.67 帧，无时序窗口</td><td>视频部分报废，<strong>稀疏化策略可移植</strong></td></tr>
+</table>
+
+<h3>6.1 真正的靶点：不是几何错位，是语义错配</h3>
+<div class="card lead">
+之前测得「逐目标 GT 框中心 ↔ IR 热斑质心，|d| 中位 <strong>11px</strong> / p90 <strong>43px</strong>」，
+当时判它为噪声的判据是「它估出的全局单应无法迁移到同图另一半目标」——
+这个判据<strong>只证明了它不是几何错位，完全没证明它不存在</strong>。
+<p style="margin:10px 0 0">换个框架看，它恰恰是<strong>逐目标变化</strong>的，这才躲过了单应检验：
+IR 热斑是<strong>体核</strong>，RGB 框中心是<strong>视觉轮廓中心</strong>，偏移由动物姿态决定
+（站立的鹿热斑在躯干中部，侧卧的在下部，低头进食的在头后）。
+每只动物不同 ⇒ <strong>任何单一变换都修不了</strong>，但<strong>逐位置自适应的图 / 可变形对齐可以</strong>。</p>
+</div>
+
+<p>这也解释了 <code>dt_ort</code> 为什么失效：它在 <code>(h,w)</code> 上算 <code>&lt;IR, RGB&gt;</code> 的逐像素冗余，
+默认两向量描述同一对象。但 IR 在 <code>(h,w)</code> 是「体温」，RGB 在 <code>(h,w)</code> 是「毛发纹理」——
+<strong>根本不是同一个物理量</strong>。所以这是语义错配，失败模式却和空间错位长得一模一样，
+也与测到的 IR∼RGB 负相关（slope −0.285~−0.532）对上了。</p>
+
+<div class="card">
+<strong>但工程排序上它们排在最后 ——「先修通，再精修」。</strong>
+<p style="margin:8px 0 0">图对齐假设 aux 分支<strong>已经学出了有意义的热特征</strong>，只是位置不对。
+现在的情况是 aux 分支<strong>根本没学出来</strong>（通道重复初始化 + Stage A 零梯度 + α=β=0.62 冷启动抑制），
+IR 通路 AP=0.004。给一个输出全是噪声的分支加 GAT，得到的是<strong>噪声的加权传播</strong>。</p>
+<p class="hint">真要落地还有个成本提醒：ViT-L/800 下 c2 特征图是 800/16=50 → <strong>2500 个节点</strong>，
+稠密图 O(N²) 会爆，必须借用 MSGNet 的稀疏图策略。所以这两篇里最有移植价值的是 MSGNet 的
+<strong>稀疏化</strong>，而不是它的视频设定。</p>
+</div>
+
+<h2 id="f">7 · 结论台账</h2>
+
+<h3><span class="badge b-ok">已定案</span> 数据链路</h3>
+<table>
+<tr><th>#</th><th>结论</th><th>证据级别</th></tr>
+<tr><td class="n">1</td><td><code>align_ir()</code> 引入 46~86px 假平移</td><td>脚本重算 corr 0.998~1.000</td></tr>
+<tr><td class="n">2</td><td><code>infrared_deleak/</code> 是原图 md5 副本，从未处理</td><td>md5 三连相同</td></tr>
+<tr><td class="n">3</td><td>de-leak 物理模型错误（IR 与 RGB 负相关）</td><td>分层回归 + 边缘 corr</td></tr>
+<tr><td class="n">4</td><td>raw / heat 全红外，无 RGB（corr 0.106）</td><td>数值 + 权重 shape</td></tr>
+<tr><td class="n">5</td><td>patch_embed <code>(384,3,16,16)</code> ⇒ 输入通道数 = IR 数</td><td>checkpoint 硬证据</td></tr>
+</table>
+
+<h3><span class="badge b-ok">已定案</span> 配准 / 对齐</h3>
+<table>
+<tr><th>#</th><th>结论</th><th>证据级别</th></tr>
+<tr><td class="n">6</td><td>IR 与 RGB <strong>出厂像素级对齐</strong></td><td>±120px 窗全 (0,0) + 注入 (40,60) 精确恢复</td></tr>
+<tr><td class="n">7</td><td>无旋转（&lt;0.3°）</td><td>全 cell 为 0，否决 1° 以上</td></tr>
+<tr><td class="n">8</td><td>1080p 组残差 2.52px（0.23% 图高），与 0 无统计差异</td><td>分层 + 按图聚合标准误</td></tr>
+<tr><td class="n">9</td><td>视差假说否决</td><td>近/远景 dy 差 1.10px</td></tr>
+<tr><td class="n">10</td><td>数据集非视频（组均 1.67 帧）</td><td>命名结构统计</td></tr>
+<tr><td class="n">11</td><td>"鹿对不上" = 语义差异 + 动物移动，几何无解</td><td>高倍边缘叠画图</td></tr>
+</table>
+
+<h3><span class="badge b-ok">已定案</span> 训练 / 机制</h3>
+<table>
+<tr><th>#</th><th>结论</th></tr>
+<tr><td class="n">12</td><td>纯 IR 阶梯：1ch 0.110 → 2ch 0.2449 → 3ch 0.3369（但混杂了 bs 差异，见下条）</td></tr>
+<tr><td class="n">13</td><td><strong>增益分解：bs 占 80%（+0.0739），通道占 20%（+0.0181）</strong></td></tr>
+<tr><td class="n">14</td><td>from-scratch 开关 = <code>weights_path: null</code>，已验证安全</td></tr>
+<tr><td class="n">15</td><td>16GB 卡 bs 上限约 12，bs16 OOM</td></tr>
+<tr><td class="n">16</td><td><code>dt_ort</code> 逐像素 + α=β=0.62 冷启动抑制；<code>PromptBlock</code> 逐像素加性无界</td></tr>
+<tr><td class="n">17</td><td>注入点在 backbone c2/c3，<em>不是</em> decoder query</td></tr>
+<tr><td class="n">18</td><td>图对齐真正的靶点 = <strong>语义错配</strong>（逐目标 11px / p90 43px），而非几何错位</td></tr>
+</table>
+
+<h2 id="g">8 · 翻案清单（已作废，勿再引用）</h2>
+
+<div class="card lead">
+这份清单和结论台账同样重要。<strong>每一条都曾有理有据地交付过</strong>，后来被更硬的对照推翻。
+后续任何人接手，先读这一节。
+</div>
+
+<table>
+<tr><th>作废结论</th><th>推翻它的证据</th></tr>
+<tr><td>24.3% 帧需要旋转</td><td>把掩码边界上的场景斜线（屋顶/树枝/地平线）当成了面板倾角</td></tr>
+<tr><td>k = 0.150 常数泄漏 / 鬼影抑制 99.96%</td><td>分层回归 slope 为负 → 不存在正的可见光泄漏</td></tr>
+<tr><td>raw ↔ deleak corr 0.988，高度冗余，可互相顶替</td><td>当时 raw 是<strong>被平移</strong>的版本，前提错误</td></tr>
+<tr><td>视差导致配准不可达（基于 DIS 光流）</td><td>光流跨模态往返不一致 96~118% → 位移场本身是噪声</td></tr>
+<tr><td>逐目标位移中位 43px 说明系统性错位</td><td>负对照（打乱 GT）给出相同结果 → 分数被位置非平稳性带偏</td></tr>
+<tr><td>±3px 出厂对齐（旧论证）</td><td>结论碰巧对，但方法未通过合成自检</td></tr>
+<tr><td>缺帧 10%</td><td>漏算 <code>deimv2_heat/valid/</code> 分片，实际缺失 0 帧</td></tr>
+<tr><td>独有信息 = <code>1 − var(a−pred)/var(a)</code></td><td>写反了，那是 R²；独有信息 = <code>var(a−pred)/var(a)</code></td></tr>
+<tr><td>通道数是 3ch 增益的大头</td><td>2ch_bs12 = 0.3188 → bs 才是主因</td></tr>
+<tr><td>bs 变大而 lr 未动 ⇒ 步长偏小（linear scaling）</td><td>AdamW 尺度无关；linear scaling 是针对 SGD 的经验规则</td></tr>
+</table>
+
+<h2 id="h">9 · 待办与优先级</h2>
+
+<table>
+<tr><th>档</th><th>动作</th><th>成本</th><th>前提</th><th>状态</th></tr>
+<tr><td class="n">1</td><td><strong>0.024 噪声判定</strong>：同 config 重复跑干净 2ch</td><td>~2.2h</td><td>无</td><td><span class="badge b-wait">待启动</span></td></tr>
+<tr><td class="n">2</td><td><code>rgb_gate: cssa</code> 消融</td><td>一轮训练</td><td>无</td><td><span class="badge b-wait">待启动</span></td></tr>
+<tr><td class="n">3</td><td>第三通道换 <code>lbg</code>（对比度 4.17 vs heat 1.50）</td><td>脚本已有</td><td>无</td><td><span class="badge b-wait">待启动</span></td></tr>
+<tr><td class="n">4</td><td>IR 平移增广 ±k px（<strong>当探针用</strong>）</td><td>小改</td><td>无</td><td><span class="badge b-wait">待启动</span></td></tr>
+<tr><td class="n">5</td><td>稀疏图对齐（MSGNet 构图 + MGSANet GAT）</td><td>大改</td><td><strong>需 2~4 跑出可用 IR 通路</strong></td><td><span class="badge b-no">暂缓</span></td></tr>
+</table>
+
+<div class="card lead">
+<strong>档 1 为什么排第一：</strong>它是唯一不可替代的地基。干净 2ch_na 跑出 0.2947，脏 2ch_bs12 跑出 0.3188 ——
+如果 run-to-run 噪声本身就有 ±0.02，那么在此之前所有的「通道增益」「na 变差」「bug 代价」判定<strong>全落在噪声里</strong>，
+后面四档的结论都不可信。
+</div>
+
+<div class="card">
+<strong>待解释的异常：</strong><code>2ch_na</code>（干净，0.2947）<strong>低于</strong> <code>2ch_bs12</code>（脏，0.3188）。
+若对齐真的重要，方向应该相反。两个候选解释不能靠现有数据区分：
+① run-to-run 噪声（200 张 val，±0.01~0.02）；② heat_na 通道太弱（对比度 1.50 &lt; heat_dirty 1.80 ≪ lbg 4.17）。
+<strong>必须先做档 1。</strong>
+</div>
+
+<h2 id="i">10 · 方法论坑清单</h2>
+
+<p>这一整轮最值钱的产物其实不是结论，是这些坑。它们大多可以跨项目复用。</p>
+
+<h3>10.1 配准 / 对齐测量</h3>
+<details><summary>展开 8 条</summary>
+<div class="dbody">
+<table>
+<tr><th>#</th><th>坑</th></tr>
+<tr><td class="n">24</td><td>cv2 FFT 相关必须<strong>零填充</strong>（否则是循环相关，会绕回）</td></tr>
+<tr><td class="n">25</td><td><code>warpAffine</code> 符号：要让内容位移 (dy,dx) 必须 <code>M=[[1,0,dx],[0,1,dy]]</code>；相关法返回值 = −真值，需再取反</td></tr>
+<tr><td class="n">26</td><td>注入位移用 <code>BORDER_CONSTANT</code> 会补黑边被掩码计入，把最优点拉向小位移。正对照一律用 <code>BORDER_REFLECT_101</code></td></tr>
+<tr><td class="n">27</td><td>别把同一个参数同时当"跨图索引偏移"和"注入位移"用，会把负对照做成正对照</td></tr>
+<tr><td class="n">28</td><td>分块统计中 cell 不独立，标准误必须<strong>按图片聚合</strong>，否则显著性虚高约 5 倍</td></tr>
+<tr><td class="n">29</td><td><code>dataset/train</code> 是<strong>混合分辨率</strong>（1851 张 1920×1080 + 149 张 640×360），按文件名排序取样会全落进 640×360 小组</td></tr>
+<tr><td class="n">30</td><td>搜索窗必须 ≥ 预期最大错位的 2 倍，窗太小会把真峰挡在外面，得出"最优在 0"的假结论</td></tr>
+<tr><td class="n">32</td><td><strong>不要过度解读自己生成的可视化</strong>。定量正对照（注入→恢复）才是终审</td></tr>
+</table>
+</div></details>
+
+<h3>10.2 数据处理 / 实验</h3>
+<details><summary>展开 8 条</summary>
+<div class="dbody">
+<table>
+<tr><th>#</th><th>坑</th></tr>
+<tr><td class="n">17</td><td><code>1 − var(a−pred)/var(a)</code> 是 <strong>R²</strong> 不是独有信息；独有信息 = <code>var(a−pred)/var(a)</code></td></tr>
+<tr><td class="n">18</td><td>评估"两个信号是否等价"不能只看相关系数。corr 高 + NMI 低是常见组合，且 NMI 必须做 bin 敏感性扫描</td></tr>
+<tr><td class="n">19</td><td>不同 run 的 log 格式可能不同（Python repr vs JSON），且可能无 epoch 字段</td></tr>
+<tr><td class="n">20</td><td><code>nohup</code> 起的长训练会被 <strong>SIGHUP 打死</strong>，外层脚本仍报 exit=0。必须 <code>setsid nohup ... &lt; /dev/null &amp; disown</code>，判活看进程数</td></tr>
+<tr><td class="n">—</td><td>复现他人 prep 脚本时，用 <code>exec(compile(src,...), {"__name__":"x"})</code> 可避免触发 main 全量重跑</td></tr>
+<tr><td class="n">—</td><td>「判缺帧」要先枚举产物的<strong>全部分片目录</strong>，只看主目录会误判</td></tr>
+<tr><td class="n">—</td><td>配准只在「label 属 VIS 系、IR 搬到 VIS 帧、label 不动」时有意义；image+label 同一 warp 一起搬 = 纯形变增强，等于没配</td></tr>
+<tr><td class="n">—</td><td>用户明确要求：<strong>不要动不动就全量跑</strong>。全量前先小样本验证方法有效，且全量脚本要先单帧冒烟</td></tr>
+</table>
+</div></details>
+
+<h2 id="j">11 · D-FINE-X DCN 变体系列（RGB 主干强化，09-27 夜 ~ 09-28 晨）</h2>
+
+<p>与 IR 融合线并行的 RGB 基干实验。目标：在 day / 弱夜档把纯 RGB 检测器做实，同时用暗光梯度量化
+RGB 的物理盲区——<strong>极暗档的分数就是 IR 通路的必要性证明</strong>。</p>
+
+<h3>11.1 实验设置</h3>
+<dl class="kv">
+<dt>起点</dt><dd><code>ckpts/dfine_x_obj2coco.pth</code>（官方 O365→COCO 微调成品，COCO AP 59.3），AIC 化 50ep 微调；vanilla 微调 best = <strong>0.5550 @ ep47</strong>（09-27 曲线对比 JSON）</dd>
+<dt>改动</dt><dd>HGNetv2-B5 <code>dcn_stages: [2,3]</code>，InternImage (CVPR 2023) Sec3.1 式：reduce 128 + depthwise + <strong>zero-init residual</strong>；变体只差 offset/mask 分组数</dd>
+<dt>评测</dt><dd>day（orig）+ night50/25/12/05/01/005/002/001/0005 共 10 档，200 张 val</dd>
+</dl>
+
+<h3>11.2 10 档评测结果（AP @ IoU 0.50:0.95）</h3>
+<table>
+<tr><th>checkpoint</th><th class="n">day</th><th class="n">night50</th><th class="n">night25</th><th class="n">night12</th><th class="n">night05</th><th class="n">≤night01</th></tr>
+<tr><td>dcn(v2) ep38（best_stg1）</td><td class="n">0.554</td><td class="n">0.509</td><td class="n">0.469</td><td class="n">0.382</td><td class="n"><strong>0.205</strong></td><td class="n">≈0</td></tr>
+<tr><td>dcn(v2) ep47</td><td class="n"><strong>0.561</strong></td><td class="n">0.508</td><td class="n">0.466</td><td class="n">0.378</td><td class="n">0.186</td><td class="n">0</td></tr>
+<tr><td>dcnv3 (G=8)</td><td class="n">0.558</td><td class="n">0.507</td><td class="n">0.456</td><td class="n">0.366</td><td class="n">0.172</td><td class="n">0</td></tr>
+<tr><td>dcng4 (G=4)</td><td colspan="6"><span class="badge b-wait">训练中（09-28 06:32 起）</span></td></tr>
+</table>
+<div class="hint">night01/005/002/001/0005 五档三组全部 ≈0.000~0.001，不逐列展开。</div>
+
+<h3>11.3 判读</h3>
+<div class="card">
+<ol style="margin:0;padding-left:20px">
+<li><strong>G=8 无收益</strong>：dcnv3 相对单组 dcn 在所有档位一致略差（day −0.003~−0.007，night05 −0.033，night12 −0.016）。多组独立 offset 提供的额外几何自由度在像素级对齐的数据上没有东西可学。</li>
+<li><strong>DCN 不解决暗光问题</strong>：三个变体的 day→night 衰减曲线几乎重合，极暗档（曝光 ≤0.01）全部归零。DCN 改的是几何建模容量，RGB 在极暗档的失败是<strong>物理盲区</strong>，不是几何建模问题——这部分增益只能来自 IR 通路（回到第 5 节主线）。</li>
+<li><strong>checkpoint 选择 day/night 要分开看</strong>：ep47 day 最高（0.561，比 vanilla +0.006），但 ep38 的 night 档全面略优（night05 0.205 vs 0.186）。提交模型若按 day0-night50 综合计分，ep38 可能是更稳的取舍。</li>
+<li><strong>DCN(v2) 单组的 day +0.006 增益太小</strong>，不足以单独支撑一版提交；价值在于排除了「可变形卷积容量不足」这个假设，且 dcng4 收尾后该线即可关闭或合并。</li>
+</ol>
+</div>
+
+<h3>11.4 当前状态（2026-09-28 06:45 实测）</h3>
+<table>
+<tr><th>项</th><th>状态</th></tr>
+<tr><td>GPU</td><td class="n">8041/16311 MiB · util ~98% · pid 514248 = dcng4 训练中</td></tr>
+<tr><td>dcng4 预计完成</td><td>参考 dcnv3 用时（03:42→05:38 训练 ≈2h）→ <strong>约 08:30</strong>，随后自动跑 10 档评测（<code>run_dfine_x_dcng4.sh</code>）</td></tr>
+<tr><td>第 9 节待办（档 1~4）</td><td><span class="badge b-wait">仍未启动</span> —— 原 09-27 17:37 占卡的 <code>obj2coco_ft</code> 任务已自然结束，纯 IR 系列随时可排；dcng4 结束后 GPU 即空</td></tr>
+</table>
+
+<div class="card" style="margin-top:32px">
+<strong>遗留的过时状态（原 2026-09-27 17:37 实测，已被上表取代）：</strong>
+<p style="margin:8px 0 0">当时的 pid 187436（<code>deim_hgnetv2_x_aic_obj2coco_ft.yml</code>）其后正常跑完退场，
+「档 1 需先确认可停」的阻塞<strong>已解除</strong>。当晚 GPU 依次被
+dcn（23:31）→ dcnv3（03:42）→ dcng4（06:32）占用至今。</p>
+</div>
+
+</div>
+
+<h2 id="k">12 · 全集对齐审计与叠加数据产品（2026-09-28 07:20）</h2>
+
+<div class="card">
+<strong>背景：</strong>IR 对齐工作收窄为「把 de-leak 热图正确叠加到 RGB 上」。定性证据（5 样本三联图）之后，
+本节把结论升级为<strong>全集定量审计</strong> + <strong>可入管线的数据产品</strong>。
+审计脚本 <code>scripts/prep/audit_heat_alignment.py</code>，结果 <code>outputs/heat_alignment_audit.json</code>。
+</div>
+
+<h3>12.1 审计方法（逐张 × 2000 = train 1800 + valid 200）</h3>
+<ol style="margin:0;padding-left:20px">
+<li><strong>热图溯源</strong>：复核 heat_na 是否确为 <code>clip(ir_na − RGB灰度)</code> —— 皮尔逊 r(resid, heat)；</li>
+<li><strong>配准偏移</strong>：phaseCorrelate(ir_na灰度, RGB灰度) 求 (dx,dy) 与响应置信度；</li>
+<li><strong>完整性</strong>：三模态文件存在性、尺寸一致性。</li>
+</ol>
+
+<h3>12.2 结果</h3>
+<table>
+<tr><th>指标</th><th>train (1800)</th><th>valid (200)</th></tr>
+<tr><td>缺失 / 尺寸不匹配</td><td class="n">0 / 0</td><td class="n">0 / 0</td></tr>
+<tr><td>溯源 r 中位数（最低）</td><td class="n">0.998（0.994）</td><td class="n">0.998（0.994）</td></tr>
+<tr><td>r &lt; 0.8 的样本</td><td class="n">0</td><td class="n">0</td></tr>
+<tr><td>phaseCorrelate 中位偏移</td><td class="n">(0.01, 0.02) px</td><td class="n">(0.01, 0.02) px</td></tr>
+</table>
+<div class="hint">phaseCorrelate 出现大偏移尾巴（约 47% 样本 |shift|&gt;5px，最大 1089px），
+经 10 个 flagged 样本 ±5px 整数窗 NCC 复核全部为<strong>低响应噪声</strong>（best-shift 相对 0 对齐的
+NCC 增益 &lt;0.015，且 IR↔RGB 灰度整体负相关属跨模态正常现象），不构成真实错位证据。</div>
+
+<h3>12.3 结论</h3>
+<div class="card">
+<ol style="margin:0;padding-left:20px">
+<li><strong>整链出厂对齐，全集无错位样本</strong>：RGB ↔ raw IR(干净版) ↔ deleak 热图三层在全部 2000 张上成立。
+热图叠加<strong>不需要任何配准</strong>，此结论从「抽样定性」升级为「全集定量」。</li>
+<li><strong>热图与 raw IR 脏净问题彻底切割</strong>：热图（heat / heat_na 两版逐像素一致）从未被 align_ir() 污染；
+被平移 46~86px 的只有 raw IR 通道的 <code>deimv2_ir</code>（§2.1），叠加/热图相关一律可用，涉及 raw IR 必须用 <code>deimv2_ir_na</code>。</li>
+<li><strong>历史勘误</strong>：早前「heat 是脏的、必须用 heat_na」的口头结论有误——两版等价；
+<code>overlay_heat_on_rgb.py</code> docstring 已同步修正。</li>
+</ol>
+</div>
+
+<h3>12.4 数据产品</h3>
+<table>
+<tr><th>产物</th><th>路径</th><th>规模</th></tr>
+<tr><td>叠加图（train）</td><td><code>work_dir/rgb_heat_overlay/train/</code></td><td class="n">1800 张，与 RGB 同名同尺寸</td></tr>
+<tr><td>叠加图（valid）</td><td><code>work_dir/rgb_heat_overlay/valid/</code></td><td class="n">200 张</td></tr>
+<tr><td>清单</td><td><code>outputs/rgb_heat_overlay_manifest.json</code></td><td class="n">2000/2000，0 跳过，共 6.1G</td></tr>
+<tr><td>批量脚本</td><td><code>scripts/prep/batch_overlay_heat.py</code></td><td class="n">可重跑（JET · α=0.45 · p2/p98）</td></tr>
+</table>
+<div class="hint">叠加图可直接作为「RGB+热」融合输入或可视化底图；若入训练管线建议走
+cache 预生成而非在线混合（省 6.1G 磁盘换 CPU）。定性证据页：<code>work_dir/heat_overlay/deleak热图叠加_RGB.html</code>。</div>
+
+</div>
+</body>
+</html>

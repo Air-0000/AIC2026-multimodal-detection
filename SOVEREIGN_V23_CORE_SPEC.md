@@ -1,0 +1,1 @@
+docs/SOVEREIGN_V23_CORE_SPEC.md

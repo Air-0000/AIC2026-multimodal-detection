@@ -1,0 +1,1 @@
+03_architecture_designs/04_sovereign_v10_p2_csrg_structural_improvement_ideas.md
