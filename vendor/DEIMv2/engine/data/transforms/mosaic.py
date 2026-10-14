@@ -75,10 +75,17 @@ class Mosaic(T.Transform):
             else:
                 index = 0
             cache.pop(index)
+        def _copy_img(im):
+            if hasattr(im, 'clone'):
+                return im.clone()
+            elif hasattr(im, 'copy'):
+                return im.copy()
+            return im
+
         sample_indices = random.choices(range(len(cache)), k=3)
-        mosaic_samples = [dict(img=cache[idx]["img"].copy(), labels=self._clone(cache[idx]["labels"])) for idx in
+        mosaic_samples = [dict(img=_copy_img(cache[idx]["img"]), labels=self._clone(cache[idx]["labels"])) for idx in
                           sample_indices]  # sample 3 images
-        mosaic_samples = [dict(img=image.copy(), labels=self._clone(target))] + mosaic_samples
+        mosaic_samples = [dict(img=_copy_img(image), labels=self._clone(target))] + mosaic_samples
 
         get_size_func = F.get_size if hasattr(F, "get_size") else F.get_spatial_size
         sizes = [get_size_func(mosaic_samples[idx]["img"]) for idx in range(4)]
@@ -89,7 +96,14 @@ class Mosaic(T.Transform):
 
     def create_mosaic_from_cache(self, mosaic_samples, max_height, max_width):
         placement_offsets = [[0, 0], [max_width, 0], [0, max_height], [max_width, max_height]]
-        merged_image = Image.new(mode=mosaic_samples[0]["img"].mode, size=(max_width * 2, max_height * 2), color=0)
+        is_tensor = isinstance(mosaic_samples[0]["img"], torch.Tensor)
+        if is_tensor:
+            c = mosaic_samples[0]["img"].shape[0]
+            dev = mosaic_samples[0]["img"].device
+            dt = mosaic_samples[0]["img"].dtype
+            merged_image = torch.zeros((c, max_height * 2, max_width * 2), dtype=dt, device=dev)
+        else:
+            merged_image = Image.new(mode=mosaic_samples[0]["img"].mode, size=(max_width * 2, max_height * 2), color=0)
         offsets = torch.tensor([[0, 0], [max_width, 0], [0, max_height], [max_width, max_height]]).repeat(1, 2)
 
         mosaic_target = []
@@ -97,8 +111,13 @@ class Mosaic(T.Transform):
             img = sample["img"]
             target = sample["labels"]
 
-            merged_image.paste(img, placement_offsets[i])
-            target['boxes'] = target['boxes'] + offsets[i]
+            if is_tensor:
+                hi, wi = img.shape[-2:]
+                ox, oy = placement_offsets[i]
+                merged_image[:, oy:oy+hi, ox:ox+wi] = img
+            else:
+                merged_image.paste(img, placement_offsets[i])
+            target['boxes'] = target['boxes'] + offsets[i].to(target['boxes'].device)
             mosaic_target.append(target)
 
         merged_target = {}
@@ -110,16 +129,27 @@ class Mosaic(T.Transform):
     def create_mosaic_from_dataset(self, images, targets, max_height, max_width):
         """Creates a mosaic image by combining multiple images."""
         placement_offsets = [[0, 0], [max_width, 0], [0, max_height], [max_width, max_height]]
-        merged_image = Image.new(mode=images[0].mode, size=(max_width * 2, max_height * 2), color=0)
-        for i, img in enumerate(images):
-            merged_image.paste(img, placement_offsets[i])
+        is_tensor = isinstance(images[0], torch.Tensor)
+        if is_tensor:
+            c = images[0].shape[0]
+            dev = images[0].device
+            dt = images[0].dtype
+            merged_image = torch.zeros((c, max_height * 2, max_width * 2), dtype=dt, device=dev)
+            for i, img in enumerate(images):
+                hi, wi = img.shape[-2:]
+                ox, oy = placement_offsets[i]
+                merged_image[:, oy:oy+hi, ox:ox+wi] = img
+        else:
+            merged_image = Image.new(mode=images[0].mode, size=(max_width * 2, max_height * 2), color=0)
+            for i, img in enumerate(images):
+                merged_image.paste(img, placement_offsets[i])
 
         """Merges targets into a single target dictionary for the mosaic."""
         offsets = torch.tensor([[0, 0], [max_width, 0], [0, max_height], [max_width, max_height]]).repeat(1, 2)
         merged_target = {}
         for key in targets[0]:
             if key == 'boxes':
-                values = [target[key] + offsets[i] for i, target in enumerate(targets)]
+                values = [target[key] + offsets[i].to(target[key].device) for i, target in enumerate(targets)]
             else:
                 values = [target[key] for target in targets]
 
@@ -156,9 +186,13 @@ class Mosaic(T.Transform):
             mosaic_image, mosaic_target = self.create_mosaic_from_dataset(resized_images, resized_targets, max_height, max_width)
 
         # Clamp boxes and convert target formats
+        if isinstance(mosaic_image, torch.Tensor):
+            spatial_size = (mosaic_image.shape[-2], mosaic_image.shape[-1])
+        else:
+            spatial_size = mosaic_image.size[::-1]
         if 'boxes' in mosaic_target:
             mosaic_target['boxes'] = convert_to_tv_tensor(mosaic_target['boxes'], 'boxes', box_format='xyxy',
-                                                          spatial_size=mosaic_image.size[::-1])
+                                                          spatial_size=spatial_size)
         if 'masks' in mosaic_target:
             mosaic_target['masks'] = convert_to_tv_tensor(mosaic_target['masks'], 'masks')
 

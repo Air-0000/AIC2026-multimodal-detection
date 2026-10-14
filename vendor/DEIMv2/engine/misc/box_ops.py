@@ -9,9 +9,20 @@ from torch import Tensor
 from typing import List, Tuple
 
 
+def _sanitize_boxes(boxes: Tensor) -> Tensor:
+    boxes = torch.nan_to_num(boxes, nan=0.0, posinf=0.0, neginf=0.0)
+    x0, y0 = boxes[:, 0:1], boxes[:, 1:2]
+    x1, y1 = boxes[:, 2:3], boxes[:, 3:4]
+    xmin = torch.min(x0, x1)
+    xmax = torch.max(x0, x1)
+    ymin = torch.min(y0, y1)
+    ymax = torch.max(y0, y1)
+    return torch.cat([xmin, ymin, xmax, ymax], dim=-1)
+
+
 def generalized_box_iou(boxes1: Tensor, boxes2: Tensor) -> Tensor:
-    assert (boxes1[:, 2:] >= boxes1[:, :2]).all()
-    assert (boxes2[:, 2:] >= boxes2[:, :2]).all()
+    boxes1 = _sanitize_boxes(boxes1)
+    boxes2 = _sanitize_boxes(boxes2)
     return torchvision.ops.generalized_box_iou(boxes1, boxes2)
 
 
@@ -44,8 +55,8 @@ def elementwise_generalized_box_iou(boxes1: Tensor, boxes2: Tensor) -> Tensor:
     Returns:
         giou, [N, ]
     """
-    assert (boxes1[:, 2:] >= boxes1[:, :2]).all()
-    assert (boxes2[:, 2:] >= boxes2[:, :2]).all()
+    boxes1 = _sanitize_boxes(boxes1)
+    boxes2 = _sanitize_boxes(boxes2)
     iou, union = elementwise_box_iou(boxes1, boxes2)
     lt = torch.min(boxes1[:, :2], boxes2[:, :2]) # [N, 2]
     rb = torch.max(boxes1[:, 2:], boxes2[:, 2:]) # [N, 2]

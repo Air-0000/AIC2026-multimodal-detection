@@ -74,7 +74,111 @@ configs = {
         "weights": Weights.LVD1689M,
         "compact_arch_name": "vitsplus",
         "check_hash": False,
-    }
+    },
+
+    # "Deep" S variant: same width (384 / 6 heads / mlp ffn_ratio 4) as vits16 but
+    # TWICE the depth (24 blocks instead of 12). Used to *lengthen* the pure-IR
+    # stem ("stem 改长") without a larger DINOv3 family (B/L) which this codebase
+    # does not ship. The extra 12 blocks are initialised by repeating the first
+    # 12 (block-stacking) in DINOv3STAsPureIR, reusing the existing DINOv3-S
+    # stem weights -- so no new pretrained checkpoint is required.
+    'dinov3_vits16_deep': {
+        'img_size': 224,
+        'patch_size': 16,
+        'in_chans': 3,
+        'pos_embed_rope_base': 100,
+        'pos_embed_rope_normalize_coords': "separate",
+        'pos_embed_rope_rescale_coords': 2,
+        'pos_embed_rope_dtype': "fp32",
+        'embed_dim': 384,
+        'depth': 24,
+        'num_heads': 6,
+        'ffn_ratio': 4,
+        'qkv_bias': True,
+        'drop_path_rate': 0.0,
+        'layerscale_init': 1.0e-05,
+        'norm_layer': "layernormbf16",
+        'ffn_layer': "mlp",
+        'ffn_bias': True,
+        'proj_bias': True,
+        'n_storage_tokens': 4,
+        'mask_k_bias': True,
+        'pretrained': False,
+        'weights': Weights.LVD1689M,
+        'compact_arch_name': "vits",
+        'check_hash': False,
+    },
+
+    # ---- Bigger backbones (not shipped by this codebase; added for AIC) --------
+    # Hyper-parameters below were reverse-engineered FROM the downloaded official
+    # checkpoint (ckpts/dinov3/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth):
+    #   patch_embed.proj.weight (768, 3, 16, 16) -> embed_dim 768, patch 16, 3ch
+    #   blocks.0.attn.qkv.weight (2304, 768)     -> qkv = 3 * 768
+    #   rope_embed.periods (16,)                 -> head_dim/4 = 16 -> 12 heads
+    #   blocks.0.mlp.fc1 (3072, 768)             -> ffn_ratio 4, FFN = "mlp"
+    #   storage_tokens (1, 4, 768)               -> n_storage_tokens 4
+    #   85.7M params total.  Do NOT guess these -- verify against the .pth.
+    'dinov3_vitb16': {
+        'img_size': 224,
+        'patch_size': 16,
+        'in_chans': 3,
+        'pos_embed_rope_base': 100,
+        'pos_embed_rope_normalize_coords': "separate",
+        'pos_embed_rope_rescale_coords': 2,
+        'pos_embed_rope_dtype': "fp32",
+        'embed_dim': 768,
+        'depth': 12,
+        'num_heads': 12,
+        'ffn_ratio': 4,
+        'qkv_bias': True,
+        'drop_path_rate': 0.0,
+        'layerscale_init': 1.0e-05,
+        'norm_layer': "layernormbf16",
+        'ffn_layer': "mlp",
+        'ffn_bias': True,
+        'proj_bias': True,
+        'n_storage_tokens': 4,
+        'mask_k_bias': True,
+        'pretrained': False,   # only a flag; weights are loaded via `weights_path`
+        'weights': Weights.LVD1689M,
+        'compact_arch_name': "vitb",
+        'check_hash': False,
+    },
+
+    # ViT-L/16, from ckpts/dinov3/dinov3_vitl16_pretrain_lvd1689m-8aa4cbdd.pth.
+    # Same recipe as vitb16 above: hyper-params verified against the actual
+    # checkpoint (see prepare_dinov3_for_rdttrack.py's [核对] output), NOT guessed:
+    #   patch_embed.proj.weight (1024, 3, 16, 16)
+    #   blocks.0.attn.qkv.weight (3072, 1024)     -> qkv = 3 * 1024
+    #   rope_embed.periods                        -> head_dim/4 -> 16 heads
+    #   blocks.0.mlp.fc1 (4096, 1024)             -> ffn_ratio 4, FFN = "mlp"
+    #   storage_tokens (1, 4, 1024)               -> n_storage_tokens 4
+    'dinov3_vitl16': {
+        'img_size': 224,
+        'patch_size': 16,
+        'in_chans': 3,
+        'pos_embed_rope_base': 100,
+        'pos_embed_rope_normalize_coords': "separate",
+        'pos_embed_rope_rescale_coords': 2,
+        'pos_embed_rope_dtype': "fp32",
+        'embed_dim': 1024,
+        'depth': 24,
+        'num_heads': 16,
+        'ffn_ratio': 4,
+        'qkv_bias': True,
+        'drop_path_rate': 0.0,
+        'layerscale_init': 1.0e-05,
+        'norm_layer': "layernormbf16",
+        'ffn_layer': "mlp",
+        'ffn_bias': True,
+        'proj_bias': True,
+        'n_storage_tokens': 4,
+        'mask_k_bias': True,
+        'pretrained': False,
+        'weights': Weights.LVD1689M,
+        'compact_arch_name': "vitl",
+        'check_hash': False,
+    },
 }
 
 logger = logging.getLogger("dinov3")

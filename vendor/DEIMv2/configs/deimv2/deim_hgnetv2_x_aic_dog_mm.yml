@@ -1,0 +1,17 @@
+# =============================================================================
+# DEIM-D-FINE-X (HGNetv2-B5) AIC 多模态消融实验 -- 单测 3 (DCDA + 3D-Lift + DOG 遮挡门控)
+# -----------------------------------------------------------------------------
+# 架构: HGNetv2-B5 (RGB) + ModalityStem (1ch IR) + DCDA (对齐) + DOG (遮挡隔离) + 3D-Lift (坐标升维) + CSSA 融合
+# 唯一新增变量: use_dog: True (基于 Sobel 算子计算深度梯度模长 |∇Z|，阻断热晕跨越前后景遮挡断层扩散)
+# 基线起点: outputs/deim_hgnetv2_x_aic_3dlift_mm/best_stg1.pth (锁定 0.5585 AP)
+# =============================================================================
+__include__: [
+  'deim_hgnetv2_x_aic_3dlift_mm.yml',
+]
+
+output_dir: ./outputs/deim_hgnetv2_x_aic_dog_mm
+
+HGNetv2MultiModal:
+  use_dcda: True         # 固化单测 1 成果 (0.5490)
+  use_3d_lift: True      # 固化单测 2 成果 (0.5585)
+  use_dog: True          # 单测 3: 启用深度阶跃遮挡门控 (DOG)

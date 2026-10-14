@@ -43,6 +43,7 @@ class CocoDetectionMultiModal(CocoDetection):
         transforms=None,
         ir_folder=None,
         raw_ir_folder=None,
+        deleak_ir_folder=None,  # 3rd IR channel (optional): de-leaked IR
         depth_folder=None,
         return_masks=False,
         remap_mscoco_category=False,
@@ -54,6 +55,7 @@ class CocoDetectionMultiModal(CocoDetection):
         depth_read='raw16',  # 'raw16' = correct 16-bit mm read (DEFAULT, fixed) ;
                              # 'clip8' = legacy BROKEN PIL convert("L") read, kept
                              # ONLY to re-evaluate checkpoints trained on clipped maps
+        destripe_ir=False,   # 1D Column-wise Guided Destriping for Infrared NUC
     ):
         # torchvision CocoDetection only reads annotations; image IO is custom.
         try:
@@ -67,6 +69,7 @@ class CocoDetectionMultiModal(CocoDetection):
         self.prepare = ConvertCocoPolysToMask(return_masks)
         self.ir_folder = ir_folder
         self.raw_ir_folder = raw_ir_folder
+        self.deleak_ir_folder = deleak_ir_folder
         self.depth_folder = depth_folder
         self.return_masks = return_masks
         self.remap_mscoco_category = remap_mscoco_category
@@ -74,15 +77,25 @@ class CocoDetectionMultiModal(CocoDetection):
         self.modality = modality
         self.depth_mode = depth_mode
         self.depth_read = depth_read
+        self.destripe_ir = destripe_ir
 
-    def _read_channel(self, folder, name, n_ch):
+    def _read_channel(self, folder, name, n_ch, destripe=False):
         p_png = os.path.join(folder, os.path.splitext(name)[0] + ".png")
         p_jpg = os.path.join(folder, name)
         path = p_png if os.path.exists(p_png) else p_jpg
         im = Image.open(path)
         if n_ch == 1:
             im = im.convert("L")
-            t = T.functional.pil_to_tensor(im).float() / 255.0  # [1,H,W]
+            if destripe:
+                try:
+                    from destripe_1d import stripe_non_uniformity_correction_1d
+                    arr = np.array(im)
+                    arr = stripe_non_uniformity_correction_1d(arr)
+                    t = torch.from_numpy(arr).float().unsqueeze(0) / 255.0
+                except Exception:
+                    t = T.functional.pil_to_tensor(im).float() / 255.0
+            else:
+                t = T.functional.pil_to_tensor(im).float() / 255.0  # [1,H,W]
         else:
             im = im.convert("RGB")
             t = T.functional.pil_to_tensor(im).float() / 255.0
@@ -150,7 +163,7 @@ class CocoDetectionMultiModal(CocoDetection):
 
         # aux channels (resized to RGB size so they always align)
         if self.ir_folder is not None:
-            heat = self._read_channel(self.ir_folder, img_name, 1)
+            heat = self._read_channel(self.ir_folder, img_name, 1, destripe=self.destripe_ir)
             heat = T.functional.resize(heat, rgb_pil.size[::-1])
         else:
             heat = torch.zeros((1, rgb_pil.size[1], rgb_pil.size[0]))
@@ -158,10 +171,17 @@ class CocoDetectionMultiModal(CocoDetection):
             # 2nd IR channel: ALIGNED RAW IR (not the residual). Keeps the
             # cold-target / edge structure that max(IR-RGB,0) throws away, so a
             # stem can see both the heat source and the full IR structure.
-            raw_ir = self._read_channel(self.raw_ir_folder, img_name, 1)
+            raw_ir = self._read_channel(self.raw_ir_folder, img_name, 1, destripe=self.destripe_ir)
             raw_ir = T.functional.resize(raw_ir, rgb_pil.size[::-1])
         else:
             raw_ir = None
+        if self.deleak_ir_folder is not None:
+            # 3rd IR channel: DE-LEAKED IR (the visible-light ghost removed).
+            # Layout becomes [RGB(3), heat, raw_ir, deleak, depth?].
+            deleak_ir = self._read_channel(self.deleak_ir_folder, img_name, 1, destripe=self.destripe_ir)
+            deleak_ir = T.functional.resize(deleak_ir, rgb_pil.size[::-1])
+        else:
+            deleak_ir = None
         _use_depth = (self.depth_folder is not None and
                       (self.n_channels >= 5 or self.modality == 'rgb_depth'))
         if _use_depth:
@@ -184,7 +204,11 @@ class CocoDetectionMultiModal(CocoDetection):
             dep = torch.zeros((_dc, rgb_pil.size[1], rgb_pil.size[0]))
 
         rgb_t = T.functional.pil_to_tensor(rgb_pil).float() / 255.0  # [3,H,W]
-        ir_ch = heat if raw_ir is None else torch.cat([heat, raw_ir], dim=0)  # [1|2,H,W]
+        ir_ch = heat
+        if raw_ir is not None:
+            ir_ch = torch.cat([ir_ch, raw_ir], dim=0)
+        if deleak_ir is not None:
+            ir_ch = torch.cat([ir_ch, deleak_ir], dim=0)   # [1|2|3,H,W]
         if self.modality == 'ir':
             # PURE INFRARED: detect from the IR channel(s) only (heat residual,
             # + aligned raw IR as the 2nd channel when raw_ir_folder is set).
@@ -213,7 +237,16 @@ class CocoDetectionMultiModal(CocoDetection):
         if _ab:
             _idx = {"heat": 3, "rawir": 4, "depth": 5}
             for _tok in _ab.split(","):
-                _i = _idx.get(_tok.strip().lower())
+                _tok = _tok.strip().lower()
+                if _tok == "rgb":
+                    # RGB occupies channels 0..2 of the fused 6ch layout; blank
+                    # all three together so the RGB branch sees a constant image
+                    # (-> no usable information). Only meaningful when the fused
+                    # layout is active; silently ignored for pure-IR modalities.
+                    if x.shape[0] >= 6:
+                        x[0:3] = 0.5
+                    continue
+                _i = _idx.get(_tok)
                 if _i is not None:
                     x[_i] = 0.5
 
@@ -246,7 +279,7 @@ class CocoDetectionMultiModal(CocoDetection):
         # depth_invert must be False for the far-object up-weighting
         # (depth_weights=[1,2,4]) to fire on far boxes. We just store the raw median.
         # Depth channel index: RGB(3) + IR(ir_in_chans: 1 heat, or 2 heat+raw)
-        _n_ir = 2 if self.raw_ir_folder is not None else 1
+        _n_ir = 1 + int(self.raw_ir_folder is not None) + int(self.deleak_ir_folder is not None)
         _depth_idx = 3 if self.modality == 'rgb_depth' else 3 + _n_ir
         if self.depth_mode == 'raw' and 'boxes' in target and x.shape[0] > _depth_idx and target['boxes'].shape[0] > 0:
             try:
@@ -302,7 +335,16 @@ class CocoDetectionMultiModalCached(CocoDetectionMultiModal):
         if _ab:
             _idx = {"heat": 3, "rawir": 4, "depth": 5}
             for _tok in _ab.split(","):
-                _i = _idx.get(_tok.strip().lower())
+                _tok = _tok.strip().lower()
+                if _tok == "rgb":
+                    # RGB occupies channels 0..2 of the fused 6ch layout; blank
+                    # all three together so the RGB branch sees a constant image
+                    # (-> no usable information). Only meaningful when the fused
+                    # layout is active; silently ignored for pure-IR modalities.
+                    if x.shape[0] >= 6:
+                        x[0:3] = 0.5
+                    continue
+                _i = _idx.get(_tok)
                 if _i is not None:
                     x[_i] = 0.5
 

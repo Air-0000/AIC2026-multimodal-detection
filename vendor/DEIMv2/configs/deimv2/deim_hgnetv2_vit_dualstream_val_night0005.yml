@@ -1,0 +1,9 @@
+__include__: [
+  'deim_hgnetv2_vit_dualstream_aic.yml',
+]
+
+output_dir: ./outputs/deim_hgnetv2_vit_dualstream_val_val_night0005
+
+val_dataloader:
+  dataset:
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/data_aux/aic_valid_rgb_night0005

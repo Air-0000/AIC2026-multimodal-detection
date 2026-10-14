@@ -14,10 +14,166 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .utils import get_activation
+from .sovereign_v6_modules import BiDirectionalSSM2d, MultiHeadLinearAttention2d
 
 from ..core import register
 
 __all__ = ['HybridEncoder']
+
+
+class HaarWaveletDownsample(nn.Module):
+    """基于 Haar 离散小波的高频无损下采样层 (来源: V1-246 MWHL)
+    将 (B, C, 2H, 2W) 下采样为 (B, 4C, H, W)，显式分离 LL、LH、HL(垂直)、HH
+    """
+    def __init__(self, in_channels):
+        super().__init__()
+        self.in_channels = in_channels
+
+    def forward(self, x):
+        x01 = x[:, :, 0::2, :] / 2.0
+        x02 = x[:, :, 1::2, :] / 2.0
+        x1 = x01[:, :, :, 0::2]
+        x2 = x02[:, :, :, 0::2]
+        x3 = x01[:, :, :, 1::2]
+        x4 = x02[:, :, :, 1::2]
+        
+        ll = x1 + x2 + x3 + x4      # 低频近似
+        lh = -x1 - x2 + x3 + x4     # 水平高频
+        hl = -x1 + x2 - x3 + x4     # 垂直高频 (重点保护立柱!)
+        hh = x1 - x2 - x3 + x4      # 对角高频
+        
+        return torch.cat([ll, hl, lh, hh], dim=1)
+
+
+class LocalMixedCrossConv(nn.Module):
+    """【V1代码讲解162】局部混合模块 LMM (正交双向十字卷积 3x7 + 7x3).
+    通过正交非对称卷积并联，同时覆盖极细垂直立柱(7x3)与大长宽比横向船体/悬臂(3x7)，
+    彻底纠正单一垂直 11x1 核对水平船体与十字路标的各向异性感知盲区。
+    """
+    def __init__(self, dim):
+        super().__init__()
+        # 垂直分支: 7x3 (加强纵向立柱与垂直接缝)
+        self.conv_v = nn.Conv2d(dim, dim, kernel_size=(7, 3), padding=(3, 1), groups=dim, bias=False)
+        # 水平分支: 3x7 (加强横向扁平船体与十字路标横梁)
+        self.conv_h = nn.Conv2d(dim, dim, kernel_size=(3, 7), padding=(1, 3), groups=dim, bias=False)
+        self.bn = nn.BatchNorm2d(dim)
+        self.act = nn.GELU()
+
+    def forward(self, x):
+        return self.act(self.bn(self.conv_v(x) + self.conv_h(x)))
+
+
+class P2CrossScaleRefinementV10_1(nn.Module):
+    """Sovereign V10.1 (P2-CSRG+) 终极强化版:
+    - LMM 正交双向十字卷积 (V1-162): 3x7(水平扁平船体) + 7x3(垂直极细立柱)
+    - 小波垂直高频下采样 (V1-246): 解决 160x160 -> 80x80 立柱平滑消失
+    - 空间显著性频率门控 (V1-248): 水面/背景自适应截断，消除虚警
+    - 严格零初始化 (Zero-Init): 初始时刻 100.00% 等价于 Sovereign V10 预训练检查点
+    """
+    def __init__(self, p2_dim=128, p3_dim=256, hidden_dim=64, use_lfp=False):
+        super().__init__()
+        self.conv_in = nn.Conv2d(p2_dim, hidden_dim, kernel_size=3, padding=1, bias=False)
+        self.bn_in = nn.BatchNorm2d(hidden_dim)
+        self.act = nn.GELU()
+        
+        # 1. 【V1-162】LMM 正交双向十字卷积 (3x7 水平 + 7x3 垂直) 替换单一纵向 11x1
+        self.lmm_strip = LocalMixedCrossConv(hidden_dim)
+        self.vertical_strip = self.lmm_strip
+        
+        # 2. 小波下采样 + 双路保峰池化融合通道
+        self.dwt = HaarWaveletDownsample(hidden_dim)
+        self.downsample = nn.Conv2d(hidden_dim * 4 + hidden_dim * 2, hidden_dim, kernel_size=3, padding=1, bias=False)
+        self.bn_down = nn.BatchNorm2d(hidden_dim)
+
+        # 2.1 V13 LFP (Low-Frequency Purification Module, CVPR 2026, V1-231)
+        self.use_lfp = use_lfp
+        if self.use_lfp:
+            from .sovereign_v13_modules import LowFrequencyPurificationModule
+            self.lfp = LowFrequencyPurificationModule(dim=hidden_dim, low_dim=p3_dim)
+            print("[P2-CSRG+] V1-231 LFP (Low-Frequency Purification): ON (zero-init)")
+        
+        # 3. 空间自适应高频门控 (CSR 机制)
+        self.gate = nn.Sequential(
+            nn.Conv2d(hidden_dim, hidden_dim // 2, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(hidden_dim // 2),
+            nn.GELU(),
+            nn.Conv2d(hidden_dim // 2, 1, kernel_size=1),
+            nn.Sigmoid()
+        )
+        
+        # 4. 零初始化输出投影 (绝对安全保障，未出现在旧权重中，杜绝旧权重污染未对齐的中间特征)
+        self.proj_v10_1 = nn.Conv2d(hidden_dim, p3_dim, kernel_size=1, bias=True)
+        nn.init.zeros_(self.proj_v10_1.weight)
+        nn.init.zeros_(self.proj_v10_1.bias)
+
+    def forward(self, p3_feat, p2_feat, depth=None):
+        h = self.act(self.bn_in(self.conv_in(p2_feat)))
+        h_strip = self.vertical_strip(h)
+        h_feat = h + h_strip
+        
+        h_dwt = self.dwt(h_feat) # (B, hidden_dim * 4, 80, 80)
+        h_avg = F.avg_pool2d(h_feat, kernel_size=2, stride=2)
+        h_max = F.max_pool2d(h_feat, kernel_size=2, stride=2)
+        h_combined = torch.cat([h_dwt, h_avg, h_max], dim=1) # (B, 6*hidden_dim, 80, 80)
+        
+        h_fused = self.act(self.bn_down(self.downsample(h_combined)))
+        if self.use_lfp and hasattr(self, 'lfp'):
+            h_fused = self.lfp(h_fused, f_low=p3_feat)
+        spatial_gate = self.gate(h_fused)
+
+        # 天空与水面波纹高频噪声精准截断 (Sky-Water Noise Attenuator)
+        B, _, H_f, W_f = h_fused.shape
+        y_grid = torch.linspace(0.0, 1.0, H_f, device=h_fused.device).view(1, 1, H_f, 1).expand(B, 1, H_f, W_f)
+        clean_mask = torch.ones_like(y_grid)
+        if depth is not None:
+            depth_raw = torch.clamp(F.interpolate(depth, size=(H_f, W_f), mode='nearest') * 0.5 + 0.5, 0.0, 1.0)
+            # 1. 天空区域高频净化 (y < 0.28 且无有效深度回波)
+            sky_factor = torch.clamp((y_grid - 0.10) / 0.15, 0.0, 1.0)
+            clean_mask = torch.where((y_grid < 0.28) & (depth_raw < 0.02), sky_factor, clean_mask)
+
+            # 2. 水面波纹高频净化 (y > 0.48 且无 3D 刚体阶跃梯度)
+            d_pad = F.pad(depth_raw, (1, 1, 1, 1), mode='replicate')
+            grad_x = d_pad[:, :, 1:-1, 2:] - d_pad[:, :, 1:-1, :-2]
+            grad_y = d_pad[:, :, 2:, 1:-1] - d_pad[:, :, :-2, 1:-1]
+            grad_d = torch.sqrt(grad_x**2 + grad_y**2 + 1e-6)
+            water_factor = torch.clamp(grad_d / 0.015, 0.0, 1.0)
+            clean_mask = torch.where((y_grid > 0.48) & (grad_d < 0.015), water_factor, clean_mask)
+
+        delta = self.proj_v10_1(h_fused * spatial_gate * clean_mask)
+        return p3_feat + delta
+
+
+class P2CrossScaleRefinement(nn.Module):
+    """P2 (160x160) Cross-Scale High-Frequency Residual Guidance Block.
+    Performs peak-salience dual pooling (Avg + Max) and multi-scale convolution
+    from 160x160 (P2, 128ch) down to 80x80 (P3, 256ch).
+    Zero-initialized to guarantee 100.00% exact numerical identity at Step 0.
+    """
+    def __init__(self, p2_dim=128, p3_dim=256, hidden_dim=64):
+        super().__init__()
+        self.conv_in = nn.Conv2d(p2_dim, hidden_dim, kernel_size=3, padding=1, bias=False)
+        self.bn_in = nn.BatchNorm2d(hidden_dim)
+        self.act = nn.GELU()
+        
+        # Dual-Path Anti-Aliased Peak Pooling (Avg + Max avoids losing sub-pixel peaks)
+        self.downsample = nn.Conv2d(hidden_dim * 2, hidden_dim, kernel_size=3, padding=1, bias=False)
+        self.bn_down = nn.BatchNorm2d(hidden_dim)
+        
+        # Output projection with Zero-Init
+        self.proj_out = nn.Conv2d(hidden_dim, p3_dim, kernel_size=1, bias=True)
+        nn.init.zeros_(self.proj_out.weight)
+        nn.init.zeros_(self.proj_out.bias)
+
+    def forward(self, p3_feat, p2_feat):
+        # p3_feat: (B, 256, H, W) e.g. (B, 256, 80, 80)
+        # p2_feat: (B, 128, 2*H, 2*W) e.g. (B, 128, 160, 160)
+        h = self.act(self.bn_in(self.conv_in(p2_feat)))
+        h_avg = F.avg_pool2d(h, kernel_size=2, stride=2)
+        h_max = F.max_pool2d(h, kernel_size=2, stride=2)
+        h_down = torch.cat([h_avg, h_max], dim=1) # (B, hidden_dim * 2, H, W)
+        h_fused = self.act(self.bn_down(self.downsample(h_down))) # (B, hidden_dim, H, W)
+        delta = self.proj_out(h_fused) # (B, p3_dim, H, W)
+        return p3_feat + delta
 
 
 class ConvNormLayer_fuse(nn.Module):
@@ -162,6 +318,27 @@ class VGGBlock(nn.Module):
         return kernel * t, beta - running_mean * gamma / std
 
 
+class PKIVGGBlock(VGGBlock):
+    """VGGBlock + zero-init PKI large-kernel side branch (PKINet, CVPR2024).
+
+    The re-param main path (3x3+1x1) is UNTOUCHED, so pretrained checkpoint
+    weights load as-is. The PKI side branch (5x5 DW + 7x7 dilated DW -> 1x1
+    fusion) starts with a ZERO-init fusion conv, so at init the block is
+    numerically identical to VGGBlock -- safe to stack on a strong ckpt.
+    """
+    def __init__(self, ch_in, ch_out, act='relu'):
+        super().__init__(ch_in, ch_out, act=act)
+        self.pki_dw5 = nn.Conv2d(ch_out, ch_out, 5, 1, 2, groups=ch_out, bias=False)
+        self.pki_dw7 = nn.Conv2d(ch_out, ch_out, 7, 1, 6, dilation=2, groups=ch_out, bias=False)
+        self.pki_fuse = nn.Conv2d(ch_out * 2, ch_out, 1, bias=False)
+        nn.init.zeros_(self.pki_fuse.weight)   # zero-init => exact identity at start
+
+    def forward(self, x):
+        y = super().forward(x)
+        p = torch.cat([self.pki_dw5(y), self.pki_dw7(y)], dim=1)
+        return y + self.pki_fuse(p)
+
+
 class CSPLayer(nn.Module):
     def __init__(self,
                  in_channels,
@@ -195,14 +372,20 @@ class RepNCSPELAN4(nn.Module):
                  bias=False,
                  act="silu",
                  csp_type='csp2',
+                 bottletype=VGGBlock,
                  ):
         super().__init__()
         self.c = c3//2
         self.cv1 = ConvNormLayer_fuse(c1, c3, 1, 1, bias=bias, act=act)
+        # fork fix: 'csp' branch was missing (UnboundLocalError). The D-FINE official
+        # release checkpoints (e.g. dfine_x_obj2coco.pth) use the classic two-branch
+        # CSPLayer with expansion=1.0, i.e. csp_type='csp'.
         if csp_type == 'csp2':
-            CSPLayer = CSPLayer2
-        self.cv2 = nn.Sequential(CSPLayer(c3//2, c4, n, 1, bias=bias, act=act, bottletype=VGGBlock), ConvNormLayer_fuse(c4, c4, 3, 1, bias=bias, act=act))
-        self.cv3 = nn.Sequential(CSPLayer(c4, c4, n, 1, bias=bias, act=act, bottletype=VGGBlock), ConvNormLayer_fuse(c4, c4, 3, 1, bias=bias, act=act))
+            InnerCSPLayer = CSPLayer2
+        else:
+            InnerCSPLayer = CSPLayer
+        self.cv2 = nn.Sequential(InnerCSPLayer(c3//2, c4, n, 1, bias=bias, act=act, bottletype=bottletype), ConvNormLayer_fuse(c4, c4, 3, 1, bias=bias, act=act))
+        self.cv3 = nn.Sequential(InnerCSPLayer(c4, c4, n, 1, bias=bias, act=act, bottletype=bottletype), ConvNormLayer_fuse(c4, c4, 3, 1, bias=bias, act=act))
         self.cv4 = ConvNormLayer_fuse(c3+(2*c4), c2, 1, 1, bias=bias, act=act)
 
     def forward_chunk(self, x):
@@ -355,6 +538,17 @@ class HybridEncoder(nn.Module):
                  version='dfine',
                  csp_type='csp',
                  fuse_op='cat',
+                 pki_bottleneck=False,
+                 use_ssm_levels=None,
+                 ssm_d_state=16,
+                 use_mhla_levels=None,
+                 mhla_num_heads=4,
+                 use_p2_guidance=False,
+                 p2_dim=128,
+                 p2_version='v10',
+                 use_lfp=False,
+                 use_pbd=False,
+                 use_starconv=False,
                  ):
         super().__init__()
         self.in_channels = in_channels
@@ -367,6 +561,67 @@ class HybridEncoder(nn.Module):
         self.out_channels = [hidden_dim for _ in range(len(in_channels))]
         self.out_strides = feat_strides
         self.fuse_op = fuse_op
+        bottletype = PKIVGGBlock if pki_bottleneck else VGGBlock
+        if pki_bottleneck:
+            print("[HybridEncoder] PKIBlock bottleneck: ON (zero-init PKI branch)")
+
+        # P2 (160x160) Cross-Scale Residual Guidance (Sovereign V10 & V10.1+)
+        self.use_p2_guidance = use_p2_guidance
+        self.p2_version = p2_version
+        self.use_lfp = use_lfp
+        if use_p2_guidance:
+            if p2_version == "v10_1":
+                self.p2_refinement = P2CrossScaleRefinementV10_1(p2_dim=p2_dim, p3_dim=hidden_dim, hidden_dim=64, use_lfp=use_lfp)
+                print(f"[HybridEncoder] P2-CSRG+ (MWHL Wavelet + V1-162 LMM Cross-Conv 3x7+7x3 + CSR Gate, LFP={use_lfp}): ON (zero-init)")
+            else:
+                self.p2_refinement = P2CrossScaleRefinement(p2_dim=p2_dim, p3_dim=hidden_dim, hidden_dim=64)
+                print("[HybridEncoder] P2 Cross-Scale Residual Guidance (160x160 -> P3): ON (zero-init)")
+        else:
+            self.p2_refinement = None
+
+        # V1创新038: PBD (Peak-Background Decoupling) for P3
+        self.use_pbd = use_pbd
+        if use_pbd:
+            from .sovereign_v13_modules import PeakBackgroundDecoupling
+            self.pbd = PeakBackgroundDecoupling(dim=hidden_dim)
+            print("[HybridEncoder] V1创新038 PBD (Peak-Background Decoupling) on P3: ON (zero-init)")
+        else:
+            self.pbd = None
+
+        # V1-011: StarConv (Microsoft Star Operation, CVPR 2024) on P4
+        self.use_starconv = use_starconv
+        if use_starconv:
+            from .sovereign_v13_modules import StarOperationConv2d
+            self.starconv = StarOperationConv2d(dim=hidden_dim)
+            print("[HybridEncoder] V1-011 StarConv (Microsoft Star Operation, CVPR 2024) on P4: ON (zero-init)")
+        else:
+            self.starconv = None
+
+        # Mamba 2D-SSM for P3/P4 linear global context (Sovereign V6)
+        self.use_ssm_levels = use_ssm_levels
+        if use_ssm_levels is not None and len(use_ssm_levels) > 0:
+            self.use_ssm_levels = [int(i) for i in use_ssm_levels]
+            self.ssm_blocks = nn.ModuleDict({
+                str(lvl): BiDirectionalSSM2d(hidden_dim, d_state=ssm_d_state)
+                for lvl in self.use_ssm_levels
+            })
+            print(f"[HybridEncoder] Mamba 2D-SSM enabled on levels {self.use_ssm_levels} (zero-init, O(N) linear complexity)")
+        else:
+            self.use_ssm_levels = []
+            self.ssm_blocks = None
+
+        # MHLA Multi-Head Linear Attention (V1-218 / ICLR 2026, Sovereign V12)
+        self.use_mhla_levels = use_mhla_levels
+        if use_mhla_levels is not None and len(use_mhla_levels) > 0:
+            self.use_mhla_levels = [int(i) for i in use_mhla_levels]
+            self.mhla_blocks = nn.ModuleDict({
+                str(lvl): MultiHeadLinearAttention2d(hidden_dim, num_heads=mhla_num_heads)
+                for lvl in self.use_mhla_levels
+            })
+            print(f"[HybridEncoder] MHLA Linear Attention enabled on levels {self.use_mhla_levels} (zero-init, O(N) linear dual-core)")
+        else:
+            self.use_mhla_levels = []
+            self.mhla_blocks = None
 
         # channel projection
         self.input_proj = nn.ModuleList()
@@ -400,12 +655,12 @@ class HybridEncoder(nn.Module):
 
         c1, c2, c3, c4, num_blocks = input_dim, hidden_dim, hidden_dim*2, round(expansion * hidden_dim // 2), round(3 * depth_mult)
         if version == 'dfine':
-            Fuse_Block = RepNCSPELAN4(c1=c1, c2=c2, c3=c3, c4=c4, n=num_blocks, act=act, csp_type=csp_type)
+            Fuse_Block = RepNCSPELAN4(c1=c1, c2=c2, c3=c3, c4=c4, n=num_blocks, act=act, csp_type=csp_type, bottletype=bottletype)
         elif version == 'deim':
             Fuse_Block = RepNCSPELAN5(c1=c1, c2=c2, c3=c3, c4=c4, n=num_blocks, act=act)
         else:       # RT-DETR
             Fuse_Block = CSPLayer(in_channels=c1, out_channels=c2, num_blocks=num_blocks, act=act, \
-                                    expansion=expansion, bottletype=VGGBlock)
+                                    expansion=expansion, bottletype=bottletype)
             Lateral_Conv = ConvNormLayer_fuse(hidden_dim, hidden_dim, 1, 1, act=act)
             SCDown_Conv = ConvNormLayer_fuse(hidden_dim, hidden_dim, 3, 2, act=act)
 
@@ -453,9 +708,27 @@ class HybridEncoder(nn.Module):
 
         return torch.concat([out_w.sin(), out_w.cos(), out_h.sin(), out_h.cos()], dim=1)[None, :, :]
 
-    def forward(self, feats):
+    def forward(self, feats, depth=None):
+        if len(feats) == len(self.in_channels) + 1 and self.use_p2_guidance:
+            p2_feat = feats[0]
+            feats = feats[1:]
+        else:
+            p2_feat = None
+
         assert len(feats) == len(self.in_channels)
         proj_feats = [self.input_proj[i](feat) for i, feat in enumerate(feats)]
+
+        # Mamba 2D-SSM linear global context enhancement (Sovereign V6)
+        if self.ssm_blocks is not None:
+            for lvl in self.use_ssm_levels:
+                if lvl < len(proj_feats):
+                    proj_feats[lvl] = self.ssm_blocks[str(lvl)](proj_feats[lvl])
+
+        # MHLA Linear Attention global non-local interaction (Sovereign V12)
+        if self.mhla_blocks is not None:
+            for lvl in self.use_mhla_levels:
+                if lvl < len(proj_feats):
+                    proj_feats[lvl] = self.mhla_blocks[str(lvl)](proj_feats[lvl])
 
         # encoder
         if self.num_encoder_layers > 0:
@@ -485,6 +758,13 @@ class HybridEncoder(nn.Module):
             inner_out = self.fpn_blocks[len(self.in_channels)-1-idx](fused_feat)
             inner_outs.insert(0, inner_out)
 
+        # P2 Cross-Scale Residual Guidance Injection into P3 (80x80)
+        if self.use_p2_guidance and self.p2_refinement is not None and p2_feat is not None:
+            if self.p2_version == "v10_1":
+                inner_outs[0] = self.p2_refinement(inner_outs[0], p2_feat, depth=depth)
+            else:
+                inner_outs[0] = self.p2_refinement(inner_outs[0], p2_feat)
+
         outs = [inner_outs[0]]
         for idx in range(len(self.in_channels) - 1):
             feat_low = outs[-1]
@@ -494,5 +774,13 @@ class HybridEncoder(nn.Module):
                 if self.fuse_op == 'sum' else torch.concat([downsample_feat, feat_height], dim=1)
             out = self.pan_blocks[idx](fused_feat)
             outs.append(out)
+
+        # V1创新038: PBD (Peak-Background Decoupling) for P3
+        if getattr(self, 'use_pbd', False) and getattr(self, 'pbd', None) is not None:
+            outs[0] = self.pbd(outs[0])
+
+        # V1-011: StarConv (Microsoft Star Operation, CVPR 2024) for P4
+        if getattr(self, 'use_starconv', False) and getattr(self, 'starconv', None) is not None and len(outs) > 1:
+            outs[1] = self.starconv(outs[1])
 
         return outs

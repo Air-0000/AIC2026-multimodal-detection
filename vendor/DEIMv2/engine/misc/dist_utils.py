@@ -40,12 +40,12 @@ def setup_distributed(print_rank: int=0, print_method: str='builtin', seed: int=
         LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))
         WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
 
-        # torch.distributed.init_process_group(backend=backend, init_method='env://')
-        torch.distributed.init_process_group(init_method='env://')
+        backend = os.getenv('AIC_DISTRIBUTED_BACKEND', 'nccl')
+        torch.distributed.init_process_group(backend=backend, init_method='env://')
         torch.distributed.barrier()
 
-        rank = torch.distributed.get_rank()
-        torch.cuda.set_device(rank)
+        device_id = LOCAL_RANK if LOCAL_RANK >= 0 else torch.distributed.get_rank()
+        torch.cuda.set_device(device_id)
         torch.cuda.empty_cache()
         enabled_dist = True
         if get_rank() == print_rank:

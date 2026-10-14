@@ -1,0 +1,183 @@
+# =============================================================================
+# DEIM-D-FINE-X 尺度破局终极旗舰 V10 (Sovereign Multimodal V10 - P2 Cross-Scale Residual Guidance)
+# -----------------------------------------------------------------------------
+# 架构底座: 继承 Sovereign V9 历史最高基准 (57.73% mAP 战果)
+# 起步热启: outputs/deim_hgnetv2_x_aic_sovereign_v9_snr_fdr_rtx6000/best_stg1.pth
+# 核心结构手术（专门攻克 sign 43.59% 与 boat 47.87% 的特征断层）:
+#   1. [P2 (160x160) 浅层高频与立柱相位直通指南 (P2-CSRG in HybridEncoder)]:
+#      - Backbone 释放 Stage 0 (stride 4, 160x160, 128ch) 原生尺度
+#      - HybridEncoder 引入 P2CrossScaleRefinement: 双路保峰池化 (Avg + Max) 捕捉单像素标牌立柱
+#      - 将 160x160 亚像素高频轮廓无损注入 P3 (80x80) Top-Down 颈部特征，杜绝小目标几何特征塌陷！
+#      - 严格零初始化 (Zero-Init): Step 0 与 Sovereign V9 达成 100.000% 绝对数值等价
+#   2. [MSRB 主干微残差直通桥]: Stage 0 (160x160) 128 通道深层特征直通 P3 (80x80)
+#   3. [AAAI 2026 RFGM 傅里叶相位-幅度几何直通]: 闭合标牌几何轮廓频域强化
+#   4. [暗区信噪比感知边界分布锐化头 (SNR-Aware FDR Head)]: Query 自适应温度消除边界弥散
+#   5. [Mamba-CCFM 2D-SSM 线性全局长程交互]: P3/P4 视界全图关联
+# =============================================================================
+__include__: [
+  '../deim_dfine/dfine_hgnetv2_x_coco.yml',
+  '../dataset/aic_detection.yml',
+]
+
+output_dir: ./outputs/deim_hgnetv2_x_aic_sovereign_v10_p2_res_rtx6000
+
+DEIM:
+  backbone: HGNetv2MultiModal
+
+HGNetv2MultiModal:
+  name: B5
+  ir_in_chans: 2          # 2 通道 IR: Ch0=高精对齐 IR, Ch1=LBG 滤波 IR
+  inject_stages: [2, 3]   # stride 16 / 32
+  fusion: cssa
+  use_dcda: True          # DCDA 深度引导形变视差对齐
+  use_3d_lift: True       # 3D 物理空间坐标升维
+  use_dog: True           # DOG 深度阶跃遮挡隔离门控
+  use_bilateral_pool: True # 视差双边抗混叠池化模块
+  use_dynamic_gating: False   # 锁定关闭动态门控，防止退化
+  use_shallow_edge_fuse: True # 浅层高频边缘注入 (已集成保峰双路池化)
+  use_rfgm_edge: True         # AAAI 2026 RFGM 频域相位残差补偿几何直通
+  use_frontend_rfgm: True     # AAAI 2026 前端幅度-相位暗光照度重构
+  use_trunk_bridge: True      # Stage 0 (160x160) -> Stage 1 (80x80 P3) 主干微残差直通桥
+  pretrained_ir_stem: True    # ImageNet 预训练边缘核赋权 IR Stem
+  return_idx: [0, 1, 2, 3]    # 释放 Stage 0 (P2, 160x160) 供 HybridEncoder 高频引导
+  stem_base: 64
+  ir_drop_prob: 0.05
+  freeze_at: 0
+  freeze_norm: True
+  local_model_dir: weight/hgnetv2/
+  pretrained: True
+
+HybridEncoder:
+  csp_type: csp
+  use_ssm_levels: [0, 1]      # Level 0 (P3: 80x80) 与 Level 1 (P4: 40x40) 2D-SSM 线性全局交互
+  ssm_d_state: 16             # 状态空间隐藏维度
+  use_p2_guidance: True       # 【核心升级】激活 P2 (160x160) 跨尺度保峰高频残差引导
+  p2_dim: 128                 # Stage 0 通道数
+
+DFINETransformer:
+  use_snr_sharpen: True       # 保持暗区信噪比感知分布锐化头
+  snr_sharpen_alpha: 0.5      # 温度调节动态范围控制因子
+
+DEIMCriterion:
+  weight_dict:
+    loss_mal: 2.0
+    loss_bbox: 5.0
+    loss_giou: 3.5
+    loss_fgl: 0.25            # 强化精细几何局部定位权重 (0.20 -> 0.25)
+    loss_ddf: 1.5
+  losses: ['mal', 'boxes', 'local']
+  gamma: 1.5
+  matcher:
+    type: HungarianMatcher
+    weight_dict:
+      cost_class: 2.0
+      cost_bbox: 5.0
+      cost_giou: 3.5
+    alpha: 0.25
+    gamma: 2.0
+
+optimizer:
+  type: AdamW
+  params:
+    -
+      # 骨干基座保守锁定微调
+      params: '^(?=.*backbone)(?!.*norm|.*ir_stem|.*ir_proj|.*ir_align|.*occlusion_gate|.*coord_lift|.*bilateral_pool|.*shallow_edge_fuse|.*frontend_rfgm|.*s0_to_p3_trunk).*$'
+      lr: 0.000002
+    -
+      # 物理辅助流与 MSRB 主干直通桥专属学习率
+      params: '^(?=.*(?:ir_stem|ir_proj|ir_align|occlusion_gate|coord_lift|bilateral_pool|shallow_edge_fuse|frontend_rfgm|s0_to_p3_trunk)).*$'
+      lr: 0.00005
+    -
+      # Mamba 2D-SSM 专属微调学习率
+      params: '^(?=.*ssm_blocks)(?!.*norm).*$'
+      lr: 0.00003
+      weight_decay: 0.0001
+    -
+      # P2 跨尺度保峰残差引导专属唤醒学习率
+      params: '^(?=.*p2_refinement).*$'
+      lr: 0.0001
+      weight_decay: 0.0001
+    -
+      # SNR-Aware FDR temp_head 快速唤醒学习率
+      params: '^(?=.*temp_head).*$'
+      lr: 0.0001
+      weight_decay: 0.0001
+    -
+      # 归一化层 weight decay 归零
+      params: '^(?=.*(?:encoder|decoder))(?!.*p2_refinement)(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.
+  lr: 0.00001
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+epoches: 8
+lrsheduler: flatcosine
+lr_gamma: 1
+warmup_iter: 10
+flat_epoch: 4
+no_aug_epoch: 0
+
+accum_steps: 1
+print_freq: 10
+checkpoint_freq: 2
+
+train_dataloader:
+  total_batch_size: 16
+  num_workers: 16
+  persistent_workers: True
+  pin_memory: True
+  prefetch_factor: 4
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /dev/shm/aic_cache/visible
+    ir_folder: /dev/shm/aic_cache/train_aligned_ir
+    raw_ir_folder: /dev/shm/aic_cache/train_lbg_ir
+    depth_folder: /dev/shm/aic_cache/depth_p0
+    destripe_ir: True
+    ann_file: /root/autodl-tmp/AIC/work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomPhotometricDistort5ch, p: 0.3, brightness: [0.9, 1.1], contrast: [0.85, 1.15], saturation: [0.85, 1.15], hue: [-0.02, 0.02]}
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [640, 640]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  collate_fn:
+    type: BatchImageCollateFunction
+    mixup_epochs: [999, 999]
+    stop_epoch: 999
+    copyblend_epochs: [999, 999]
+    base_size_repeat: 1
+
+val_dataloader:
+  type: DataLoader
+  total_batch_size: 16
+  num_workers: 8
+  pin_memory: True
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /dev/shm/aic_cache/visible
+    ir_folder: /dev/shm/aic_cache/train_aligned_ir
+    raw_ir_folder: /dev/shm/aic_cache/train_lbg_ir
+    depth_folder: /dev/shm/aic_cache/depth_p0
+    destripe_ir: True
+    ann_file: /root/autodl-tmp/AIC/work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [640, 640]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: False
+  drop_last: False
+
+ema:
+  warmups: 20
+lr_warmup_scheduler:
+  warmup_duration: 0

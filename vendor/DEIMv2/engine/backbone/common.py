@@ -58,8 +58,8 @@ class FrozenBatchNorm2d(nn.Module):
         b = self.bias.reshape(1, -1, 1, 1)
         rv = self.running_var.reshape(1, -1, 1, 1)
         rm = self.running_mean.reshape(1, -1, 1, 1)
-        scale = w * (rv + self.eps).rsqrt()
-        bias = b - rm * scale
+        scale = (w * (rv + self.eps).rsqrt()).to(dtype=x.dtype)
+        bias = (b - rm * (w * (rv + self.eps).rsqrt())).to(dtype=x.dtype)
         return x * scale + bias
 
     def extra_repr(self):

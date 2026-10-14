@@ -1,0 +1,21 @@
+# =============================================================================
+# DEIM-D-FINE-X (HGNetv2-B5) AIC 单阶段微调 -- 纯 MAL2 (无 DCN) 消融对照实验
+# -----------------------------------------------------------------------------
+# 目的: 补全严格的 2x2 全因子消融矩阵:
+#       [无 DCN / 有 DCN] x [MAL=1 (默认) / MAL=2 (加倍)]
+#       - (无 DCN, MAL=1): ft
+#       - (有 DCN, MAL=1): ft_dcn
+#       - (无 DCN, MAL=2): ft_puremal  <-- 本配置
+#       - (有 DCN, MAL=2): ft_mal2
+#       - 进阶拓展: dcn + adpmal (当前训练中)
+# 对照: deim_hgnetv2_x_aic_obj2coco_ft.yml (唯一差异 = loss_mal: 2)
+# =============================================================================
+__include__: [
+  'deim_hgnetv2_x_aic_obj2coco_ft.yml',
+]
+
+output_dir: ./outputs/deim_hgnetv2_x_aic_obj2coco_ft_puremal
+
+DEIMCriterion:
+  weight_dict:
+    loss_mal: 2

@@ -1,0 +1,81 @@
+# =============================================================================
+# Sovereign V29 Cycle 2 Stage 1: 多模态全要素 + DINOv3-ViT-L 大模型语义自蒸馏
+# 硬件平台: 实验室科研服务器 ailab40 (Tesla V100-SXM2 32GB, GPU 1)
+# 训练哲学:
+#   1. 以 Cycle 1 终极退火巅峰权重 (best_stg2.pth, mAP 0.5167) 启动。
+#   2. 保持 6 通道全模态架构 (RGB + 2ch IR + Depth) 完整在线，0 模态丢失。
+#   3. Meta DINOv3-ViT-Large (300M) 冻结教师在线特征蒸馏 (Cosine + Gram 拓扑特征)。
+#   4. 温和微调学习率：避免大梯度冲击，让高阶语义平滑提纯特征。
+# =============================================================================
+
+__include__: [
+  './sovereign_v29_stage2b_deep_fusion.yml',
+]
+
+task: detection
+eval_spatial_size: [1024, 1792]
+output_dir: ./outputs/sovereign_v29_cycle2_stage1_distill
+
+DEIM:
+  use_dinov3_distill: True
+  dinov3_teacher_path: "ckpts/dinov3/dinov3_vitl16_pretrain_lvd1689m-8aa4cbdd.pth"
+  distill_cos_weight: 1.0
+  distill_gram_weight: 0.5
+  distill_downsample_scale: 0.5
+
+DEIMCriterion:
+  weight_dict:
+    loss_cmal: 0.5
+    loss_tadl: 2.0
+    loss_bbox: 5.0
+    loss_giou: 3.5
+    loss_fgl: 0.25
+    loss_ddf: 1.5
+    loss_distill: 1.0
+
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*dinov3_distiller).*$'
+      lr: 0.00005               # 蒸馏投影层 5e-5 平滑适应
+    -
+      params: '^(?=.*backbone.rgb_net)(?!.*norm|.*dinov3_distiller).*$'
+      lr: 0.000002              # 骨干网络 2e-6
+    -
+      params: '^(?=.*(?:ir_align|disp_proj|phys_disp_scale|offset_net)).*$'
+      lr: 0.00002               # DCDA 视差分支 2e-5
+    -
+      params: '^(?=.*(?:ir_stem|ir_proj|shallow_edge_fuse|coord_lift|occlusion_gate|bilateral_pool|ir_fuse|ir_res)).*$'
+      lr: 0.00004               # 3D-Lift 与 DOG 深层模块 4e-5
+    -
+      params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.
+    -
+      params: '^(?=.*(?:score_head|class_embed)).*$'
+      lr: 0.00002               # 分类头微调 2e-5
+  lr: 0.00002                   # 解码器主体 2e-5
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+epoches: 6                      # Cycle 2 第一阶段：6 轮高质量蒸馏提纯
+lrsheduler: flatcosine
+lr_gamma: 1
+warmup_iter: 20
+flat_epoch: 4
+no_aug_epoch: 2                 # 末 2 轮关停增广做纯净退火
+
+accum_steps: 1
+print_freq: 10
+checkpoint_freq: 2
+
+scaler:
+  type: GradScaler
+  enabled: True
+  init_scale: 128.0
+
+train_dataloader:
+  total_batch_size: 3
+  num_workers: 6
+  persistent_workers: True
+  pin_memory: True

@@ -24,13 +24,13 @@ from .dinov3 import DinoVisionTransformer
 
 
 class SpatialPriorModulev2(nn.Module):
-    def __init__(self, inplanes=16):
+    def __init__(self, inplanes=16, in_chans=3):
         super().__init__()
 
         # 1/4
         self.stem = nn.Sequential(
             *[
-                nn.Conv2d(3, inplanes, kernel_size=3, stride=2, padding=1, bias=False),
+                nn.Conv2d(in_chans, inplanes, kernel_size=3, stride=2, padding=1, bias=False),
                 nn.SyncBatchNorm(inplanes),
                 nn.GELU(),
                 nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
@@ -84,6 +84,9 @@ class DINOv3STAs(nn.Module):
         conv_inplane=16,
         hidden_dim=None,
         in_chans=3,
+        input_norm='none',
+        input_norm_mean=0.45,
+        input_norm_std=0.225,
     ):
         super(DINOv3STAs, self).__init__()
         if 'dinov3' in name:
@@ -115,6 +118,10 @@ class DINOv3STAs(nn.Module):
         embed_dim = self.dinov3.embed_dim
         self.interaction_indexes = interaction_indexes
         self.patch_size = patch_size
+        # optional per-image illumination normalisation of the RGB channels
+        self.input_norm = input_norm
+        self.input_norm_mean = input_norm_mean
+        self.input_norm_std = input_norm_std
 
         if not finetune:
             self.dinov3.eval()
@@ -142,7 +149,29 @@ class DINOv3STAs(nn.Module):
             nn.SyncBatchNorm(hidden_dim)
         ])
 
+    def _normalize_input(self, x):
+        """Per-image illumination normalisation of the RGB channels.
+
+        A night frame has a far lower mean/variance than the daytime statistics
+        that the fixed ImageNet ``Normalize`` and the pretrained DINOv3 were
+        built on, so the stem sees an out-of-distribution input. Re-standardising
+        the first 3 channels per image removes the global brightness/contrast
+        component before it reaches the backbone (aux IR/Depth, which are already
+        illumination-invariant, are left untouched), then rescales back onto the
+        ImageNet-ish statistics the pretrained weights expect.
+        """
+        rgb = x[:, :3]
+        aux = x[:, 3:]
+        m = rgb.mean(dim=(1, 2, 3), keepdim=True)
+        s = rgb.std(dim=(1, 2, 3), keepdim=True).clamp_min(1e-3)
+        rgb = (rgb - m) / s * self.input_norm_std + self.input_norm_mean
+        if aux.shape[1] == 0:
+            return rgb
+        return torch.cat([rgb, aux], dim=1)
+
     def forward(self, x):
+        if self.input_norm == 'instance':
+            x = self._normalize_input(x)
         # Code for matching with oss
         H_c, W_c = x.shape[2] // 16, x.shape[3] // 16
         H_toks, W_toks = x.shape[2] // self.patch_size, x.shape[3] // self.patch_size

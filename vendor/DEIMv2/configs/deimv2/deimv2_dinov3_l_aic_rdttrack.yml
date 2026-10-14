@@ -1,0 +1,132 @@
+__include__: [
+  '../dataset/aic_detection.yml',
+  '../runtime.yml',
+  '../base/dataloader.yml',
+  '../base/optimizer.yml',
+  '../base/deimv2.yml',
+]
+
+
+output_dir: ./outputs/deimv2_dinov3_l_aic_rdttrack
+
+DEIM:
+  backbone: DINOv3STAsRDTTrack
+
+DINOv3STAsRDTTrack:
+  name: dinov3_vits16
+  # AIC detection checkpoint (DINOv3-S backbone) -- gives the RGB stream a
+  # strong AIC-object prior. Replaces the missing dinov3_vits16_pretrain_*.pth.
+  weights_path: /home/constant/CodeBuddy/Dev/AIC/deimv2_dinov3_l_coco.pth
+  interaction_indexes: [5, 8, 11]   # only need the [1/8, 1/16, 1/32]
+  conv_inplane: 32
+  hidden_dim: 224
+  ir_drop_prob: 0.15
+  depth_drop_prob: 0.15
+  unfreeze_rgb_stages: 0   # 0 = RGB主干冻结(stage1); 设 2 进入 stage2 低LR微调(解冻后2个block)
+
+HybridEncoder:
+  in_channels: [224, 224, 224]
+  hidden_dim: 224
+  dim_feedforward: 896
+
+DEIMTransformer:
+  feat_channels: [224, 224, 224]
+  hidden_dim: 224
+  num_layers: 4
+  eval_idx: -1
+  dim_feedforward: 1792
+
+## DEIM LR-Scheduler
+epoches: 68 # Increase to search for the optimal ema
+lrsheduler: flatcosine
+lr_gamma: 0.5
+warmup_iter: 2000
+flat_epoch: 34    # 4 + epoch // 2
+no_aug_epoch: 8
+
+## Optimizer
+optimizer:
+  type: AdamW
+  params:
+    -
+      # except norm/bn/bias in self.dinov3
+      params: '^(?=.*.dinov3)(?!.*(?:norm|bn|bias)).*$'
+      lr: 0.0000125
+    -
+      # including norm/bn/bias in self.dinov3
+      params: '^(?=.*.dinov3)(?=.*(?:norm|bn|bias)).*$'
+      lr: 0.0000125
+      weight_decay: 0.
+    -
+      # including norm/bn/bias except for the self.dinov3
+      params: '^(?=.*(?:sta|encoder|decoder))(?=.*(?:norm|bn|bias)).*$'
+      weight_decay: 0.
+
+  lr: 0.0005
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+
+## Tri-modal dataset: RGB(3) + IR(1) + Depth(1) = 5 channels.
+## NOTE: no Mosaic here -- Mosaic requires PIL images while the multi-modal
+## dataset returns an N-channel tensor; it is replaced by the collate-fn level
+## MixUp / CopyBlend (channel-agnostic, see dataloader.py) which is kept below.
+train_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/images
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_ir/images
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 5
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomPhotometricDistort5ch, p: 0.5}
+        - {type: RandomZoomOut, fill: 0}
+        - {type: RandomIoUCrop, p: 0.8}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [640, 640]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: True
+  num_workers: 4
+  drop_last: True
+  total_batch_size: 8   # RTX 5060 Ti 16GB, L model @640
+
+  collate_fn:
+    type: BatchImageCollateFunction
+    mixup_epochs: [4, 34]
+    stop_epoch: 60
+    copyblend_epochs: [4, 60]
+    base_size_repeat: 3
+
+val_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/images
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_ir/valid
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    n_channels: 5
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [640, 640]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: False
+  num_workers: 4
+  drop_last: False
+  total_batch_size: 4
+
+## DEIM Loss
+DEIMCriterion:
+  matcher:
+    matcher_change_epoch: 50

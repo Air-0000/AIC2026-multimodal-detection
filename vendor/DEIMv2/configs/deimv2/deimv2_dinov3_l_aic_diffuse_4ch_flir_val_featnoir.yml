@@ -1,0 +1,99 @@
+__include__: [
+  '../dataset/aic_detection.yml',
+  '../runtime.yml',
+  '../base/dataloader.yml',
+  '../base/optimizer.yml',
+  '../base/deimv2.yml',
+]
+
+# 4-channel (RGB + IR) model evaluated on FLIR (whole set) as an
+# out-of-distribution generalization test. Same architecture as
+# deimv2_dinov3_l_aic_diffuse_4ch.yml so its checkpoint loads via -r.
+# Run: python train.py -c <this> -r outputs/deimv2_dinov3_l_aic_diffuse_4ch/best_stg2.pth --test-only
+output_dir: ./outputs/deimv2_dinov3_l_aic_diffuse_4ch_flir__featnoir
+
+DEIM:
+  backbone: DINOv3STAsDiffFuse
+
+DINOv3STAsDiffFuse:
+  name: dinov3_vits16
+  weights_path: /home/constant/CodeBuddy/Dev/AIC/deimv2_dinov3_l_coco.pth
+  interaction_indexes: [5, 8, 11]
+  conv_inplane: 32
+  hidden_dim: 224
+  ir_drop_prob: 1.0
+
+HybridEncoder:
+  in_channels: [224, 224, 224]
+  hidden_dim: 224
+  dim_feedforward: 896
+
+DEIMTransformer:
+  feat_channels: [224, 224, 224]
+  hidden_dim: 224
+  num_layers: 4
+  eval_idx: -1
+  dim_feedforward: 1792
+
+## Keep train def identical to training config (unused in --test-only, but
+## needed for config parsing / same model instantiation).
+train_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/images
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_ir/images
+    depth_folder: null
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 4
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomPhotometricDistort5ch, p: 0.5}
+        - {type: RandomZoomOut, fill: 0}
+        - {type: RandomIoUCrop, p: 0.8}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [640, 640]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5], std: [0.229, 0.224, 0.225, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: True
+  num_workers: 4
+  drop_last: True
+  total_batch_size: 8
+
+  collate_fn:
+    type: BatchImageCollateFunction
+    mixup_epochs: [4, 25]
+    stop_epoch: 45
+    copyblend_epochs: [4, 45]
+    base_size_repeat: 3
+
+## FLIR as the (test-only) evaluation set: rgb + ir, 4 channels, no depth.
+val_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/FLIR/rgb
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/FLIR/ir
+    depth_folder: null
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/FLIR/instances_flir_val.json
+    n_channels: 4
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [512, 512]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5], std: [0.229, 0.224, 0.225, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: False
+  num_workers: 4
+  drop_last: False
+  total_batch_size: 4
+
+## DEIM Loss (unused in --test-only, kept for config completeness)
+DEIMCriterion:
+  matcher:
+    matcher_change_epoch: 40

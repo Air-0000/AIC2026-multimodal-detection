@@ -109,6 +109,9 @@ class BaseSolver(object):
         if self.cfg.resume:
             print(f'Resume checkpoint from {self.cfg.resume}')
             self.load_resume_state(self.cfg.resume)
+        elif self.cfg.tuning:
+            print(f'Tuning checkpoint from {self.cfg.tuning}')
+            self.load_tuning_state(self.cfg.tuning)
 
     def to(self, module, device):
         return module.to(device) if hasattr(module, 'to') else module
@@ -137,7 +140,17 @@ class BaseSolver(object):
         for k, v in self.__dict__.items():
             if hasattr(v, 'load_state_dict') and k in state:
                 v = dist_utils.de_parallel(v)
-                v.load_state_dict(state[k])
+                try:
+                    v.load_state_dict(state[k], strict=True)
+                except Exception as e:
+                    try:
+                        res = v.load_state_dict(state[k], strict=False)
+                        if res is not None and hasattr(res, 'missing_keys'):
+                            print(f'Load {k}.state_dict with strict=False: missing={len(res.missing_keys)}, unexpected={len(res.unexpected_keys)}')
+                        else:
+                            print(f'Load {k}.state_dict with strict=False')
+                    except Exception as e2:
+                        print(f'Warning: could not load {k}.state_dict: {e2}')
                 print(f'Load {k}.state_dict')
 
             if hasattr(v, 'load_state_dict') and k not in state:
@@ -173,8 +186,10 @@ class BaseSolver(object):
         # Load the appropriate state dict
         if 'ema' in state:
             pretrain_state_dict = state['ema']['module']
-        else:
+        elif 'model' in state:
             pretrain_state_dict = state['model']
+        else:
+            pretrain_state_dict = state
 
         # Adjust head parameters between datasets
         try:
@@ -192,9 +207,15 @@ class BaseSolver(object):
         unmatched_list = []
         matched_state = {}
         for k, v in state.items():
-            if k in params:
-                if v.shape == params[k].shape:
-                    matched_state[k] = params[k]
+            param_key = k
+            if param_key not in params and k.startswith('backbone.rgb_net.'):
+                alt_key = 'backbone.' + k[len('backbone.rgb_net.'):]
+                if alt_key in params:
+                    param_key = alt_key
+
+            if param_key in params:
+                if v.shape == params[param_key].shape:
+                    matched_state[k] = params[param_key]
                 else:
                     unmatched_list.append(k)
             else:

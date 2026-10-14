@@ -1,0 +1,63 @@
+# =============================================================================
+# Sovereign V31 Ablation Probe: Controlled One-to-Many Auxiliary Supervision Study
+# 硬件平台: 实验室科研服务器 ailab40 (Tesla V100 32GB, GPU 1)
+# 目标: 科学检验 Co-ATSS One-to-Many 辅助头对正样本置信度与 mAP 的真实增益
+# 基线对照: 完全对齐 Sovereign V30 (CSSP + ABC) 的初始条件
+#   - 起始底模: sovereign_v29_alltime_peak_c5_5756.pth (与 V30 完全一致)
+#   - 分辨率: 1440 x 2560 (2.5K 超清，与 V30 完全一致)
+#   - 随机种子: seed=42 (保证数据读取顺序与增广完全相同)
+#   - 唯一样本变量: use_co_aux: True (挂载 Co-ATSS One-to-Many 辅助头)
+#   - 轮次: 2 轮快速对比探针 (对比 V30 Epoch 0 与 Epoch 1/2 指标)
+# =============================================================================
+
+__include__: [
+  './sovereign_v30_cssp_v29peak_2560.yml',
+]
+
+output_dir: ./outputs/sovereign_v31_ablation_probe_2560
+
+DEIM:
+  use_co_aux: True                 # ★ 唯一变量：激活 One-to-Many 辅助密集监督
+  co_aux_loss_weight_cls: 1.0      # 辅助分类 Focal Loss 权重
+  co_aux_loss_weight_reg: 2.0      # 辅助回归 GIoU Loss 权重
+
+DEIMCriterion:
+  weight_dict:
+    loss_co_cls: 1.0
+    loss_co_reg: 2.0
+    loss_cmal: 0.5
+    loss_tadl: 2.0
+    loss_bbox: 5.0
+    loss_giou: 3.5
+    loss_fgl: 0.25
+    loss_ddf: 1.5
+
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*backbone.rgb_net)(?!.*norm).*$'
+      lr: 0.0000005                # 骨干平滑锁定 5e-7
+    -
+      params: '^(?=.*cssp_shallow).*$'
+      lr: 0.0001                   # 浅层特征平稳维护 1e-4
+    -
+      params: '^(?=.*co_aux_head).*$'
+      lr: 0.0001                   # Co-Aux 辅助头以 1e-4 快速适应密集梯度
+    -
+      params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.
+  lr: 0.000008                     # 主干平滑退火 8e-6
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+epoches: 2                         # 严格 2 轮快速对照消融
+lrsheduler: flatcosine
+lr_gamma: 1
+warmup_iter: 20
+flat_epoch: 2
+no_aug_epoch: 2
+
+accum_steps: 2
+print_freq: 20
+checkpoint_freq: 1

@@ -1,0 +1,166 @@
+# =========================================================================
+# Stage C / joint fine-tune -- l4like 变体
+# 由 stageC_l4u3like.yml 派生 (2026-09-26), 模板改为 midboost_l4
+# =========================================================================
+__include__: [
+  '../dataset/aic_detection.yml',
+  '../runtime.yml',
+  '../base/dataloader.yml',
+  '../base/optimizer.yml',
+  '../base/deimv2.yml',
+]
+
+# =============================================================================
+# vitl800 stageC -- 对齐 midboost_l4 口径 (全档均值最优: 0.328 > l3 0.323 > l4u3 0.316)
+# -----------------------------------------------------------------------------
+# 相对 stageC_fuse 的改动 (基于 l4 原始 config 逐项核实):
+#   1. LLRD 平化: llrd_top_lr 2e-5 -> 3e-5, llrd_decay 0.85 -> 1.0
+#      代码在 unfreeze_rgb_stages>0 时必走 LLRD (multimodal_backbones.py:1254,
+#      无旁路), decay=1.0 即所有解冻块同 lr -> RGB 实际 lr = 3e-5 = l4 的平 lr
+#      (修正旧 run 的 8.87e-6)。
+#   2. unfreeze_rgb_stages: 6 -> 4 (l4 的 2/12 层等比外推到 24 层 = 4)
+#   3. RandomNight5ch 采样: L2 bands -> level [0.005, 0.45] 均匀 (= l4 原样)
+# 光度增强与 l4 相同 (l4 的"强光度" p0.8/0.6-1.4 与 ours 本来就一致, 已核实)。
+# 依据: 全档评测 l4 暗端最强 (n0005 0.157) 且全档均值最高;
+#       亮端比 l4u3 只低 0.2pt (0.535 vs 0.537), 在 ±2pt 噪声内。
+# 刻意保持: epochs 40 / flat 20 (等比缩短), batch 12 (800 显存),
+#           ir/depth drop 0.15 / input_norm instance / EMA (与 combo 一致)。
+# =============================================================================
+output_dir: ./outputs/vitl800_scratch_stageC_l4like
+
+# 覆盖 base/deimv2.yml 的 eval_spatial_size (默认 640)
+eval_spatial_size: [800, 800]
+
+freeze_bn: false
+accum_steps: 4          # micro=3, 有效 batch = 12
+use_ema: True
+
+DEIM:
+  backbone: DINOv3STAsRDTTrack
+
+DINOv3STAsRDTTrack:
+  name: dinov3_vitl16          # 更大 backbone (1024-dim, 24 层)
+  aux_name: dinov3_vits16plus  # 辅助流保持 384-dim, 由 1x1 proj 升维
+  weights_path: null           # aux/rgb 官方权重由 -t ckpts/dinov3/vitl16_rdttrack_scratch_full.pth 一次性加载
+  interaction_indexes: [11, 17, 23]
+  conv_inplane: 32
+  hidden_dim: 256
+  ir_drop_prob: 0.15
+  depth_drop_prob: 0.15
+  depth_in_chans: 1
+  ir_in_chans: 2
+  unfreeze_rgb_stages: 4       # l4 的 2/12 层等比外推到 24 层
+  # LLRD 平化: decay=1.0 -> 全部解冻块同 lr, 等价 l4 的平 lr 口径 (3e-5)
+  llrd_top_lr: 3.0e-5
+  llrd_decay: 1.0
+  input_norm: instance
+
+HybridEncoder:
+  in_channels: [256, 256, 256]
+  hidden_dim: 256
+  dim_feedforward: 1024
+  expansion: 1.25
+  depth_mult: 1.37
+
+DEIMTransformer:
+  feat_channels: [256, 256, 256]
+  hidden_dim: 256
+  num_layers: 6
+  eval_idx: -1
+  dim_feedforward: 2048
+
+epoches: 40
+lrsheduler: flatcosine
+lr_gamma: 0.5
+warmup_iter: 400
+flat_epoch: 20
+no_aug_epoch: 3
+
+## Optimizer -- yml 组沿用基线骨架; RGB 实际 lr 由上方 LLRD 平化接管 = 3e-5 (l4 口径)
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*.dinov3)(?!.*(?:ir_dinov3|depth_dinov3))(?!.*(?:norm|bn|bias)).*$'
+      lr: 0.0001
+    -
+      params: '^(?=.*.dinov3)(?!.*(?:ir_dinov3|depth_dinov3))(?=.*(?:norm|bn|bias)).*$'
+      lr: 0.0001
+      weight_decay: 0.
+    -
+      params: '^(?=.*(?:ir_dinov3|depth_dinov3))(?!.*(?:norm|bn|bias)).*$'
+      lr: 0.00015
+    -
+      params: '^(?=.*(?:ir_dinov3|depth_dinov3))(?=.*(?:norm|bn|bias)).*$'
+      lr: 0.00015
+      weight_decay: 0.
+    -
+      params: '^(?=.*(?:sta|encoder|decoder))(?=.*(?:norm|bn|bias)).*$'
+      weight_decay: 0.
+  lr: 0.0003
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+## Tri-modal dataset -- night 采样 = l4 均匀档 level [0.005, 0.45]
+train_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModalCached
+    cache_img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deepir_cache/train
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/images
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_heat/images
+    raw_ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_ir/images
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomPhotometricDistort5ch, p: 0.8, brightness: [0.6, 1.4], contrast: [0.5, 1.5], saturation: [0.5, 1.5], hue: [-0.1, 0.1]}
+        - {type: RandomZoomOut, fill: 0}
+        - {type: RandomIoUCrop, p: 0.8}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [800, 800]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomNight5ch, p: 0.5, level: [0.005, 0.45], photon_max: 70.0, read_sigma: 0.012, log_level: true, lamps: [1, 4]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: True
+  num_workers: 4
+  drop_last: True
+  total_batch_size: 12
+
+  collate_fn:
+    type: BatchImageCollateFunction
+    mixup_epochs: [4, 34]
+    stop_epoch: 60
+    copyblend_epochs: [4, 60]
+    base_size_repeat: 1
+
+val_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/images
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_heat/valid
+    raw_ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_ir/valid
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [800, 800]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: False
+  num_workers: 4
+  drop_last: False
+  total_batch_size: 4
+
+DEIMCriterion:
+  matcher:
+    matcher_change_epoch: 50

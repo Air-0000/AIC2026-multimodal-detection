@@ -11,9 +11,24 @@ Copyright (c) 2023 lyuwenyu. All Rights Reserved.
 
 import os
 import sys
+_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../..'))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+sys.path.insert(0, os.path.join(_root, 'scripts/lib'))
+sys.path.insert(0, os.path.join(_root, 'vendor/Depth-Anything-V2'))
 
 import argparse
+import torch
+import torch.multiprocessing as mp
+try:
+    mp.set_sharing_strategy('file_system')
+except Exception:
+    pass
+
+# Hardware performance acceleration flags
+if torch.cuda.is_available():
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+    torch.backends.cudnn.benchmark = False
 
 from engine.misc import dist_utils
 from engine.core import YAMLConfig, yaml_utils
@@ -44,8 +59,9 @@ def main(args, ) -> None:
     cfg = YAMLConfig(args.config, **update_dict)
 
     if args.resume or args.tuning:
-        if 'HGNetv2' in cfg.yaml_cfg:
-            cfg.yaml_cfg['HGNetv2']['pretrained'] = False
+        for bb_name in ['HGNetv2', 'HGNetv2MultiModal', 'HGNetv2ViTDualStream']:
+            if bb_name in cfg.yaml_cfg:
+                cfg.yaml_cfg[bb_name]['pretrained'] = False
 
     print('cfg: ', cfg.__dict__)
 

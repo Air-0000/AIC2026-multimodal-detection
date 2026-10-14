@@ -1,0 +1,70 @@
+# =============================================================================
+# Sovereign V32: Physical Inductive Bias & Modality Grounding (PIG)
+# 硬件平台: 实验室科研服务器 ailab40 (Tesla V100 32GB, GPU 1)
+# 机制:
+#   1. 承接 Sovereign V31 Production Peak (mAP 0.5729 / AP50 85.93%) 作为底模
+#   2. 激活 Physical Inductive Gating (PIG): 局域热辐射差分 (Delta T) 与 3D 深度共面性残差
+#   3. 激活 Physical Consistency Loss: 严厉惩罚冷背景假冒 UAV 行为 (解决 00000029 海报误检)
+#   4. 热力充足性正向激活: 为具备高饱和电机/电池热斑的目标提供置信度增益 (拯救 00000020 地面白机)
+#   5. 保持 Co-ATSS 一对多密集辅助监督头与 2.5K 超清原生尺度 (1440 x 2560)
+#   6. 物理层严格零初始化 (Zero-Init): 初始步损失零扰动平滑热启动
+#   7. 8 轮平滑余弦退火 (flat_epoch: 2, lr_gamma: 0.15) 锁死终极收敛点
+# =============================================================================
+
+__include__: [
+  './sovereign_v31_production_full8ep_2560.yml',
+]
+
+output_dir: ./outputs/sovereign_v32_physics_grounded_2560
+
+DEIM:
+  use_physics_grounding: True          # ★ 核心激活：热力辐射与空间几何物理归纳偏置
+  physics_loss_weight: 2.0             # 物理矛盾与冷目标惩罚权重
+  use_co_aux: True                     # 协同激活：One-to-Many 辅助密集监督
+  co_aux_loss_weight_cls: 1.0
+  co_aux_loss_weight_reg: 2.0
+
+DEIMCriterion:
+  weight_dict:
+    loss_physics: 1.0                  # 物理一致性损失权重
+    loss_co_cls: 1.0
+    loss_co_reg: 2.0
+    loss_cmal: 0.5
+    loss_tadl: 2.0
+    loss_bbox: 5.0
+    loss_giou: 3.5
+    loss_fgl: 0.25
+    loss_ddf: 1.5
+
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*backbone.rgb_net)(?!.*norm).*$'
+      lr: 0.0000005                    # 骨干平滑锁定 5e-7
+    -
+      params: '^(?=.*cssp_shallow).*$'
+      lr: 0.00005                      # 浅层特征平稳维护 5e-5
+    -
+      params: '^(?=.*co_aux_head).*$'
+      lr: 0.0001                       # Co-Aux 辅助头以 1e-4 适应密集梯度
+    -
+      params: '^(?=.*physics_gating).*$'
+      lr: 0.0001                       # ★ 核心激活：物理归纳偏置调制器以 1e-4 快速自适应物理约束
+    -
+      params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.
+  lr: 0.000008                         # 主干平滑退火 8e-6
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+epoches: 8
+lrsheduler: flatcosine
+lr_gamma: 0.15                         # 退火衰减系数：从 8e-6 平滑退火至 1.2e-6
+warmup_iter: 20
+flat_epoch: 2                          # 前 2 轮保持初始平稳学习率
+no_aug_epoch: 0                        # 允许余弦平滑退火延伸至最后一轮
+
+accum_steps: 2
+print_freq: 20
+checkpoint_freq: 1

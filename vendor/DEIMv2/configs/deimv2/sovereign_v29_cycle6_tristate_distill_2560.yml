@@ -1,0 +1,62 @@
+# =============================================================================
+# Sovereign V29 Cycle 6: 2.5K (1440 x 2560) 三态联合一致性学习 (Tri-State Consistency)
+# 硬件平台: 实验室科研服务器 ailab40 (Tesla V100 32GB, GPU 1)
+# 创新机制:
+#   1. 三态联合照度一致性流 (RandomTriStateIllumination):
+#      - 态 1 (白天原态, ~40%): 保持纯净白昼细粒度色彩与高频几何先验;
+#      - 态 2 (物理夜化, ~30%): DNDT 照度衰减+散粒噪声+车灯光斑，逼迫网络全面回退依赖 IR 与 Depth;
+#      - 态 3 (黑白提亮, ~30%): 对暗夜图做 Gamma 暗部抬升与照度对齐，学习在被放大的弱光噪点中抓取真实边界。
+#   2. 前 4 轮 (Epoch 0~3) 密集激发三态自适应特征对齐与 DINOv3 教师知识蒸馏。
+#   3. 末 2 轮 (Epoch 4~5) 自动关停三态扰动 (stop_epoch: 4)，无偏收敛至 2.5K 超清极值。
+# =============================================================================
+
+__include__: [
+  './sovereign_v29_cycle2_stage1_distill.yml',
+]
+
+task: detection
+eval_spatial_size: [1440, 2560]
+
+accum_steps: 2
+print_freq: 20
+
+train_dataloader:
+  total_batch_size: 2
+  num_workers: 6
+  persistent_workers: True
+  pin_memory: True
+  dataset:
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomTriStateIllumination, p: 0.6, bright_range: [0.01, 0.35], boost_ratio: 0.5, gamma: 0.7, target_mean: 0.45}
+        - {type: RandomPhotometricDistort5ch, p: 0.5, brightness: [0.8, 1.2], contrast: [0.8, 1.2], saturation: [0.8, 1.2], hue: [-0.05, 0.05]}
+        - {type: RandomZoomOut, fill: 0}
+        - {type: RandomIoUCrop, p: 0.8}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [1440, 2560]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+      policy:
+        name: stop_epoch
+        epoch: 4
+        ops: ['RandomTriStateIllumination', 'RandomPhotometricDistort5ch', 'RandomZoomOut', 'RandomIoUCrop']
+  collate_fn:
+    type: BatchImageCollateFunction
+    base_size: 2560
+    base_size_repeat: ~
+    stop_epoch: 4
+
+val_dataloader:
+  total_batch_size: 2
+  num_workers: 4
+  drop_last: False
+  dataset:
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [1440, 2560]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}

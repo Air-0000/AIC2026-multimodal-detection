@@ -1,0 +1,9 @@
+# =============================================================================
+# DEIM-D-FINE-X AIC 验证配置 (puremal + giou35)
+# =============================================================================
+__include__: [
+  'deim_hgnetv2_x_aic_puremal_giou35.yml',
+  '../dataset/aic_detection.yml',
+]
+
+output_dir: ./outputs/deim_hgnetv2_x_aic_puremal_giou35_val_orig

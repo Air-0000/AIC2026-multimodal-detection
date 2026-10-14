@@ -1,0 +1,157 @@
+__include__: [
+  '../dataset/aic_detection.yml',
+  '../runtime.yml',
+  '../base/dataloader.yml',
+  '../base/optimizer.yml',
+  '../base/deimv2.yml',
+]
+
+# =============================================================================
+# 方案 A — 整体迁移到 DEIMv2-X 全栈 + RDTTrack 三流 + night 增强
+# -----------------------------------------------------------------------------
+# 目标: 用 DEIMv2-X (HuggingFace Intellindust/DEIMv2_DINOv3_X_COCO, 50.3M 参数)
+#       的 256 维全栈作为更强起点, 叠加 RDTTrack 的 "结合 x" 分支 + RandomNight5ch。
+#
+# 关键事实 (已核对代码):
+#  * DINOv3STAsRDTTrack 是「三流」架构: RGB 走 DinoVisionTransformer(name,
+#    in_chans=3) (纯 3ch DINOv3), IR/Depth 各走独立 ModalityStem, 再正交融合 +
+#    Fovea prompt 注入。它的 RGB 主干 *就是* 3ch DINOv3, 且 name 接受任意注册名
+#    (含 dinov3_vits16plus)。
+#  * DEIMv2-X 完整权重的 RGB 主干 = 3ch dinov3_vits16plus, 与上面 rgb_dinov3 同构
+#    -> 直接重映射 backbone.dinov3 -> backbone.rgb_dinov3 即可初始化 RGB 主干。
+#  * "结合 x" = RDTTrack 的 IR/Depth 独立 stem + 正交融合 + Fovea prompt (本配置保留)。
+#  * 维度: 原 ufall 是 hidden_dim 224; 本配置升到 256 (匹配 DEIMv2-X);
+#    neck/head 用 X 级放大 (expansion 1.25, depth_mult 1.37, num_layers 6,
+#    dim_feedforward 2048, 见 deimv2_dinov3_x_coco.yml)。
+#
+# 权重初始化 (二选一):
+#  (全量) 先跑 prepare_x_for_rdttrack.py 把完整 X 权重转成
+#         deimv2_x_for_rdttrack.pth (重映射 rgb_dinov3 + 保留 encoder/decoder), 再
+#         train.py -c <本配置> -r deimv2_x_for_rdttrack.pth
+#         (IR/Depth stem/prompt/sta 不在 X 权重中 -> strict=False 随机初始化)。
+#  (仅 RGB 主干) 直接把 weights_path 指向完整 X 权重: DINOv3STAsRDTTrack.__init__
+#         里的 _load_dinov3_sd() 会自动提取 backbone.dinov3.* 初始化 RGB 主干,
+#         neck/head 从头训。
+# =============================================================================
+output_dir: ./outputs/deimv2_dinov3_l_aic_rdttrack_heat_night_log_rnight_ufall_x
+
+freeze_bn: false              # BN train模式(近黑输入下 freeze_bn 用COCO统计量归一化会失配→NaN, 保持 train 模式)
+accum_steps: 1               # 平时配置: 不累积, 直接 bs8
+use_ema: True                # 平时配置: 开 EMA (提升 val mAP)
+
+DEIM:
+  backbone: DINOv3STAsRDTTrack
+
+DINOv3STAsRDTTrack:
+  name: dinov3_vits16plus
+  weights_path: null            # RGB 主干由 resume (DEIMv2-X) 初始化; 见上方说明
+  interaction_indexes: [5, 8, 11]
+  conv_inplane: 32
+  hidden_dim: 256               # 方案A: 224 -> 256 (匹配 DEIMv2-X)
+  ir_drop_prob: 0.15
+  depth_drop_prob: 0.15
+  unfreeze_rgb_stages: 2        # 平时配置: 解冻后2个stage (X主干COCO强预训练, 解冻少量stage精细适配)
+  input_norm: instance
+
+HybridEncoder:
+  in_channels: [256, 256, 256]
+  hidden_dim: 256
+  dim_feedforward: 1024         # X 级 (原 ufall 896)
+  expansion: 1.25               # X 级 放大
+  depth_mult: 1.37              # X 级 放大
+
+DEIMTransformer:
+  feat_channels: [256, 256, 256]
+  hidden_dim: 256
+  num_layers: 6                 # X 级 (原 ufall 4)
+  eval_idx: -1
+  dim_feedforward: 2048         # X 级 (原 ufall 1792)
+
+## DEIM LR-Scheduler -- 沿用 ufall
+epoches: 68
+lrsheduler: flatcosine
+lr_gamma: 0.5
+warmup_iter: 2000
+flat_epoch: 34
+no_aug_epoch: 8
+
+## Optimizer -- backbone LR 5e-5 (unfrozen blocks 需真正移动)
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*.dinov3)(?!.*(?:norm|bn|bias)).*$'
+      lr: 0.00005
+    -
+      params: '^(?=.*.dinov3)(?=.*(?:norm|bn|bias)).*$'
+      lr: 0.00005
+      weight_decay: 0.
+    -
+      params: '^(?=.*(?:sta|encoder|decoder))(?=.*(?:norm|bn|bias)).*$'
+      weight_decay: 0.
+
+  lr: 0.0005
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+## Tri-modal dataset: RGB(3) + IR(heat residual)(1) + Depth(1) = 5 channels.
+train_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/images
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_heat/images
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 5
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomPhotometricDistort5ch, p: 0.5}
+        - {type: RandomZoomOut, fill: 0}
+        - {type: RandomIoUCrop, p: 0.8}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [640, 640]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomNight5ch, p: 0.5, level: [0.005, 0.80], photon_max: 70.0, read_sigma: 0.012, log_level: true, lamps: [1, 4]}  # floor 0.05->0.005: cover near-black test (night005=0.005) in-distribution
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: True
+  num_workers: 8
+  drop_last: True
+  total_batch_size: 8
+
+  collate_fn:
+    type: BatchImageCollateFunction
+    mixup_epochs: [4, 34]
+    stop_epoch: 60
+    copyblend_epochs: [4, 60]
+    base_size_repeat: 3         # 平时配置: multi-scale 训练 (640~800)
+
+val_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/images
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_heat/valid
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    n_channels: 5
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [640, 640]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: False
+  num_workers: 4
+  drop_last: False
+  total_batch_size: 4
+
+## DEIM Loss
+DEIMCriterion:
+  matcher:
+    matcher_change_epoch: 50

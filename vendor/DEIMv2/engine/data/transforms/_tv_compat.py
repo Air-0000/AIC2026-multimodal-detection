@@ -18,8 +18,10 @@ import torchvision.transforms.v2 as _T
 
 
 def _patch() -> None:
+    if not hasattr(_T.Transform, "transform"):
+        return
     _orig_transform = _T.Transform.transform
-    _orig_make_params = _T.Transform.make_params
+    _orig_make_params = getattr(_T.Transform, "make_params", None)
 
     def _compat_transform(self, inpt, params):
         # Prefer the OLD ``_transform`` hook if the subclass defines one (DEIMv2

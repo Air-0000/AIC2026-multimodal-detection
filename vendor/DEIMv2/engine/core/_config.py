@@ -68,6 +68,8 @@ class BaseConfig(object):
         self.ema_decay :float = 0.9999
         self.ema_warmups: int = 2000
         self.sync_bn :bool = False
+        self.freeze_bn :bool = False
+        self.accum_steps :int = 1
         self.clip_max_norm : float = 0.
         self.find_unused_parameters :bool = None
 

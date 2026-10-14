@@ -76,6 +76,47 @@ class CocoEvaluator(object):
         for iou_type, coco_eval in self.coco_eval.items():
             print("IoU metric: {}".format(iou_type))
             coco_eval.summarize()
+            self._summarize_per_category(iou_type, coco_eval)
+
+    def _summarize_per_category(self, iou_type, coco_eval):
+        """Print per-class AP (area=all, maxDets=100) on top of the aggregate
+        summary.
+
+        Needed to see *which* classes actually collapse under a domain shift
+        (day-trained model evaluated at night / OOD): the aggregate AP hides
+        whether a drop comes from every class degrading a little or a few
+        classes failing outright. Fully guarded -- any failure here degrades to
+        a warning and never affects the standard summary above.
+        """
+        try:
+            res = getattr(coco_eval, "eval", None)
+            prec = None if res is None else res.get("precision")
+            if prec is None or len(prec) == 0:
+                return
+            cat_ids = list(coco_eval.params.catIds)
+            names = {}
+            try:
+                names = {c["id"]: c.get("name", str(c["id"]))
+                         for c in self.coco_gt.dataset.get("categories", [])}
+            except Exception:
+                pass
+            if not names:
+                try:
+                    names = {k: v.get("name", str(k)) for k, v in self.coco_gt.cats.items()}
+                except Exception:
+                    names = {}
+            print("  per-category (area=all, maxDets=100):")
+            for k, cid in enumerate(cat_ids[:prec.shape[2]]):
+                p_all = prec[:, :, k, 0, -1]        # [T,R]  IoU .50:.95, area=all
+                p_all = p_all[p_all > -1]
+                p50 = prec[0, :, k, 0, -1]          # IoU=0.50
+                p50 = p50[p50 > -1]
+                ap = float(np.mean(p_all)) if p_all.size else float("nan")
+                ap50 = float(np.mean(p50)) if p50.size else float("nan")
+                print("    {:<14} AP={:.4f} AP50={:.4f}".format(
+                    names.get(cid, str(cid)), ap, ap50))
+        except Exception as e:   # never break a run because of the extra stats
+            print("  [per-category] skipped:", repr(e))
 
     def prepare(self, predictions, iou_type):
         if iou_type == "bbox":
@@ -98,17 +139,18 @@ class CocoEvaluator(object):
             scores = prediction["scores"].tolist()
             labels = prediction["labels"].tolist()
 
-            coco_results.extend(
-                [
-                    {
-                        "image_id": original_id,
-                        "category_id": labels[k],
-                        "bbox": box,
-                        "score": scores[k],
-                    }
-                    for k, box in enumerate(boxes)
-                ]
-            )
+            for k, box in enumerate(boxes):
+                score_val = float(scores[k])
+                if np.isnan(score_val) or np.isinf(score_val):
+                    continue
+                if any(np.isnan(b) or np.isinf(b) for b in box):
+                    continue
+                coco_results.append({
+                    "image_id": original_id,
+                    "category_id": labels[k],
+                    "bbox": box,
+                    "score": score_val,
+                })
         return coco_results
 
     def prepare_for_coco_segmentation(self, predictions):

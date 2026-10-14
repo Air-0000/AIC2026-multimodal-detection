@@ -10,9 +10,11 @@ from . import _tv_compat  # noqa: F401
 from ._transforms import (
     EmptyTransform,
     RandomPhotometricDistort,
+    RandomPhotometricDistort5ch,
     RandomZoomOut,
     RandomIoUCrop,
     RandomHorizontalFlip,
+    RandomAffine,
     Resize,
     PadToSize,
     SanitizeBoundingBoxes,
@@ -20,6 +22,10 @@ from ._transforms import (
     Normalize,
     ConvertBoxes,
     ConvertPILImage,
+    RandomRGBDegrade5ch,
+    RandomNight5ch,
+    RandomModalityFailure,
+    RandomTriStateIllumination,
 )
 from .container import Compose
 from .mosaic import Mosaic

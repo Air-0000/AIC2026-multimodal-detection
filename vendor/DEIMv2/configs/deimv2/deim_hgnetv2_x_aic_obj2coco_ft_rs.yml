@@ -1,0 +1,20 @@
+# =============================================================================
+# DEIM-D-FINE-X (HGNetv2-B5) AIC 单阶段微调 -- Rank & Sort Loss 实验
+# -----------------------------------------------------------------------------
+# 目的: 直接优化 AP 相关的排序 (TP 必须排在 FP 之上 + 正样本按 IoU 排序),
+#       针对 sign TP 分数地板 0.062 / 2161 个 FP 分数压过 TP 的失败模式。
+# 实现: engine/deim/deim_criterion.py::loss_labels_rs (RS Loss ICCV2021 的
+#       DETR sigmoid 适配: pos=匹配query的指定类分数, neg=未匹配query的max通道)。
+# 权重: loss_rs 0.02 -- 真实量级模拟 (B4/Q300/nb30) RS=71.9 vs MAL=1.5, 0.02 对齐。
+# 对照: deim_hgnetv2_x_aic_obj2coco_ft_dcn.yml (loss_mal→loss_rs 之外的差异仅权重标定)
+# =============================================================================
+__include__: [
+  'deim_hgnetv2_x_aic_obj2coco_ft_dcn.yml',
+]
+
+output_dir: ./outputs/deim_hgnetv2_x_aic_obj2coco_ft_rs
+
+DEIMCriterion:
+  losses: ['rs', 'boxes', 'local']
+  weight_dict:
+    loss_rs: 0.02

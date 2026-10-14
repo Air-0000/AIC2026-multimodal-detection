@@ -1,0 +1,151 @@
+__include__: [
+  '../dataset/aic_detection.yml',
+  '../runtime.yml',
+  '../base/dataloader.yml',
+  '../base/optimizer.yml',
+  '../base/deimv2.yml',
+]
+
+# =============================================================================
+# 方案 A-X-deepir -- MID-BOOST 微调变体
+# -----------------------------------------------------------------------------
+# 动机(实测): 方向1「亮度自适应 aux 门控」证伪 —— deepir 中段 mAP 几乎全由
+# RGB 流决定, aux(prompt) 注入在中段贡献 <=0.01, 调 aux 权重填不平与 ufall 的
+# 中段缺口。缺口根因 = deepir 的 RGB 流本身在中段(night12~night01)弱于 ufall。
+# 本变体: 把 RandomNight5ch 的亮度采样聚焦中段 [0.005,0.45] (log-uniform,
+# 中段过采样), 低 LR 微调 best_stg2, 让 RGB 流 + 融合学会中段正确组合,
+# 同时保留极暗样本([0.005])避免暗端退化。
+# =============================================================================
+output_dir: ./outputs/deimv2_dinov3_l_aic_rdttrack_heat_night_log_rnight_ufall_x_deepir_midboost
+
+freeze_bn: false
+accum_steps: 2
+use_ema: True
+
+DEIM:
+  backbone: DINOv3STAsRDTTrack
+
+DINOv3STAsRDTTrack:
+  name: dinov3_vits16plus
+  weights_path: null
+  interaction_indexes: [5, 8, 11]
+  conv_inplane: 32
+  hidden_dim: 256
+  ir_drop_prob: 0.15
+  depth_drop_prob: 0.15
+  depth_in_chans: 1
+  ir_in_chans: 2
+  unfreeze_rgb_stages: 2
+  input_norm: instance
+
+HybridEncoder:
+  in_channels: [256, 256, 256]
+  hidden_dim: 256
+  dim_feedforward: 1024
+  expansion: 1.25
+  depth_mult: 1.37
+
+DEIMTransformer:
+  feat_channels: [256, 256, 256]
+  hidden_dim: 256
+  num_layers: 6
+  eval_idx: -1
+  dim_feedforward: 2048
+
+## DEIM LR-Scheduler
+epoches: 18
+lrsheduler: flatcosine
+lr_gamma: 0.5
+warmup_iter: 400
+flat_epoch: 9
+no_aug_epoch: 2
+
+## Optimizer (low LR fine-tune of best_stg2)
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*.dinov3)(?!.*(?:ir_dinov3|depth_dinov3))(?!.*(?:norm|bn|bias)).*$'
+      lr: 0.00003
+    -
+      params: '^(?=.*.dinov3)(?!.*(?:ir_dinov3|depth_dinov3))(?=.*(?:norm|bn|bias)).*$'
+      lr: 0.00003
+      weight_decay: 0.
+    -
+      params: '^(?=.*(?:ir_dinov3|depth_dinov3))(?!.*(?:norm|bn|bias)).*$'
+      lr: 0.00015
+    -
+      params: '^(?=.*(?:ir_dinov3|depth_dinov3))(?=.*(?:norm|bn|bias)).*$'
+      lr: 0.00015
+      weight_decay: 0.
+    -
+      params: '^(?=.*(?:sta|encoder|decoder))(?=.*(?:norm|bn|bias)).*$'
+      weight_decay: 0.
+  lr: 0.0003
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+## Tri-modal dataset: RGB(3) + IR heat(1) + IR raw(1) + Depth(1) = 6 channels.
+train_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModalCached
+    cache_img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deepir_cache/train
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/images
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_heat/images
+    raw_ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_ir/images
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomPhotometricDistort5ch, p: 0.5}
+        - {type: RandomZoomOut, fill: 0}
+        - {type: RandomIoUCrop, p: 0.8}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [640, 640]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomNight5ch, p: 0.5, level: [0.005, 0.45], photon_max: 70.0, read_sigma: 0.012, log_level: true, lamps: [1, 4]}  # mid-boost: focus sampling on night12~night01 band
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: True
+  num_workers: 8
+  drop_last: True
+  total_batch_size: 10
+
+  collate_fn:
+    type: BatchImageCollateFunction
+    mixup_epochs: [4, 34]
+    stop_epoch: 60
+    copyblend_epochs: [4, 60]
+    base_size_repeat: 1
+
+val_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/images
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_heat/valid
+    raw_ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_ir/valid
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [640, 640]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: False
+  num_workers: 4
+  drop_last: False
+  total_batch_size: 4
+
+## DEIM Loss
+DEIMCriterion:
+  matcher:
+    matcher_change_epoch: 50

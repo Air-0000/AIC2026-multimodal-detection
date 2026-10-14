@@ -1,0 +1,79 @@
+# =============================================================================
+# Sovereign V30: CSSP + ABC on Sovereign V29 Cycle 5 Peak (58.08% / UAV 100%)
+# 硬件平台: 实验室科研服务器 ailab40 (Tesla V100-SXM2 32GB)
+# 底模基座: outputs/champions/sovereign_v29_alltime_peak_c5_5756.pth (历史最高巅峰)
+# 核心使命:
+#   1. 锁定 V29 巅峰特征: 骨干主干 5e-7，解码器 8e-6 极微扰动平滑退火
+#   2. 专项激活 CSSP + ABC 浅层多模态显著性模块 (lr 1e-4, 30.24k 参数)
+#   3. 2.5K 极致超清空间尺度 (1440 x 2560): 空中微小无人机亚像素级锐化
+#   4. 8 轮纯净无偏退火，打破一切既往记录！
+# =============================================================================
+
+__include__: [
+  './sovereign_v29_highres2560_anneal.yml',
+]
+
+output_dir: ./outputs/sovereign_v30_cssp_v29peak_2560
+
+HGNetv2MultiModal:
+  use_cssp: True          # ★ 核心激活：Cascaded Spectral-Spatial Perception + ABC 显著性模块
+
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*backbone.rgb_net)(?!.*norm).*$'
+      lr: 0.0000005       # 骨干稳定锁定 5e-7，绝不漂移
+    -
+      params: '^(?=.*cssp_shallow).*$'
+      lr: 0.0001          # ★ 核心：CSSP + ABC 模块独立高学习率 1e-4 专项激活
+    -
+      params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.
+  lr: 0.000008            # 全局超低平滑退火 8e-6
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+epoches: 8
+lrsheduler: flatcosine
+lr_gamma: 1
+warmup_iter: 20
+flat_epoch: 4
+no_aug_epoch: 8           # 全程关停增广，纯净特征吸附
+
+accum_steps: 2
+print_freq: 20
+checkpoint_freq: 2
+
+train_dataloader:
+  total_batch_size: 2
+  num_workers: 4
+  persistent_workers: True
+  pin_memory: True
+  prefetch_factor: 2
+  dataset:
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [1440, 2560]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  collate_fn:
+    type: BatchImageCollateFunction
+    base_size: 2560
+    base_size_repeat: ~
+    stop_epoch: 0
+
+val_dataloader:
+  total_batch_size: 2
+  num_workers: 4
+  drop_last: False
+  dataset:
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [1440, 2560]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}

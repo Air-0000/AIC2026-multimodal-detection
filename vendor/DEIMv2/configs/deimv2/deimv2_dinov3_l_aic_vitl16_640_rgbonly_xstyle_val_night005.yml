@@ -1,0 +1,160 @@
+__include__: [
+  '../dataset/aic_detection.yml',
+  '../runtime.yml',
+  '../base/dataloader.yml',
+  '../base/optimizer.yml',
+  '../base/deimv2.yml',
+]
+
+# =============================================================================
+# vitl16 RGB-only · 官方 DEIMv2-X 配方移植版 (2026-09-26)
+# -----------------------------------------------------------------------------
+# 背景: 官方 Model Zoo 没有 DINOv3 ViT-L 档 —— L/X 是规格名, backbone 最大到
+#   DINOv3-S+ (dinov3_vits16plus, 12层384d)。X 的「配方」照抄, backbone 换 ViT-L:
+#
+# 抄自 deimv2_dinov3_x_coco.yml (+ base/deimv2.yml 默认):
+#   - 主干【全解冻】平 lr 1e-5 (官方 finetune:True, 无 LLRD; 这里用
+#     unfreeze_rgb_stages:24 + llrd_decay:1.0 等价实现)
+#   - 头部 lr 5e-4 (官方 X; l4like 是 3e-4)
+#   - 调度 58ep / flat 29 / no_aug 8 (base/deimv2.yml 默认; X 未覆盖)
+#   - collate 节奏 mixup[4,29] / stop 50 / copyblend[4,50]; matcher_change 45
+#   - warmup_iter 2000 是 COCO 口径(1848 iter/ep≈1.1ep); 本仓 180 iter/ep,
+#     等比缩到 200 (=1.1ep)
+# 保留本仓口径 (与 rgbonly/l4like 对照可解释):
+#   - rgb_only: true 真单模态; input_norm: instance; conv_inplane 32 (X 用 64)
+#   - 6ch 数据管线 + night 均匀采样 [0.005,0.45] p0.5 (官方 Mosaic 为 3ch, 无
+#     多模态版, 不抄 dataloader)
+#   - 640 / micro2+accum5 / batch10; interaction [11,17,23] (ViT-L 索引)
+# 初始化: -t ckpts/dinov3/vitl16_rdttrack_scratch_full.pth (同 l4like)
+# ⚠ 风险: 全解冻 ViT-L ⇒ 可训 285M(主干)+头, AdamW 状态 +~2.3GB, micro2 可能
+#   OOM (16.3GB 卡); OOM 则 micro1+accum10 或退回 unfreeze 8 @1e-5。
+#   1800 张小数据全解冻有过拟合风险 —— 官方是 118k 张。
+# =============================================================================
+
+output_dir: ./outputs/vitl16_640_rgbonly_xstyle
+
+freeze_bn: false
+accum_steps: 5
+use_ema: True
+
+DEIM:
+  backbone: DINOv3STAsRDTTrack
+
+DINOv3STAsRDTTrack:
+  name: dinov3_vitl16
+  weights_path: null
+  interaction_indexes: [11, 17, 23]
+  conv_inplane: 32
+  hidden_dim: 256
+  # 真单模态: 不构建 IR/Depth 流 / dt_ort / prompt
+  rgb_only: true
+  # 官方 X: 全主干可训 + 平 lr 1e-5 (unfreeze 24 = ViT-L 全部 block)
+  unfreeze_rgb_stages: 24
+  llrd_top_lr: 1.0e-5
+  llrd_decay: 1.0
+  input_norm: instance
+
+HybridEncoder:
+  in_channels: [256, 256, 256]
+  hidden_dim: 256
+  dim_feedforward: 1024
+  expansion: 1.25
+  depth_mult: 1.37
+
+DEIMTransformer:
+  feat_channels: [256, 256, 256]
+  hidden_dim: 256
+  num_layers: 6
+  eval_idx: -1
+  dim_feedforward: 2048
+
+## DEIM LR-Scheduler (官方 base/deimv2.yml 默认, X 未覆盖)
+epoches: 58
+lrsheduler: flatcosine
+lr_gamma: 0.5
+warmup_iter: 200
+flat_epoch: 29
+no_aug_epoch: 8
+
+## Optimizer (官方 X: dinov3 平 1e-5, 头部 5e-4)
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*.dinov3)(?!.*(?:ir_dinov3|depth_dinov3))(?!.*(?:norm|bn|bias)).*$'
+      lr: 0.00001
+    -
+      params: '^(?=.*.dinov3)(?!.*(?:ir_dinov3|depth_dinov3))(?=.*(?:norm|bn|bias)).*$'
+      lr: 0.00001
+      weight_decay: 0.
+    -
+      params: '^(?=.*(?:sta|encoder|decoder))(?=.*(?:norm|bn|bias)).*$'
+      weight_decay: 0.
+  lr: 0.0005
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+## Tri-modal dataset (6ch 管线不变; 官方 Mosaic 无多模态版, 不抄)
+train_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModalCached
+    cache_img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deepir_cache/train
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/images
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_heat/images
+    raw_ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_ir/images
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomPhotometricDistort5ch, p: 0.8, brightness: [0.6, 1.4], contrast: [0.5, 1.5], saturation: [0.5, 1.5], hue: [-0.1, 0.1]}
+        - {type: RandomZoomOut, fill: 0}
+        - {type: RandomIoUCrop, p: 0.8}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [640, 640]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomNight5ch, p: 0.5, level: [0.005, 0.45], photon_max: 70.0, read_sigma: 0.012, log_level: true, lamps: [1, 4]}  # same mid oversample as v1
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: True
+  num_workers: 8
+  drop_last: True
+  total_batch_size: 10
+
+  collate_fn:
+    type: BatchImageCollateFunction
+    mixup_epochs: [4, 29]
+    stop_epoch: 50
+    copyblend_epochs: [4, 50]
+    base_size_repeat: 1
+
+val_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/data_aux/aic_valid_rgb_night005
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_heat/valid
+    raw_ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_ir/valid
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [640, 640]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: False
+  num_workers: 4
+  drop_last: False
+  total_batch_size: 4
+
+## DEIM Loss
+DEIMCriterion:
+  matcher:
+    matcher_change_epoch: 45

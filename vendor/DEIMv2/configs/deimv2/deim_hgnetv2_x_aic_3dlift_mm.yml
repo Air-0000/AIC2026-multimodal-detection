@@ -1,0 +1,16 @@
+# =============================================================================
+# DEIM-D-FINE-X (HGNetv2-B5) AIC 多模态消融实验 -- 单测 2 (DCDA + 3D 物理坐标升维)
+# -----------------------------------------------------------------------------
+# 架构: HGNetv2-B5 (RGB) + ModalityStem (1ch IR) + DCDA (对齐) + 3D-Lift (坐标升维) + CSSA 融合
+# 唯一新增变量: use_3d_lift: True (基于 16-bit 真实深度 Z 反投影物理点云 (X,Y,Z)，注入几何位置场)
+# 基线起点: outputs/deim_hgnetv2_x_aic_dcda_mm/best_stg2.pth (锁定 0.5490 AP)
+# =============================================================================
+__include__: [
+  'deim_hgnetv2_x_aic_base_mm.yml',
+]
+
+output_dir: ./outputs/deim_hgnetv2_x_aic_3dlift_mm
+
+HGNetv2MultiModal:
+  use_dcda: True         # 固化 DCDA 视差对齐模块
+  use_3d_lift: True      # 单测 2: 启用 3D 物理空间坐标升维

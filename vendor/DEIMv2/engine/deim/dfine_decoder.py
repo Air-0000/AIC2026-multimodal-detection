@@ -21,6 +21,7 @@ from .dfine_utils import weighting_function, distance2bbox
 from .denoising import get_contrastive_denoising_training_group
 from .utils import deformable_attention_core_func_v2, get_activation, inverse_sigmoid
 from .utils import bias_init_with_prob
+from .sovereign_v6_modules import DeformableInteractiveAttentionModule
 from ..core import register
 
 __all__ = ['DFINETransformer']
@@ -49,6 +50,7 @@ class MSDeformableAttention(nn.Module):
         num_points=4,
         method='default',
         offset_scale=0.5,
+        use_diam=False,
     ):
         """Multi-Scale Deformable Attention
         """
@@ -57,6 +59,7 @@ class MSDeformableAttention(nn.Module):
         self.num_heads = num_heads
         self.num_levels = num_levels
         self.offset_scale = offset_scale
+        self.use_diam = use_diam
 
         if isinstance(num_points, list):
             assert len(num_points) == num_levels, ''
@@ -79,6 +82,10 @@ class MSDeformableAttention(nn.Module):
         self.attention_weights = nn.Linear(embed_dim, self.total_points)
 
         self.ms_deformable_attn_core = functools.partial(deformable_attention_core_func_v2, method=self.method)
+        if use_diam:
+            self.diam = DeformableInteractiveAttentionModule(embed_dim, num_heads, sum(num_points_list))
+        else:
+            self.diam = None
 
         self._reset_parameters()
 
@@ -122,6 +129,8 @@ class MSDeformableAttention(nn.Module):
 
         sampling_offsets: torch.Tensor = self.sampling_offsets(query)
         sampling_offsets = sampling_offsets.reshape(bs, Len_q, self.num_heads, sum(self.num_points_list), 2)
+        if self.use_diam and self.diam is not None:
+            sampling_offsets = self.diam(query, reference_points, sampling_offsets)
 
         attention_weights = self.attention_weights(query).reshape(bs, Len_q, self.num_heads, sum(self.num_points_list))
         attention_weights = F.softmax(attention_weights, dim=-1)
@@ -134,7 +143,11 @@ class MSDeformableAttention(nn.Module):
             # reference_points [8, 480, None, 1,  4]
             # sampling_offsets [8, 480, 8,    12, 2]
             num_points_scale = self.num_points_scale.to(dtype=query.dtype).unsqueeze(-1)
-            offset = sampling_offsets * num_points_scale * reference_points[:, :, None, :, 2:] * self.offset_scale
+            box_wh = reference_points[:, :, None, :, 2:].clamp(min=1e-4)
+            offset = sampling_offsets * num_points_scale * box_wh * self.offset_scale
+            # Small object guard: prevent sampling offsets from drifting into distant dark background
+            max_radius = 1.5 * box_wh
+            offset = torch.clamp(offset, min=-max_radius, max=max_radius)
             sampling_locations = reference_points[:, :, None, :, :2] + offset
         else:
             raise ValueError(
@@ -156,7 +169,8 @@ class TransformerDecoderLayer(nn.Module):
                  n_levels=4,
                  n_points=4,
                  cross_attn_method='default',
-                 layer_scale=None):
+                 layer_scale=None,
+                 use_diam=False):
         super(TransformerDecoderLayer, self).__init__()
         if layer_scale is not None:
             dim_feedforward = round(layer_scale * dim_feedforward)
@@ -169,7 +183,7 @@ class TransformerDecoderLayer(nn.Module):
 
         # cross attention
         self.cross_attn = MSDeformableAttention(d_model, n_head, n_levels, n_points, \
-                                                method=cross_attn_method)
+                                                method=cross_attn_method, use_diam=use_diam)
         self.dropout2 = nn.Dropout(dropout)
 
         # gate
@@ -256,15 +270,42 @@ class Integral(nn.Module):
                        It can be adjusted based on the dataset or task requirements.
     """
 
-    def __init__(self, reg_max=32):
+    def __init__(self, reg_max=32, hidden_dim=256, use_snr_sharpen=False, alpha=0.5):
         super(Integral, self).__init__()
         self.reg_max = reg_max
+        self.use_snr_sharpen = use_snr_sharpen
+        self.alpha = alpha
 
-    def forward(self, x, project):
+        if self.use_snr_sharpen:
+            # SNR-Aware Boundary Distribution Sharpening Head
+            # Predicts per-edge temperature scaling tau_k for [left, top, right, bottom]
+            self.temp_head = nn.Sequential(
+                nn.Linear(hidden_dim, 64),
+                nn.ReLU(inplace=True),
+                nn.Linear(64, 4)
+            )
+            # Strict Zero-Init: at Step 0, temp_head outputs 0 -> tanh(0) = 0 -> tau = exp(0) = 1.000!
+            # 100.00% exact numerical match with pretrained weights at Step 0
+            nn.init.zeros_(self.temp_head[-1].weight)
+            nn.init.zeros_(self.temp_head[-1].bias)
+        else:
+            self.temp_head = None
+
+    def forward(self, x, project, query_feat=None):
         shape = x.shape
-        x = F.softmax(x.reshape(-1, self.reg_max + 1), dim=1)
-        x = F.linear(x, project.to(x.device)).reshape(-1, 4)
-        return x.reshape(list(shape[:-1]) + [-1])
+        if self.use_snr_sharpen and self.temp_head is not None and query_feat is not None and len(shape) == 3:
+            B, L, _ = shape
+            x_4d = x.reshape(B, L, 4, self.reg_max + 1)
+            raw_temp = self.temp_head(query_feat).unsqueeze(-1)  # [B, L, 4, 1]
+            tau = torch.exp(-self.alpha * torch.tanh(raw_temp))
+            prob = F.softmax(x_4d / tau, dim=-1)
+            prob = prob.reshape(-1, self.reg_max + 1)
+            out = F.linear(prob, project.to(x.device)).reshape(-1, 4)
+            return out.reshape(B, L, 4)
+        else:
+            x = F.softmax(x.reshape(-1, self.reg_max + 1), dim=1)
+            x = F.linear(x, project.to(x.device)).reshape(-1, 4)
+            return x.reshape(list(shape[:-1]) + [-1])
 
 
 class LQE(nn.Module):
@@ -374,7 +415,7 @@ class TransformerDecoder(nn.Module):
 
             # Refine bounding box corners using FDR, integrating previous layer's corrections
             pred_corners = bbox_head[i](output + output_detach) + pred_corners_undetach
-            inter_ref_bbox = distance2bbox(ref_points_initial, integral(pred_corners, project), reg_scale)
+            inter_ref_bbox = distance2bbox(ref_points_initial, integral(pred_corners, project, output + output_detach), reg_scale)
 
             if self.training or i == self.eval_idx:
                 scores = score_head[i](output)
@@ -389,6 +430,7 @@ class TransformerDecoder(nn.Module):
                     break
 
             pred_corners_undetach = pred_corners
+            inter_ref_bbox = torch.clamp(inter_ref_bbox, 1e-4, 1.0 - 1e-4)
             ref_points_detach = inter_ref_bbox.detach()
             output_detach = output.detach()
 
@@ -427,8 +469,15 @@ class DFINETransformer(nn.Module):
                  reg_scale=4.,
                  layer_scale=1,
                  mlp_act='relu',
+                 use_snr_sharpen=False,
+                 snr_sharpen_alpha=0.5,
+                 use_diam=False,
+                 use_sdqs=False,
                  ):
         super().__init__()
+        self.use_sdqs = use_sdqs
+        if use_sdqs:
+            print("[DFINETransformer] Spatial Diversity Query Selection (SDQS - Anti-Cluster 2D Local-Max): ON")
         assert len(feat_channels) <= num_levels
         assert len(feat_strides) == len(feat_channels)
 
@@ -447,6 +496,9 @@ class DFINETransformer(nn.Module):
         self.eval_spatial_size = eval_spatial_size
         self.aux_loss = aux_loss
         self.reg_max = reg_max
+        self.use_diam = use_diam
+        if use_diam:
+            print("[DFINETransformer] DIAM (Deformable Interactive Attention Module): ON (zero-init)")
 
         assert query_select_method in ('default', 'one2many', 'agnostic'), ''
         assert cross_attn_method in ('default', 'discrete'), ''
@@ -460,9 +512,9 @@ class DFINETransformer(nn.Module):
         self.up = nn.Parameter(torch.tensor([0.5]), requires_grad=False)
         self.reg_scale = nn.Parameter(torch.tensor([reg_scale]), requires_grad=False)
         decoder_layer = TransformerDecoderLayer(hidden_dim, nhead, dim_feedforward, dropout, \
-            activation, num_levels, num_points, cross_attn_method=cross_attn_method)
+            activation, num_levels, num_points, cross_attn_method=cross_attn_method, use_diam=use_diam)
         decoder_layer_wide = TransformerDecoderLayer(hidden_dim, nhead, dim_feedforward, dropout, \
-            activation, num_levels, num_points, cross_attn_method=cross_attn_method, layer_scale=layer_scale)
+            activation, num_levels, num_points, cross_attn_method=cross_attn_method, layer_scale=layer_scale, use_diam=use_diam)
         self.decoder = TransformerDecoder(hidden_dim, decoder_layer, decoder_layer_wide, num_layers, nhead,
                                           reg_max, self.reg_scale, self.up, eval_idx, layer_scale, act=activation)
       # denoising
@@ -504,7 +556,9 @@ class DFINETransformer(nn.Module):
         self.dec_bbox_head = nn.ModuleList(
             [MLP(hidden_dim, hidden_dim, 4 * (self.reg_max+1), 3, act=mlp_act) for _ in range(self.eval_idx + 1)]
           + [MLP(scaled_dim, scaled_dim, 4 * (self.reg_max+1), 3, act=mlp_act) for _ in range(num_layers - self.eval_idx - 1)])
-        self.integral = Integral(self.reg_max)
+        self.use_snr_sharpen = use_snr_sharpen
+        self.snr_sharpen_alpha = snr_sharpen_alpha
+        self.integral = Integral(self.reg_max, hidden_dim=hidden_dim, use_snr_sharpen=use_snr_sharpen, alpha=snr_sharpen_alpha)
 
         # init encoder output anchors and valid_mask
         if self.eval_spatial_size:
@@ -635,7 +689,7 @@ class DFINETransformer(nn.Module):
                            denoising_bbox_unact=None):
 
         # prepare input for decoder
-        if self.training or self.eval_spatial_size is None:
+        if self.training or self.eval_spatial_size is None or (hasattr(self, 'anchors') and self.anchors is not None and self.anchors.shape[1] != memory.shape[1]):
             anchors, valid_mask = self._generate_anchors(spatial_shapes, device=memory.device)
         else:
             anchors = self.anchors
@@ -649,9 +703,12 @@ class DFINETransformer(nn.Module):
         output_memory :torch.Tensor = self.enc_output(memory)
         enc_outputs_logits :torch.Tensor = self.enc_score_head(output_memory)
 
+        # Mask out padding/invalid border anchor tokens so topk selection strictly picks valid features
+        enc_outputs_logits = torch.where(valid_mask, enc_outputs_logits, -1e4)
+
         enc_topk_bboxes_list, enc_topk_logits_list = [], []
         enc_topk_memory, enc_topk_logits, enc_topk_anchors = \
-            self._select_topk(output_memory, enc_outputs_logits, anchors, self.num_queries)
+            self._select_topk(output_memory, enc_outputs_logits, anchors, self.num_queries, spatial_shapes)
 
         enc_topk_bbox_unact :torch.Tensor = self.enc_bbox_head(enc_topk_memory) + enc_topk_anchors
 
@@ -676,21 +733,69 @@ class DFINETransformer(nn.Module):
 
         return content, enc_topk_bbox_unact, enc_topk_bboxes_list, enc_topk_logits_list
 
-    def _select_topk(self, memory: torch.Tensor, outputs_logits: torch.Tensor, outputs_anchors_unact: torch.Tensor, topk: int):
+    def _select_topk(self, memory: torch.Tensor, outputs_logits: torch.Tensor, outputs_anchors_unact: torch.Tensor, topk: int, spatial_shapes=None):
+        total_len = outputs_logits.shape[1]
+        outputs_logits_clean = torch.nan_to_num(outputs_logits, nan=-10.0, posinf=10.0, neginf=-10.0)
         if self.query_select_method == 'default':
-            _, topk_ind = torch.topk(outputs_logits.max(-1).values, topk, dim=-1)
+            if spatial_shapes is not None and len(spatial_shapes) >= 2:
+                scores = outputs_logits_clean.max(-1).values
+                p3_len = spatial_shapes[0][0] * spatial_shapes[0][1]
+                p3_k = min(int(topk * 0.35), p3_len)
+                global_k = topk - p3_k
+
+                if getattr(self, 'use_sdqs', False):
+                    # Spatial Diversity Query Selection (SDQS):
+                    # Suppress spatial neighbors of local peaks using 2D max pooling
+                    H3, W3 = spatial_shapes[0]
+                    scores_p3_2d = scores[:, :p3_len].view(-1, 1, H3, W3)
+                    p3_max = F.max_pool2d(scores_p3_2d, kernel_size=5, stride=1, padding=2)
+                    p3_peaks = (scores_p3_2d >= (p3_max - 1e-4))
+                    scores_p3_filtered = torch.where(p3_peaks, scores_p3_2d, scores_p3_2d - 100.0).view(-1, p3_len)
+                    _, p3_topk_ind = torch.topk(scores_p3_filtered, p3_k, dim=-1)
+                    p3_topk_ind = p3_topk_ind.clamp(0, p3_len - 1)
+
+                    scores_masked = scores.clone()
+                    scores_masked.scatter_(1, p3_topk_ind, -1e4)
+
+                    # Also apply 2D local peak filter to P4 and P5
+                    cur_offset = p3_len
+                    for lvl in range(1, len(spatial_shapes)):
+                        H_lvl, W_lvl = spatial_shapes[lvl]
+                        lvl_len = H_lvl * W_lvl
+                        scores_lvl_2d = scores_masked[:, cur_offset:cur_offset + lvl_len].view(-1, 1, H_lvl, W_lvl)
+                        lvl_max = F.max_pool2d(scores_lvl_2d, kernel_size=3, stride=1, padding=1)
+                        lvl_peaks = (scores_lvl_2d >= (lvl_max - 1e-4))
+                        scores_lvl_filtered = torch.where(lvl_peaks, scores_lvl_2d, scores_lvl_2d - 100.0).view(-1, lvl_len)
+                        scores_masked[:, cur_offset:cur_offset + lvl_len] = scores_lvl_filtered
+                        cur_offset += lvl_len
+
+                    _, global_topk_ind = torch.topk(scores_masked, global_k, dim=-1)
+                    global_topk_ind = global_topk_ind.clamp(0, total_len - 1)
+                else:
+                    _, p3_topk_ind = torch.topk(scores[:, :p3_len], p3_k, dim=-1)
+                    p3_topk_ind = p3_topk_ind.clamp(0, p3_len - 1)
+                    scores_masked = scores.clone()
+                    scores_masked.scatter_(1, p3_topk_ind, -1e4)
+                    _, global_topk_ind = torch.topk(scores_masked, global_k, dim=-1)
+                    global_topk_ind = global_topk_ind.clamp(0, total_len - 1)
+
+                topk_ind = torch.cat([p3_topk_ind, global_topk_ind], dim=-1)
+            else:
+                _, topk_ind = torch.topk(outputs_logits_clean.max(-1).values, topk, dim=-1)
 
         elif self.query_select_method == 'one2many':
-            _, topk_ind = torch.topk(outputs_logits.flatten(1), topk, dim=-1)
+            _, topk_ind = torch.topk(outputs_logits_clean.flatten(1), topk, dim=-1)
             topk_ind = topk_ind // self.num_classes
 
         elif self.query_select_method == 'agnostic':
-            _, topk_ind = torch.topk(outputs_logits.squeeze(-1), topk, dim=-1)
+            _, topk_ind = torch.topk(outputs_logits_clean.squeeze(-1), topk, dim=-1)
 
         topk_ind: torch.Tensor
+        topk_ind = topk_ind.clamp(0, total_len - 1)
 
         topk_anchors = outputs_anchors_unact.gather(dim=1, \
             index=topk_ind.unsqueeze(-1).repeat(1, 1, outputs_anchors_unact.shape[-1]))
+        topk_anchors = torch.nan_to_num(topk_anchors, nan=0.0, posinf=5.0, neginf=-5.0)
 
         topk_logits = outputs_logits.gather(dim=1, \
             index=topk_ind.unsqueeze(-1).repeat(1, 1, outputs_logits.shape[-1])) if self.training else None
@@ -753,7 +858,7 @@ class DFINETransformer(nn.Module):
             out = {'pred_logits': out_logits[-1], 'pred_boxes': out_bboxes[-1], 'pred_corners': out_corners[-1],
                    'ref_points': out_refs[-1], 'up': self.up, 'reg_scale': self.reg_scale}
         else:
-            out = {'pred_logits': out_logits[-1], 'pred_boxes': out_bboxes[-1]}
+            out = {'pred_logits': out_logits[-1], 'pred_boxes': out_bboxes[-1], 'pred_corners': out_corners[-1]}
 
         if self.training and self.aux_loss:
             out['aux_outputs'] = self._set_aux_loss2(out_logits[:-1], out_bboxes[:-1], out_corners[:-1], out_refs[:-1],

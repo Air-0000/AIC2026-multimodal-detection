@@ -1,0 +1,161 @@
+__include__: [
+  '../dataset/aic_detection.yml',
+  '../runtime.yml',
+  '../base/dataloader.yml',
+  '../base/optimizer.yml',
+  '../base/deimv2.yml',
+]
+
+# =============================================================================
+# vitl16 l4like RGB-only (真单模态) -- 由 vitl16_l4like_640 派生 (2026-09-26)
+# -----------------------------------------------------------------------------
+# 相对 deimv2_dinov3_l_aic_vitl16_l4like_640.yml 的改动:
+#   1) backbone 加 rgb_only: true —— IR/Depth 两条 ViT-S+ 流、ir/depth_norms、
+#      dt_ort、PromptBlock 全部不构建 (multimodal_backbones.py 新增开关)。
+#      与 ir/depth_drop_prob=1.0 的区别: 后者辅助流照跑每步前向再置零 (白烧
+#      算力), 且保留 PromptBlock([rgb||0]) 残差路径; rgb_only 是真正的纯 RGB
+#      网络, c2/c3/c4 直通 STA+convs。
+#   2) optimizer 删掉 ir_dinov3/depth_dinov3 两组 (参数不存在, 空正则组本会
+#      被自动跳过, 删掉更干净)。
+# 刻意保持不变 (与 l4like 除多模态外对齐):
+#   - 640 / batch10(micro2+accum5, 虽然砍掉辅助流后 micro5 也不会 OOM,
+#     保持 accum5 以对齐 l4like 的 BN/噪声口径) / 50ep flat25 / warmup400
+#   - RGB lr 3e-5 (LLRD 平化 decay=1.0), unfreeze_rgb_stages: 2
+#   - 数据侧 6ch 管线不变 (CocoDetectionMultiModalCached + deepir_cache,
+#     陷阱7: cache 硬依赖), 模型侧忽略 ir/depth 通道
+#   - night 均匀采样 level [0.005,0.45] p0.5, 光度 p0.8
+# ⚠ 注意: RGB-only + 夜化采样下 ~30% 样本无 IR 兜底 = 脏监督; Stage A 当时为
+#   此改白天优先 bands [0.55,1.00] p0.35。本配置为对照实验刻意不改;
+#   若目标是纯 RGB 训练质量, 应改用白天优先采样。
+# 初始化: -t ckpts/dinov3/vitl16_rdttrack_scratch_full.pth (同 l4like);
+#   load_tuning_state 用 _matched_state + strict=False, rgb_dinov3/encoder/
+#   decoder 权重正常命中, ckpt 里多余的 aux/prompt/dt_ort 键被忽略。
+# =============================================================================
+output_dir: ./outputs/vitl16_l4like_640_rgbonly
+
+freeze_bn: false
+# 同 l4like: ViT-L @640 micro5 OOM, micro2 + accum5, 有效 batch 10
+accum_steps: 5
+use_ema: True
+
+DEIM:
+  backbone: DINOv3STAsRDTTrack
+
+DINOv3STAsRDTTrack:
+  name: dinov3_vitl16
+  weights_path: null
+  interaction_indexes: [11, 17, 23]
+  conv_inplane: 32
+  hidden_dim: 256
+  # 真单模态: 不构建 IR/Depth 流 / dt_ort / prompt
+  rgb_only: true
+  unfreeze_rgb_stages: 2
+  # 复现 l4 的平 lr 3e-5 (同 l4like)
+  llrd_top_lr: 3.0e-5
+  llrd_decay: 1.0
+  input_norm: instance
+
+HybridEncoder:
+  in_channels: [256, 256, 256]
+  hidden_dim: 256
+  dim_feedforward: 1024
+  expansion: 1.25
+  depth_mult: 1.37
+
+DEIMTransformer:
+  feat_channels: [256, 256, 256]
+  hidden_dim: 256
+  num_layers: 6
+  eval_idx: -1
+  dim_feedforward: 2048
+
+## DEIM LR-Scheduler (同 l4like)
+epoches: 50
+lrsheduler: flatcosine
+lr_gamma: 0.5
+warmup_iter: 400
+flat_epoch: 25
+no_aug_epoch: 3
+
+## Optimizer (同 l4like, 删掉 ir/depth 两组 —— rgb_only 下参数不存在)
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*.dinov3)(?!.*(?:ir_dinov3|depth_dinov3))(?!.*(?:norm|bn|bias)).*$'
+      lr: 0.00003
+    -
+      params: '^(?=.*.dinov3)(?!.*(?:ir_dinov3|depth_dinov3))(?=.*(?:norm|bn|bias)).*$'
+      lr: 0.00003
+      weight_decay: 0.
+    -
+      params: '^(?=.*(?:sta|encoder|decoder))(?=.*(?:norm|bn|bias)).*$'
+      weight_decay: 0.
+  lr: 0.0003
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+## Tri-modal dataset (数据侧保持 6ch 管线不变, 模态关闭在模型结构层完成: rgb_only)
+train_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModalCached
+    cache_img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deepir_cache/train
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/images
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_heat/images
+    raw_ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_ir/images
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomPhotometricDistort5ch, p: 0.8, brightness: [0.6, 1.4], contrast: [0.5, 1.5], saturation: [0.5, 1.5], hue: [-0.1, 0.1]}
+        - {type: RandomZoomOut, fill: 0}
+        - {type: RandomIoUCrop, p: 0.8}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [640, 640]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomNight5ch, p: 0.5, level: [0.005, 0.45], photon_max: 70.0, read_sigma: 0.012, log_level: true, lamps: [1, 4]}  # same mid oversample as v1
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: True
+  num_workers: 8
+  drop_last: True
+  total_batch_size: 10
+
+  collate_fn:
+    type: BatchImageCollateFunction
+    mixup_epochs: [4, 34]
+    stop_epoch: 60
+    copyblend_epochs: [4, 60]
+    base_size_repeat: 1
+
+val_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/data_aux/aic_valid_rgb_night12
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_heat/valid
+    raw_ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_ir/valid
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [640, 640]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: False
+  num_workers: 4
+  drop_last: False
+  total_batch_size: 4
+
+## DEIM Loss
+DEIMCriterion:
+  matcher:
+    matcher_change_epoch: 50

@@ -77,6 +77,8 @@ class Compose(T.Compose):
         cur_epoch = dataset.epoch
         policy_ops = self.policy['ops']
         policy_epoch = self.policy['epoch']
+        if isinstance(policy_epoch, (list, tuple)) and len(policy_epoch) == 1:
+            policy_epoch = policy_epoch[0]
 
         if isinstance(policy_epoch, list) and len(policy_epoch) == 3:     # 4-stages
             if policy_epoch[0] <= cur_epoch < policy_epoch[1]:

@@ -1,0 +1,183 @@
+# =============================================================================
+# Sovereign V23 理论零畸变超高清 (1152x2048) 54-Epoch 工业级实战部署配置
+# 算力平台: NVIDIA RTX PRO 6000 Blackwell (96GB VRAM, 600W 满血)
+# 用户身份: 刘正阳 (liuzhengyang)
+# -----------------------------------------------------------------------------
+# 架构与战术亮点:
+#   - 理论零畸变分辨率: 1152 x 2048 (严格 16:9 画幅，0.00% 几何拉伸，宽度 2^11 CUDA 硬件对齐)
+#   - 全物理多模态输入: 6 通道早融合 (RGB 3ch + 高精 IR 1ch + LBG 梯度滤波 IR 1ch + P0 公制深度 1ch)
+#   - 单次多通道联合仿射插值: 空间亚像素绝对共面，零相位抖动
+#   - 数据集全面升级: quality1998 全量训练标注 (1,998 图 / 17,921 框，补全 18% 漏标真实目标)
+#   - 巅峰热启起点: sovereign_v22_soup_c1_c2.pth (双周期 72 轮深度收敛 Model Soup 基础)
+#   - 54-Epoch 黄金收敛计划: 骨干锁定 1e-6，Flat-Cosine 学习率，末 6 轮纯净退火
+# =============================================================================
+__include__: [
+  '../deim_dfine/dfine_hgnetv2_x_coco.yml',
+  '../dataset/aic_detection.yml',
+]
+
+task: detection
+eval_spatial_size: [1152, 2048]
+output_dir: ./outputs/sovereign_v23_zero_distort_2048_rtx6000
+
+DEIM:
+  backbone: HGNetv2MultiModal
+  use_scene_gate: True
+  use_internal_sahi: True       # 内生化 3 视角高清切片推理直通
+  num_classes: 12
+
+HGNetv2MultiModal:
+  name: B5
+  ir_in_chans: 2          # 2 通道 IR: Ch0=高精对齐 IR, Ch1=LBG 滤波 IR
+  inject_stages: [2, 3]   # stride 16 / 32
+  fusion: cssa
+  use_dcda: True          # DCDA 深度引导形变视差对齐
+  use_3d_lift: True       # 3D 物理空间坐标升维
+  use_dog: True           # DOG 深度阶跃遮挡隔离门控
+  use_bilateral_pool: True # 视差双边抗混叠池化模块
+  use_shallow_edge_fuse: True # 浅层高频边缘注入
+  use_rfgm_edge: True         # AAAI 频域相位残差补偿几何直通
+  use_frontend_rfgm: True     # 前端幅度-相位暗光照度重构
+  use_trunk_bridge: True      # Stage 0 -> Stage 1 微残差直通桥
+  use_mixstyle: True          # MixStyle 跨域泛化
+  mixstyle_p: 0.3
+  pretrained_ir_stem: True
+  return_idx: [0, 1, 2, 3]    # 释放 Stage 0 (P2, 288x512)
+  stem_base: 64
+  ir_drop_prob: 0.05
+  freeze_at: 0
+  freeze_norm: True
+  local_model_dir: weight/hgnetv2/
+  pretrained: False
+
+HybridEncoder:
+  csp_type: csp
+  use_ssm_levels: [0, 1]      # Level 0 与 Level 1 2D-SSM
+  ssm_d_state: 16
+  use_p2_guidance: True       # P2 跨尺度保峰高频残差引导
+  p2_version: "v10_1"         # 终极强化版: MWHL Haar 小波 + 11x1 垂直条带 + CSR 空间门控
+  p2_dim: 128
+  use_lfp: True               # LFP 低频引导净化
+  use_pbd: True               # PBD 峰值-背景解耦 (Spatial-PBD)
+  use_starconv: True          # StarConv 微软星形运算 (CVPR 2024)
+
+DFINETransformer:
+  use_snr_sharpen: True       # 暗区信噪比感知分布锐化头
+  snr_sharpen_alpha: 0.5
+  use_diam: True              # DIAM 可变形交互注意力
+
+DEIMCriterion:
+  weight_dict:
+    loss_mal: 2.0
+    loss_bbox: 5.0
+    loss_giou: 3.5
+    loss_fgl: 0.25            # 强化精细几何局部定位权重
+    loss_ddf: 1.5
+    loss_fcr: 0.2             # 傅里叶对比正则化损失
+  losses: ['mal', 'boxes', 'local', 'fcr']
+  gamma: 1.5
+  matcher:
+    type: HungarianMatcher
+    weight_dict:
+      cost_class: 2.0
+      cost_bbox: 5.0
+      cost_giou: 3.5
+    alpha: 0.25
+    gamma: 2.0
+
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*backbone)(?!.*norm|.*ir_stem|.*ir_proj|.*ir_align|.*occlusion_gate|.*coord_lift|.*bilateral_pool|.*shallow_edge_fuse|.*frontend_rfgm|.*s0_to_p3_trunk).*$'
+      lr: 0.000001            # 骨干严格锁定 1e-6 (防过拟合铁律)
+    -
+      params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.
+  lr: 0.0001
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+epoches: 54
+lrsheduler: flatcosine
+lr_gamma: 1
+warmup_iter: 30
+flat_epoch: 36
+no_aug_epoch: 6
+
+accum_steps: 4                # 4 步梯度累积，兼顾 96GB 显存与 24 极大有效 Batch
+print_freq: 20
+checkpoint_freq: 6
+
+train_dataloader:
+  total_batch_size: 6
+  num_workers: 8
+  persistent_workers: True
+  pin_memory: True
+  prefetch_factor: 4
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /dev/shm/aic_cache/visible
+    ir_folder: /dev/shm/aic_cache/train_aligned_ir
+    raw_ir_folder: /dev/shm/aic_cache/train_lbg_ir
+    depth_folder: /dev/shm/aic_cache/depth_p0
+    destripe_ir: True
+    ann_file: /root/autodl-tmp/AIC/work_dir/deimv2_dataset/train/annotations/instances_train_quality1998.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Mosaic, output_size: [576, 1024], rotation_range: 10, translation_range: [0.1, 0.1], scaling_range: [0.7, 1.3],
+           probability: 1.0, fill_value: 0, use_cache: True, max_cached_images: 50, random_pop: True}
+        - {type: RandomPhotometricDistort5ch, p: 0.5, brightness: [0.8, 1.2], contrast: [0.8, 1.2], saturation: [0.8, 1.2], hue: [-0.05, 0.05]}
+        - {type: RandomZoomOut, fill: 0}
+        - {type: RandomIoUCrop, p: 0.8}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [1152, 2048]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+      policy:
+        name: stop_epoch
+        epoch: [2, 42, 48]
+        ops: ['Mosaic', 'RandomPhotometricDistort5ch', 'RandomZoomOut', 'RandomIoUCrop']
+      mosaic_prob: 0.5
+  collate_fn:
+    type: BatchImageCollateFunction
+    base_size: 2048
+    base_size_repeat: ~
+    mixup_prob: 0.5
+    mixup_epochs: [2, 42]
+    copyblend_prob: 0.5
+    copyblend_epochs: [2, 42]
+    stop_epoch: 48
+
+val_dataloader:
+  type: DataLoader
+  total_batch_size: 8
+  num_workers: 4
+  pin_memory: True
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /dev/shm/aic_cache/visible
+    ir_folder: /dev/shm/aic_cache/train_aligned_ir
+    raw_ir_folder: /dev/shm/aic_cache/train_lbg_ir
+    depth_folder: /dev/shm/aic_cache/depth_p0
+    destripe_ir: True
+    ann_file: /root/autodl-tmp/AIC/work_dir/deimv2_dataset/valid/annotations/instances_val_clean_quality.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [1152, 2048]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: False
+  drop_last: False
+
+ema:
+  warmups: 20
+  decay: 0.9998

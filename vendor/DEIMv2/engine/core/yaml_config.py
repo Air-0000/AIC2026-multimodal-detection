@@ -126,8 +126,27 @@ class YAMLConfig(BaseConfig):
         for pg in cfg['params']:
             pattern = pg['params']
             params = {k: v for k, v in model.named_parameters() if v.requires_grad and len(re.findall(pattern, k)) > 0}
-            pg['params'] = params.values()
-            param_groups.append(pg)
+            # ---- Layer-wise LR Decay (LLRD) ----
+            # 部分解冻主干时, 每个 block 的 Parameter 上可能带 `llrd_lr` 属性(由
+            # backbone 的 _unfreeze_rgb_with_llrd 写入, 表示它应使用的绝对 lr)。
+            # 这里把带该属性的参数从本组拆出, 各自成组并使用 llrd_lr, 从而无需在
+            # yml 里写一长串易重复/易冲突的正则。无属性的参数留在原组(用组 lr)。
+            llrd = {}        # llrd_lr 值 -> [params]
+            base = []        # 不带 llrd_lr 的参数
+            for k, v in params.items():
+                ov = getattr(v, 'llrd_lr', None)
+                if ov is not None:
+                    llrd.setdefault(float(ov), []).append(v)
+                else:
+                    base.append(v)
+            if base:
+                pg['params'] = base
+                param_groups.append(pg)
+            for lr, plist in sorted(llrd.items()):
+                sub = {kk: vv for kk, vv in pg.items() if kk != 'params'}
+                sub['params'] = plist
+                sub['lr'] = lr           # LLRD 绝对 lr 覆盖组 lr
+                param_groups.append(sub)
             visited.extend(list(params.keys()))
             # print(params.keys())
 

@@ -1,0 +1,180 @@
+__include__: [
+  '../dataset/aic_detection.yml',
+  '../runtime.yml',
+  '../base/dataloader.yml',
+  '../base/optimizer.yml',
+  '../base/deimv2.yml',
+]
+
+# =============================================================================
+# vits @800 + 增强  —— vitl800 的受控 ViT-S 对照 (与 vitl800 唯一变量 = backbone 规模)
+# -----------------------------------------------------------------------------
+# 设计: 把 "换大 backbone" 隔离成单变量。本配置与 vitl800 除以下一处外完全一致:
+#   backbone: RGB 主干 dinov3_vitl16(1024-dim, 24层) -> dinov3_vits16plus(384-dim, 12层)
+#   其余 (800 分辨率 / 同光度+几何+暗光增强 / 解冻比例 25% / 同 LLRD / 同 batch) 照搬 vitl800。
+#   因 ViT-S 是 12 层(非 24 层), 两处按比例缩放, 保证单变量干净:
+#     interaction_indexes: [11,17,23](24层) -> [5,8,11](12层)
+#     unfreeze_rgb_stages: 6(24层=25%)   -> 3(12层=25%)
+#   辅助 IR/Depth 流仍是 vits16plus(384), 由 1x1 proj 升维到 384 后进入正交融合
+#     (它们本就用 RGB 权重通道复制初始化, 放大只会白增参数)。
+#   热启动: 直接继承 l4u3 的 best_stg1.pth (微调好的 ViT-S 检测器, 含 vits16plus 主干
+#     + ir/depth + decoder), -t 走 _matched_state 全量继承。起点 = 已训 ViT-S 检测器。
+#   这正好与 vitl800 (官方 ViT-L 起点 + best_stg1 的 head) 对称: 同设置训 50 epoch,
+#   唯一变量是 backbone 容量。最终 mAP + 11 档暗光直接比 backbone 增益。
+#   分辨率 640 -> 800 (与 vitl800 一致, 三处尺度须一起改)。
+#   增强: 光度幅度加大 + 几何扰动 RandomAffine + 暗光退化 RandomRGBDegrade5ch
+#     (6ch 通道守卫已修)。不启用 IlluminationNorm(会抵消夜间增强) / Mosaic / 不改 mixup。
+#
+# 显存: micro = total_batch_size/accum = 12/4 = 3。ViT-S 参数约为 ViT-L 的 1/3.5,
+#   峰值远低于 vitl800 (vitl800 micro=3 实测 11.29GiB)。本配置 micro=3 余量充足,
+#   具体峰值待首跑确认; run 脚本 GPU 排队阈值已设为 14GB 空闲(严格等 vitl800 完全结束)。
+#   若 OOM, 按顺序退:
+#     a) accum 翻倍 (micro 减半 —— 唯一降峰值旋钮)
+#     b) use_modality_stem: True (辅助流退化成 3-conv 小 stem)
+#     c) 分辨率降到 640
+# =============================================================================
+output_dir: ./outputs/deimv2_dinov3_l_aic_vits800_rdttrack_deepir_aug
+
+# 必须覆盖 base/deimv2.yml 的 eval_spatial_size (默认 640)
+eval_spatial_size: [800, 800]
+
+freeze_bn: false
+accum_steps: 4          # micro=3, 有效 batch = 12
+use_ema: True
+
+DEIM:
+  backbone: DINOv3STAsRDTTrack
+
+DINOv3STAsRDTTrack:
+  name: dinov3_vits16plus          # <- 更大 backbone (1024-dim)
+  aux_name: dinov3_vits16plus  # <- 辅助流保持 384-dim, 由 1x1 proj 升维
+  weights_path: null           # 由 -t l4u3 的 best_stg1.pth (ViT-S 已训检测器) 热启动
+  interaction_indexes: [5, 8, 11]
+  conv_inplane: 32
+  hidden_dim: 256
+  ir_drop_prob: 0.15
+  depth_drop_prob: 0.15
+  depth_in_chans: 1
+  ir_in_chans: 2
+  unfreeze_rgb_stages: 3
+  input_norm: instance
+
+HybridEncoder:
+  in_channels: [256, 256, 256]
+  hidden_dim: 256
+  dim_feedforward: 1024
+  expansion: 1.25
+  depth_mult: 1.37
+
+DEIMTransformer:
+  feat_channels: [256, 256, 256]
+  hidden_dim: 256
+  num_layers: 6
+  eval_idx: -1
+  dim_feedforward: 2048
+
+epoches: 50
+lrsheduler: flatcosine
+lr_gamma: 0.5
+warmup_iter: 400
+flat_epoch: 25
+no_aug_epoch: 3
+
+optimizer:
+  type: AdamW
+  params:
+    -
+      # 以下两组原本给"RGB 主干微调用"。现在 RGB 主干走 LLRD(层级衰减):
+      # 解冻的 block 各自带 llrd_lr 属性, 由 get_optim_params 拆成独立组覆盖这里
+      # 的 lr。若某 RGB 参数没被 LLRD 覆盖(不应发生), 也用这个保守的 2e-5 而非
+      # 之前遗留的 1e-4 —— 后者对 1800 张图上的 ViT-L 太激进, 会打散预训练先验。
+      params: '^(?=.*.dinov3)(?!.*(?:ir_dinov3|depth_dinov3))(?!.*(?:norm|bn|bias)).*$'
+      lr: 0.00002
+    -
+      params: '^(?=.*.dinov3)(?!.*(?:ir_dinov3|depth_dinov3))(?=.*(?:norm|bn|bias)).*$'
+      lr: 0.00002
+      weight_decay: 0.
+    -
+      params: '^(?=.*(?:ir_dinov3|depth_dinov3))(?!.*(?:norm|bn|bias)).*$'
+      lr: 0.00015
+    -
+      params: '^(?=.*(?:ir_dinov3|depth_dinov3))(?=.*(?:norm|bn|bias)).*$'
+      lr: 0.00015
+      weight_decay: 0.
+    -
+      params: '^(?=.*(?:sta|encoder|decoder))(?=.*(?:norm|bn|bias)).*$'
+      weight_decay: 0.
+  lr: 0.0003
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+train_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModalCached
+    cache_img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deepir_cache/train
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/images
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_heat/images
+    raw_ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_ir/images
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        # --- 光度: 幅度较基线加大 (0.6-1.4 -> 0.5-1.5 等) ---
+        - {type: RandomPhotometricDistort5ch, p: 0.8, brightness: [0.5, 1.5], contrast: [0.4, 1.6], saturation: [0.4, 1.6], hue: [-0.15, 0.15]}
+        - {type: RandomZoomOut, fill: 0}
+        - {type: RandomIoUCrop, p: 0.8}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomHorizontalFlip}
+        # --- 新增几何扰动: 旋转/平移/缩放 (纯空间操作, 6ch 全通道一致) ---
+        - {type: RandomAffine, degrees: 10, translate: [0.1, 0.1], scale: [0.9, 1.1], fill: 0}
+        - {type: Resize, size: [800, 800]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        # --- 新增暗光退化 (此前在 6ch 下静默失效, 已修通道守卫) ---
+        - {type: RandomRGBDegrade5ch, p: 0.35, brightness: [0.05, 0.60], contrast: [0.30, 0.90], noise_std: [0.02, 0.12], log_brightness: true}
+        # --- 基线原有的 midboost 中段过采样夜间模拟 ---
+        - {type: RandomNight5ch, p: 0.5, level: [0.005, 0.45], photon_max: 70.0, read_sigma: 0.012, log_level: true, lamps: [1, 4]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: True
+  # 8 worker 曾在 epoch 边界把 CPU 内存/进程压到尖峰, 触发 DataLoader worker 被 OOM 杀掉
+  # (RuntimeError: received 0 items of ancdata). eval 用 4 worker 一直正常, 故 train 同步降到 4.
+  num_workers: 4
+  drop_last: True
+  total_batch_size: 12
+
+  collate_fn:
+    type: BatchImageCollateFunction
+    mixup_epochs: [4, 34]
+    stop_epoch: 60
+    copyblend_epochs: [4, 60]
+    base_size_repeat: 1
+
+val_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/images
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_heat/valid
+    raw_ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_ir/valid
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [800, 800]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: False
+  num_workers: 4
+  drop_last: False
+  total_batch_size: 4
+
+DEIMCriterion:
+  matcher:
+    matcher_change_epoch: 50

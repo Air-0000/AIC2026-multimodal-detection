@@ -1,0 +1,5 @@
+__include__: [
+  'deim_hgnetv2_x_aic_obj2coco_ft_dcnmm.yml',
+]
+
+output_dir: ./outputs/deim_hgnetv2_x_aic_obj2coco_ft_dcnmm_val_val_orig

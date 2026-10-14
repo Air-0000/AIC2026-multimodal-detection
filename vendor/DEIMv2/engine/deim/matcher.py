@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from scipy.optimize import linear_sum_assignment
 from typing import Dict
 
-from .box_ops import box_cxcywh_to_xyxy, generalized_box_iou, box_iou
+from .box_ops import box_cxcywh_to_xyxy, generalized_box_iou, box_iou, box_nwd
 
 from ..core import register
 import numpy as np
@@ -114,32 +114,42 @@ class HungarianMatcher(nn.Module):
             # Compute the L1 cost between boxes
             cost_bbox = torch.cdist(out_bbox, tgt_bbox, p=1)
 
-            # Compute the giou cost betwen boxes
+            # Scale-Normalized L1 cost: ensures 1-pixel error on tiny box receives fair matching priority
+            tgt_scale = torch.sqrt(tgt_bbox[:, 2] * tgt_bbox[:, 3]).clamp(min=0.03)
+            cost_bbox_scaled = cost_bbox / tgt_scale.unsqueeze(0)
+
+            # Compute the giou cost between boxes
             cost_giou = -generalized_box_iou(box_cxcywh_to_xyxy(out_bbox), box_cxcywh_to_xyxy(tgt_bbox))
 
-            # Final cost matrix 3 * self.cost_bbox + 2 * self.cost_class + self.cost_giou
-            C = self.cost_bbox * cost_bbox + self.cost_class * cost_class + self.cost_giou * cost_giou
+            # Compute NWD similarity cost: smooth attraction gradient for tiny objects with zero spatial overlap
+            cost_nwd = -box_nwd(out_bbox, tgt_bbox, C=0.5)
+
+            # Final cost matrix: balanced for both macro and micro objects
+            C = self.cost_bbox * (0.6 * cost_bbox + 0.4 * cost_bbox_scaled) + \
+                self.cost_class * cost_class + \
+                self.cost_giou * (0.6 * cost_giou + 0.4 * cost_nwd)
 
         C = C.view(bs, num_queries, -1).cpu()
 
         sizes = [len(v["boxes"]) for v in targets]
         C = torch.nan_to_num(C, nan=1.0)
         indices_pre = [linear_sum_assignment(c[i]) for i, c in enumerate(C.split(sizes, -1))]
-        indices = [(torch.as_tensor(i, dtype=torch.int64), torch.as_tensor(j, dtype=torch.int64)) for i, j in indices_pre]
+        device = outputs['pred_boxes'].device if 'pred_boxes' in outputs else (outputs['pred_logits'].device if 'pred_logits' in outputs else None)
+        indices = [(torch.as_tensor(i, dtype=torch.int64, device=device), torch.as_tensor(j, dtype=torch.int64, device=device)) for i, j in indices_pre]
 
         # Compute topk indices
         if return_topk:
-            return {'indices_o2m': self.get_top_k_matches(C, sizes=sizes, k=return_topk, initial_indices=indices_pre)}
+            return {'indices_o2m': self.get_top_k_matches(C, sizes=sizes, k=return_topk, initial_indices=indices_pre, device=device)}
 
         return {'indices': indices} # , 'indices_o2m': C.min(-1)[1]}
 
-    def get_top_k_matches(self, C, sizes, k=1, initial_indices=None):
+    def get_top_k_matches(self, C, sizes, k=1, initial_indices=None, device=None):
         indices_list = []
         # C_original = C.clone()
         for i in range(k):
             indices_k = [linear_sum_assignment(c[i]) for i, c in enumerate(C.split(sizes, -1))] if i > 0 else initial_indices
             indices_list.append([
-                (torch.as_tensor(i, dtype=torch.int64), torch.as_tensor(j, dtype=torch.int64))
+                (torch.as_tensor(i, dtype=torch.int64, device=device), torch.as_tensor(j, dtype=torch.int64, device=device))
                 for i, j in indices_k
             ])
             for c, idx_k in zip(C.split(sizes, -1), indices_k):

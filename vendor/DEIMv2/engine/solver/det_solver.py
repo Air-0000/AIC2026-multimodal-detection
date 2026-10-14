@@ -75,7 +75,7 @@ class DetSolver(BaseSolver):
             if dist_utils.is_dist_available_and_initialized():
                 self.train_dataloader.sampler.set_epoch(epoch)
 
-            if epoch == self.train_dataloader.collate_fn.stop_epoch:
+            if getattr(self.train_dataloader.collate_fn, 'stop_epoch', None) is not None and self.train_dataloader.collate_fn.stop_epoch > 0 and epoch == self.train_dataloader.collate_fn.stop_epoch:
                 if dist_utils.is_dist_available_and_initialized():
                     torch.distributed.barrier()
                 self.load_resume_state(str(self.output_dir / 'best_stg1.pth'))
@@ -96,7 +96,9 @@ class DetSolver(BaseSolver):
                 ema=self.ema, 
                 scaler=self.scaler, 
                 lr_warmup_scheduler=self.lr_warmup_scheduler,
-                writer=self.writer
+                writer=self.writer,
+                freeze_bn=getattr(args, 'freeze_bn', False),
+                accum_steps=getattr(args, 'accum_steps', 1)
             )
 
             if not self.self_lr_scheduler:  # update by epoch 
@@ -159,8 +161,10 @@ class DetSolver(BaseSolver):
                 elif epoch >= self.train_dataloader.collate_fn.stop_epoch:
                     best_stat = {'epoch': -1, }
                     self.ema.decay -= 0.0001
-                    self.load_resume_state(str(self.output_dir / 'best_stg1.pth'))
-                    print(f'Refresh EMA at epoch {epoch} with decay {self.ema.decay}')
+                    ckpt_restore = self.output_dir / 'best_stg1.pth' if (self.output_dir / 'best_stg1.pth').exists() else (self.output_dir / 'best_stg2.pth' if (self.output_dir / 'best_stg2.pth').exists() else None)
+                    if ckpt_restore is not None:
+                        self.load_resume_state(str(ckpt_restore))
+                        print(f'Refresh EMA at epoch {epoch} with decay {self.ema.decay} from {ckpt_restore.name}')
 
 
             log_stats = {

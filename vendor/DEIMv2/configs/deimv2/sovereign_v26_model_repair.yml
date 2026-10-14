@@ -1,0 +1,200 @@
+# =============================================================================
+# Sovereign V26 权威模型级修复与多维对齐系统 (Model-Level Sovereign V26)
+# 算力平台: NVIDIA RTX PRO 6000 Blackwell (96GB VRAM, 600W 满血)
+# 针对用户核心反馈的彻底模型级修复:
+#   1. 彻底根除画布边缘畸变假框:
+#      - 补全 ConvertBoxes 算子 (fmt: 'cxcywh', normalize: True)，使 loss_bbox 回归正常的 0.67
+#   2. 模型端彻底根除“把孔雀身体与长尾巴当两个动物” (Part-Whole Appendage Containment):
+#      - NDSL 引入空间包含度约束 (Containment Ratio >= 0.40)，对长尾/局部挂件施加 3.5x 负向梯度
+#   3. 找回凉亭座位 (seat) 与真实照明灯泡 (light):
+#      - cls_neg_scale: seat 降至 0.6, light 降至 0.6, sign 降至 0.7
+#      - tadl_min_iou 降至 0.15，彻底解除对环境设施弱目标的过度抑制
+#   4. 内生保持 MidBoost 动态照度门控与极夜零死图挽救力
+# =============================================================================
+__include__: [
+  '../deim_dfine/dfine_hgnetv2_x_coco.yml',
+  '../dataset/aic_detection.yml',
+]
+
+task: detection
+eval_spatial_size: [1152, 2048]
+output_dir: ./outputs/sovereign_v26_model_repair_2048
+
+DEIM:
+  backbone: HGNetv2MultiModal
+  use_scene_gate: True
+  use_internal_sahi: False
+  use_internal_tta: False        # 保持原生纯净单阶段前向，彻底杜绝翻转带来的边界伪影
+  use_p2_cascade_zoom: True     # P2 RoI 级联高频微小目标放大器
+  p2_zoom_alpha: 0.45
+  p2_zoom_thresh: 0.35
+  p2_zoom_max_area: 0.025
+  p2_zoom_score_min: 0.15
+  p2_zoom_score_max: 0.45
+  num_classes: 12
+
+HGNetv2MultiModal:
+  name: B5
+  ir_in_chans: 2          # 2 通道 IR: Ch0=高精对齐 IR, Ch1=LBG 滤波 IR
+  inject_stages: [2, 3]   # stride 16 / 32
+  fusion: cssa
+  use_midboost: True      # 内生化 MidBoost 自适应照度门控与零失真旁路
+  use_dcda: True          # DCDA 深度引导形变视客对齐
+  use_3d_lift: True       # 3D 物理空间坐标升维
+  use_dog: True           # DOG 深度阶跃遮挡隔离门控
+  use_bilateral_pool: True # 视差双边抗混叠池化模块
+  use_shallow_edge_fuse: True # 浅层高频边缘注入
+  use_rfgm_edge: True         # AAAI 频域相位残差补偿几何直通
+  use_frontend_rfgm: True     # 前端幅度-相位暗光照度重构
+  use_trunk_bridge: True      # Stage 0 -> Stage 1 微残差直通桥
+  use_mixstyle: True          # MixStyle 跨域泛化
+  mixstyle_p: 0.3
+  pretrained_ir_stem: True
+  return_idx: [0, 1, 2, 3]    # 释放 Stage 0 (P2, 288x512)
+  stem_base: 64
+  ir_drop_prob: 0.10
+  freeze_at: 0
+  freeze_norm: True
+  local_model_dir: weight/hgnetv2/
+  pretrained: False
+
+HybridEncoder:
+  csp_type: csp
+  use_ssm_levels: [0, 1]
+  ssm_d_state: 16
+  use_p2_guidance: True
+  p2_version: "v10_1"
+  p2_dim: 128
+  use_lfp: True
+  use_pbd: True
+  use_starconv: True
+
+DFINETransformer:
+  use_snr_sharpen: True
+  snr_sharpen_alpha: 0.5
+  use_diam: True
+  use_sdqs: True          # SDQS 空间解耦选点机制
+
+DEIMCriterion:
+  weight_dict:
+    loss_tadl: 2.0
+    loss_bbox: 5.0
+    loss_giou: 3.5
+    loss_fgl: 0.25
+    loss_ddf: 1.5
+    loss_fcr: 0.2
+  losses: ['tadl', 'boxes', 'local', 'fcr']
+  gamma: 1.5
+  tadl_beta: 0.5
+  tadl_min_iou: 0.15          # 降低门限至 0.15，彻底释放弱小路灯与连廊长椅的正向梯度
+  use_ndsl: True              # 近邻冗余与孔雀长尾部件抑制损失 (NDSL)
+  ndsl_min_iou: 0.25          # 重叠 >= 0.25 或包含度 >= 0.40 的副 Query 判定为局部挂件并惩罚
+  ndsl_factor: 2.5
+  cls_neg_scale: [1.0, 1.5, 1.0, 0.6, 0.7, 1.0, 1.0, 2.0, 0.6, 1.2, 1.5, 2.0]
+  matcher:
+    type: HungarianMatcher
+    weight_dict:
+      cost_class: 2.0
+      cost_bbox: 5.0
+      cost_giou: 3.5
+    alpha: 0.25
+    gamma: 2.0
+
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*backbone)(?!.*norm|.*ir_stem|.*ir_proj|.*ir_align|.*occlusion_gate|.*coord_lift|.*bilateral_pool|.*shallow_edge_fuse|.*frontend_rfgm|.*s0_to_p3_trunk).*$'
+      lr: 0.0000003           # 骨干严格锁定 3e-7
+    -
+      params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.
+  lr: 0.000010                # 稳健精修学习率 1.0e-5
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+epoches: 4
+lrsheduler: flatcosine
+lr_gamma: 1
+warmup_iter: 20
+flat_epoch: 2
+no_aug_epoch: 1
+
+accum_steps: 1
+print_freq: 20
+checkpoint_freq: 1
+
+train_dataloader:
+  total_batch_size: 8
+  num_workers: 8
+  persistent_workers: True
+  pin_memory: True
+  prefetch_factor: 4
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /dev/shm/aic_cache/visible
+    ir_folder: /dev/shm/aic_cache/train_aligned_ir
+    raw_ir_folder: /dev/shm/aic_cache/train_lbg_ir
+    depth_folder: /dev/shm/aic_cache/depth_p0
+    destripe_ir: True
+    ann_file: /root/autodl-tmp/AIC/work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Mosaic, output_size: [576, 1024], rotation_range: 10, translation_range: [0.1, 0.1], scaling_range: [0.7, 1.3],
+           probability: 1.0, fill_value: 0, use_cache: True, max_cached_images: 50, random_pop: True}
+        - {type: RandomPhotometricDistort5ch, p: 0.5, brightness: [0.8, 1.2], contrast: [0.8, 1.2], saturation: [0.8, 1.2], hue: [-0.05, 0.05]}
+        - {type: RandomZoomOut, fill: 0}
+        - {type: RandomIoUCrop, p: 0.8}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [1152, 2048]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomRGBDegrade5ch, p: 0.5, brightness: [0.005, 0.80], contrast: [0.20, 0.90], noise_std: [0.02, 0.12], log_brightness: True}
+        - {type: RandomModalityFailure, p_rgb: 0.15, p_ir: 0.10, p_depth: 0.15}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+      policy:
+        name: stop_epoch
+        epoch: 3
+        ops: ['Mosaic', 'RandomPhotometricDistort5ch', 'RandomZoomOut', 'RandomIoUCrop']
+      mosaic_prob: 0.5
+  collate_fn:
+    type: BatchImageCollateFunction
+    base_size: 2048
+    base_size_repeat: ~
+    mixup_prob: 0.5
+    mixup_epochs: [1, 3]
+    copyblend_prob: 0.5
+    copyblend_epochs: [1, 3]
+    stop_epoch: 3
+
+val_dataloader:
+  type: DataLoader
+  total_batch_size: 8
+  num_workers: 4
+  pin_memory: True
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /dev/shm/aic_cache/visible
+    ir_folder: /dev/shm/aic_cache/train_aligned_ir
+    raw_ir_folder: /dev/shm/aic_cache/train_lbg_ir
+    depth_folder: /dev/shm/aic_cache/depth_p0
+    destripe_ir: True
+    ann_file: /root/autodl-tmp/AIC/work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [1152, 2048]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: False
+  drop_last: False
+
+ema:
+  warmups: 20
+  decay: 0.9998

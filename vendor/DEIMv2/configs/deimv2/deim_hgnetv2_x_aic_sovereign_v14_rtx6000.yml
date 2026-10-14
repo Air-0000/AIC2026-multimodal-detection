@@ -1,0 +1,223 @@
+# =============================================================================
+# DEIM-D-FINE-X 顶会模块全链路终极合流 V14 (Sovereign Multimodal V14 - Sovereign Imperium)
+# -----------------------------------------------------------------------------
+# 架构底座: 继承 Sovereign V12 最佳检查点 (58.29% mAP 历史最高峰值)
+# 起步热启: outputs/deim_hgnetv2_x_aic_sovereign_v12_rtx6000/best_stg1.pth
+# 核心战术外科手术式升级 (断根病灶 + 引入前沿异构范式):
+#   1. [空间分区峰值-背景解耦 (Spatial-PBD) in HybridEncoder P3]:
+#      - 水域 (y >= 0.45) 满功率激活 PBD，阻断水面反光与波纹伪影，死保 boat 突破 49%+
+#      - 陆地区域 (y < 0.45) 平滑衰减解耦，彻底豁免长椅 (seat)，瞬间止血 1.74% 跌幅！
+#   2. [微小点源高频保护低频净化 (Point-Preserving LFP) in P2-CSRG+]:
+#      - 引入局部高频显著性旁路，保护路灯 (light) 与小球 (ball) 不被大语义锚点强行抹杀
+#   3. [【V1-011】StarConv 微软星形运算隐式无限维交互 (CVPR 2024) in HybridEncoder P4]:
+#      - 元素级哈达玛乘积在隐空间生成高阶非线性，O(1) 复杂度获得媲美 Transformer 的长程感受野
+#      - 严格零初始化 (Zero-Init): 初始时刻 100.00% 绝对数值等价于 V12
+#   4. [保留 V13 经实测验证的王牌]:
+#      - V1-185 MixStyle 跨域泛化 (animal +1.03%, car +0.62%)
+#      - V1-218 MHLA 多头线性注意力 + Mamba 2D-SSM 双核特征颈
+#      - V1-153 DIAM 可变形交互注意力 (DETR Decoder)
+#      - 内生化 CAA-SAHI 3-View 高清切片推理直通
+# =============================================================================
+__include__: [
+  '../deim_dfine/dfine_hgnetv2_x_coco.yml',
+  '../dataset/aic_detection.yml',
+]
+
+output_dir: ./outputs/deim_hgnetv2_x_aic_sovereign_v14_rtx6000
+
+DEIM:
+  backbone: HGNetv2MultiModal
+  use_scene_gate: True
+  use_internal_sahi: True       # 内生化 3 视角高清切片，推理直通
+  num_classes: 12
+
+HGNetv2MultiModal:
+  name: B5
+  ir_in_chans: 2          # 2 通道 IR: Ch0=高精对齐 IR, Ch1=LBG 滤波 IR
+  inject_stages: [2, 3]   # stride 16 / 32
+  fusion: cssa
+  use_dcda: True          # DCDA 深度引导形变视差对齐
+  use_3d_lift: True       # 3D 物理空间坐标升维
+  use_dog: True           # DOG 深度阶跃遮挡隔离门控
+  use_bilateral_pool: True # 视差双边抗混叠池化模块
+  use_shallow_edge_fuse: True # 浅层高频边缘注入 (集成保峰双路池化与天水噪声截断)
+  use_rfgm_edge: True         # AAAI 2026 RFGM 频域相位残差补偿几何直通
+  use_frontend_rfgm: True     # AAAI 2026 前端幅度-相位暗光照度重构
+  use_trunk_bridge: True      # Stage 0 (160x160) -> Stage 1 (80x80 P3) 主干微残差直通桥
+  use_mixstyle: True          # V1-185 MixStyle 跨域泛化 (ICLR)
+  mixstyle_p: 0.3             # 风格混合概率
+  pretrained_ir_stem: True    # ImageNet 预训练边缘核赋权 IR Stem
+  return_idx: [0, 1, 2, 3]    # 释放 Stage 0 (P2, 160x160) 供 HybridEncoder 高频引导
+  stem_base: 64
+  ir_drop_prob: 0.05
+  freeze_at: 0
+  freeze_norm: True
+  local_model_dir: weight/hgnetv2/
+  pretrained: True
+
+HybridEncoder:
+  csp_type: csp
+  use_ssm_levels: [0, 1]      # Level 0 (P3: 80x80) 与 Level 1 (P4: 40x40) 2D-SSM 线性全局交互
+  ssm_d_state: 16             # 状态空间隐藏维度
+  # MHLA 裁撤：解除与 Mamba 的双重线性注意力冗余并联，保持长程颈部极简高效
+  use_p2_guidance: True       # P2 (160x160) 跨尺度保峰高频残差引导
+  p2_version: "v10_1"         # 终极强化版: MWHL Haar 小波 + 11x1 垂直条带 + CSR 空间门控 + 天水噪声截断
+  p2_dim: 128                 # Stage 0 通道数
+  use_lfp: True               # V1-231 LFP 低频引导净化模块 (已集成 Point-Preserving 点光源保护)
+  use_pbd: True               # V1创新038 PBD 峰值-背景解耦 (已集成 Spatial-PBD 陆地长椅豁免)
+  use_starconv: True          # 【V14 新增】V1-011 StarConv 微软星形运算 (CVPR 2024)
+
+DFINETransformer:
+  use_snr_sharpen: True       # 保持暗区信噪比感知分布锐化头
+  snr_sharpen_alpha: 0.5      # 温度调节动态范围控制因子
+  use_diam: True              # DIAM 可变形交互注意力 (一区TOP 2025, V1-153)
+
+DEIMCriterion:
+  weight_dict:
+    loss_mal: 2.0
+    loss_bbox: 5.0
+    loss_giou: 3.5
+    loss_fgl: 0.25            # 强化精细几何局部定位权重
+    loss_ddf: 1.5
+    loss_fcr: 0.2             # 傅里叶对比正则化损失 (ECCV 2024, V1-054)
+  losses: ['mal', 'boxes', 'local', 'fcr']
+  gamma: 1.5
+  matcher:
+    type: HungarianMatcher
+    weight_dict:
+      cost_class: 2.0
+      cost_bbox: 5.0
+      cost_giou: 3.5
+    alpha: 0.25
+    gamma: 2.0
+
+optimizer:
+  type: AdamW
+  params:
+    -
+      # 骨干基座保守锁定微调
+      params: '^(?=.*backbone)(?!.*norm|.*ir_stem|.*ir_proj|.*ir_align|.*occlusion_gate|.*coord_lift|.*bilateral_pool|.*shallow_edge_fuse|.*frontend_rfgm|.*s0_to_p3_trunk).*$'
+      lr: 0.000002
+    -
+      # 物理辅助流与 MSRB 主干直通桥专属学习率
+      params: '^(?=.*(?:ir_stem|ir_proj|ir_align|occlusion_gate|coord_lift|bilateral_pool|shallow_edge_fuse|frontend_rfgm|s0_to_p3_trunk)).*$'
+      lr: 0.00005
+    -
+      # Mamba 2D-SSM 专属微调学习率
+      params: '^(?=.*ssm_blocks)(?!.*norm).*$'
+      lr: 0.00003
+      weight_decay: 0.0001
+    -
+      # MHLA 多头线性注意力专属唤醒学习率
+      params: '^(?=.*mhla_blocks)(?!.*norm).*$'
+      lr: 0.0001
+      weight_decay: 0.0001
+    -
+      # DIAM 可变形交互注意力专属唤醒学习率
+      params: '^(?=.*diam).*$'
+      lr: 0.0001
+      weight_decay: 0.0001
+    -
+      # P2 跨尺度小波/垂直条带/LFP 低频净化专属学习率
+      params: '^(?=.*p2_refinement).*$'
+      lr: 0.0001
+      weight_decay: 0.0001
+    -
+      # PBD 峰值-背景解耦专属唤醒学习率
+      params: '^(?=.*pbd).*$'
+      lr: 0.0001
+      weight_decay: 0.0001
+    -
+      # StarConv 微软星形运算专属唤醒学习率 (V14)
+      params: '^(?=.*starconv).*$'
+      lr: 0.0001
+      weight_decay: 0.0001
+    -
+      # 3D 场景几何连续深度门控 (SGMG) 专属学习率
+      params: '^(?=.*scene_gate).*$'
+      lr: 0.0001
+      weight_decay: 0.0001
+    -
+      # SNR-Aware FDR temp_head 专属学习率
+      params: '^(?=.*temp_head).*$'
+      lr: 0.0001
+      weight_decay: 0.0001
+    -
+      # 归一化层 weight decay 归零
+      params: '^(?=.*(?:encoder|decoder))(?!.*p2_refinement)(?!.*pbd)(?!.*starconv)(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.
+  lr: 0.00001
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+epoches: 8
+lrsheduler: flatcosine
+lr_gamma: 1
+warmup_iter: 10
+flat_epoch: 4
+no_aug_epoch: 0
+
+accum_steps: 1
+print_freq: 10
+checkpoint_freq: 2
+
+train_dataloader:
+  total_batch_size: 24        # 【RTX PRO 6000 96GB 强劲动力 Batch 24】
+  num_workers: 16
+  persistent_workers: True
+  pin_memory: True
+  prefetch_factor: 4
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /dev/shm/aic_cache/visible
+    ir_folder: /dev/shm/aic_cache/train_aligned_ir
+    raw_ir_folder: /dev/shm/aic_cache/train_lbg_ir
+    depth_folder: /dev/shm/aic_cache/depth_p0
+    destripe_ir: True
+    ann_file: /root/autodl-tmp/AIC/work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomPhotometricDistort5ch, p: 0.3, brightness: [0.9, 1.1], contrast: [0.85, 1.15], saturation: [0.85, 1.15], hue: [-0.02, 0.02]}
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [640, 640]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  collate_fn:
+    type: BatchImageCollateFunction
+    mixup_epochs: [999, 999]
+    stop_epoch: 999
+    copyblend_epochs: [999, 999]
+    base_size_repeat: 1
+
+val_dataloader:
+  type: DataLoader
+  total_batch_size: 16
+  num_workers: 8
+  pin_memory: True
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /dev/shm/aic_cache/visible
+    ir_folder: /dev/shm/aic_cache/train_aligned_ir
+    raw_ir_folder: /dev/shm/aic_cache/train_lbg_ir
+    depth_folder: /dev/shm/aic_cache/depth_p0
+    destripe_ir: True
+    ann_file: /root/autodl-tmp/AIC/work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [640, 640]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: False
+  drop_last: False
+
+ema:
+  warmups: 20
+lr_warmup_scheduler:
+  warmup_duration: 0

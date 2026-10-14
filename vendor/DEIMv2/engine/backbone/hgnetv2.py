@@ -13,6 +13,7 @@ Copyright (c) 2024 The D-FINE Authors. All Rights Reserved.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.ops
 import os
 from .common import FrozenBatchNorm2d
 from ..core import register
@@ -25,6 +26,73 @@ zeros_ = nn.init.zeros_
 ones_ = nn.init.ones_
 
 __all__ = ['HGNetv2']
+
+
+class DCNResidual(nn.Module):
+    """Zero-init residual DCNv2 refinement for a stage output.
+
+    Bottleneck form: 1x1 reduce -> DCNv2 (modulated deformable, DW over the
+    reduced dim) -> 1x1 expand. The expand conv is ZERO-init, so at init the
+    module is an exact identity -- safe to stack on a strong checkpoint;
+    it only learns a deformable refinement on top.
+    """
+    def __init__(self, ch, red=128):
+        super().__init__()
+        self.reduce = nn.Conv2d(ch, red, 1, bias=False)
+        self.conv_offset_mask = nn.Conv2d(red, 27, 3, 1, 1)
+        # depthwise deformable: per-channel offsets (geometrically more flexible),
+        # dcn weight only red*9 => keeps the zero-start param debt small
+        # (PKI lesson: debt/iter-budget is the failure predictor)
+        self.dcn = torchvision.ops.DeformConv2d(red, red, 3, 1, 1, groups=red)
+        self.expand = nn.Conv2d(red, ch, 1, bias=False)
+        nn.init.zeros_(self.conv_offset_mask.weight)
+        nn.init.zeros_(self.conv_offset_mask.bias)
+        nn.init.zeros_(self.expand.weight)   # zero-init => exact identity at start
+
+    def forward(self, x):
+        z = self.reduce(x)
+        o = self.conv_offset_mask(z)
+        off, mask = torch.split(o, [18, 9], dim=1)
+        mask = torch.sigmoid(mask)
+        return x + self.expand(self.dcn(z, off, mask))
+
+
+class DCNResidualV3(nn.Module):
+    """DCNv3-style variant of DCNResidual (InternImage, CVPR 2023, Sec 3.1).
+
+    Ports the two v3 upgrades applicable to a small residual旁路:
+    (a) softmax normalization of modulation scalars ALONG the K=9 sampling
+        points (v2 uses element-wise sigmoid) => aggregate energy per position
+        is bounded to 1; paper: "alleviate the instability issues ... makes
+        the training process ... more stable";
+    (b) multi-group mechanism: G groups, each with its OWN offset+mask
+        (v2 has a single shared offset field) => different groups can learn
+        different deformation modes;
+    (c) v3's weight sharing among neurons is already satisfied by our
+        depthwise dcn (groups=red).
+    Zero-init expand keeps an exact identity at start, same as v2 variant.
+    """
+    def __init__(self, ch, red=128, groups=8):
+        super().__init__()
+        self.groups = groups
+        self.reduce = nn.Conv2d(ch, red, 1, bias=False)
+        self.conv_offset_mask = nn.Conv2d(red, 27 * groups, 3, 1, 1)
+        # depthwise deformable weight (same as v2 variant); offset_groups is
+        # inferred by torchvision from the offset channel count (= groups)
+        self.dcn = torchvision.ops.DeformConv2d(red, red, 3, 1, 1, groups=red)
+        self.expand = nn.Conv2d(red, ch, 1, bias=False)
+        nn.init.zeros_(self.conv_offset_mask.weight)
+        nn.init.zeros_(self.conv_offset_mask.bias)
+        nn.init.zeros_(self.expand.weight)   # zero-init => exact identity at start
+
+    def forward(self, x):
+        z = self.reduce(x)
+        o = self.conv_offset_mask(z)
+        G, K = self.groups, 9
+        off, mask = torch.split(o, [2 * 3 * 3 * G, K * G], dim=1)
+        # v3: normalize modulation scalars along sampling points (per group)
+        mask = torch.softmax(mask, dim=1)
+        return x + self.expand(self.dcn(z, off, mask))
 
 
 class LearnableAffineBlock(nn.Module):
@@ -498,6 +566,9 @@ class HGNetv2(nn.Module):
                  pretrained=True,
                  local_model_dir='weight/hgnetv2/',
                  act='relu',
+                 dcn_stages=None,
+                 dcn_v3=False,
+                 dcn_groups=8,
                  ):
         super().__init__()
         self.use_lab = use_lab
@@ -544,6 +615,20 @@ class HGNetv2(nn.Module):
                 for i in range(min(freeze_at + 1, len(self.stages))):
                     self._freeze_parameters(self.stages[i])
 
+        # zero-init DCNv2 residual refinements on selected stage outputs
+        # (dcn_stages: list of 0-based stage indices, e.g. [2, 3])
+        self.dcn_stages = list(dcn_stages) if dcn_stages else []
+        _dcn_cls = DCNResidualV3 if dcn_v3 else DCNResidual
+        _dcn_kwargs = dict(groups=dcn_groups) if dcn_v3 else {}
+        self.dcn_res = nn.ModuleDict({
+            str(i): _dcn_cls(self._out_channels[i], **_dcn_kwargs)
+            for i in self.dcn_stages
+        })
+        if self.dcn_stages:
+            _tag = f"DCNv3-style (G={dcn_groups}, softmax-mask)" if dcn_v3 else "DCNv2"
+            print(f"[HGNetv2] {_tag} residual on stages {self.dcn_stages} "
+                  f"(chans {[self._out_channels[i] for i in self.dcn_stages]}, zero-init)")
+
         if freeze_norm:
             self._freeze_norm(self)
 
@@ -558,14 +643,18 @@ class HGNetv2(nn.Module):
                     state = torch.load(model_path, map_location='cpu')
                     print(f"Loaded stage1 {name} HGNetV2 from local file.")
                 else:
+                    is_dist = torch.distributed.is_available() and torch.distributed.is_initialized()
+                    rank = torch.distributed.get_rank() if is_dist else 0
                     # If the file doesn't exist locally, download from the URL
-                    if torch.distributed.get_rank() == 0:
+                    if rank == 0:
                         print(GREEN + "If the pretrained HGNetV2 can't be downloaded automatically. Please check your network connection." + RESET)
                         print(GREEN + "Please check your network connection. Or download the model manually from " + RESET + f"{download_url}" + GREEN + " to " + RESET + f"{local_model_dir}." + RESET)
                         state = torch.hub.load_state_dict_from_url(download_url, map_location='cpu', model_dir=local_model_dir)
-                        torch.distributed.barrier()
+                        if is_dist:
+                            torch.distributed.barrier()
                     else:
-                        torch.distributed.barrier()
+                        if is_dist:
+                            torch.distributed.barrier()
                         state = torch.load(local_model_dir)
 
                     print(f"Loaded stage1 {name} HGNetV2 from URL.")
@@ -577,10 +666,19 @@ class HGNetv2(nn.Module):
                     print("Missing keys:", missing_keys)
                     print("Unexpected keys:", unexpected_keys)
                 else:
-                    self.load_state_dict(state)
+                    if self.dcn_stages:
+                        # dcn_res 是零初始化新模块，stage1 ckpt 里没有；其余键仍严格
+                        missing, unexpected = self.load_state_dict(state, strict=False)
+                        bad_missing = [k for k in missing if not k.startswith("dcn_res.")]
+                        assert not bad_missing and not unexpected, (bad_missing, unexpected)
+                        print(f"[HGNetv2] stage1 loaded (dcn_res {len(missing)} keys left zero-init)")
+                    else:
+                        self.load_state_dict(state)
 
             except (Exception, KeyboardInterrupt) as e:
-                if torch.distributed.get_rank() == 0:
+                is_dist = torch.distributed.is_available() and torch.distributed.is_initialized()
+                rank = torch.distributed.get_rank() if is_dist else 0
+                if rank == 0:
                     print(f"{str(e)}")
                     logging.error(RED + "CRITICAL WARNING: Failed to load pretrained HGNetV2 model" + RESET)
                     logging.error(GREEN + "Please check your network connection. Or download the model manually from " \
@@ -622,6 +720,8 @@ class HGNetv2(nn.Module):
         outs = []
         for idx, stage in enumerate(self.stages):
             x = stage(x)
+            if str(idx) in self.dcn_res:
+                x = self.dcn_res[str(idx)](x)
             if idx in self.return_idx:
                 outs.append(x)
         return outs

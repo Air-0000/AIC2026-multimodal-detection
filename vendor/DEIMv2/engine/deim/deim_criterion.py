@@ -15,7 +15,7 @@ import torchvision
 import copy
 
 from .dfine_utils import bbox2distance
-from .box_ops import box_cxcywh_to_xyxy, box_iou, generalized_box_iou
+from .box_ops import box_cxcywh_to_xyxy, box_iou, generalized_box_iou, box_nwd
 from ..misc.dist_utils import get_world_size, is_dist_available_and_initialized
 from ..core import register
 
@@ -39,10 +39,20 @@ class DEIMCriterion(nn.Module):
         share_matched_indices=False,
         mal_alpha=None,
         use_uni_set=True,
+        rs_margin=1.0,
+        rs_sort_w=1.0,
         use_depth_prior=False,
         depth_bins=(0.33, 0.66),
         depth_weights=(1.0, 2.0, 4.0),
         depth_invert=False,
+        cls_mal_scale=None,
+        cls_loss_weights=None,
+        tadl_beta=0.5,
+        tadl_min_iou=0.35,
+        cls_neg_scale=None,
+        use_ndsl=False,
+        ndsl_min_iou=0.35,
+        ndsl_factor=2.5,
         ):
         """Create the criterion.
         Parameters:
@@ -79,10 +89,35 @@ class DEIMCriterion(nn.Module):
         self.num_pos, self.num_neg = None, None
         self.mal_alpha = mal_alpha
         self.use_uni_set = use_uni_set
+        self.rs_margin = rs_margin        # RS Loss ascending-rank hinge margin
+        self.rs_sort_w = rs_sort_w        # weight of the IoU-order sort term
         self.use_depth_prior = use_depth_prior
         self.depth_bins = list(depth_bins)
         self.depth_weights = list(depth_weights)
         self.depth_invert = depth_invert
+        self.cls_mal_scale = list(cls_mal_scale) if cls_mal_scale is not None else None
+        self.cls_loss_weights = list(cls_loss_weights) if cls_loss_weights is not None else None
+        self.tadl_beta = tadl_beta
+        self.tadl_min_iou = tadl_min_iou
+        self.use_ndsl = use_ndsl
+        self.ndsl_min_iou = float(ndsl_min_iou)
+        self.ndsl_factor = float(ndsl_factor)
+        if use_ndsl:
+            print(f"[DEIMCriterion] Near-Duplicate Suppression Loss (NDSL): ON (min_iou={self.ndsl_min_iou}, factor={self.ndsl_factor})")
+        self.cls_neg_scale = list(cls_neg_scale) if cls_neg_scale is not None else [
+            1.0,  # 0: person
+            1.5,  # 1: boat
+            1.0,  # 2: animal
+            1.0,  # 3: seat
+            1.0,  # 4: sign
+            1.0,  # 5: bicycle
+            1.0,  # 6: car
+            2.0,  # 7: ball (anti-hallucination)
+            1.0,  # 8: light
+            1.2,  # 9: garbage can
+            1.5,  # 10: uav
+            2.0,  # 11: tricycle (anti-hallucination)
+        ]
 
     def loss_labels_focal(self, outputs, targets, indices, num_boxes, depth_weight=None):
         assert 'pred_logits' in outputs
@@ -96,8 +131,10 @@ class DEIMCriterion(nn.Module):
         loss = torchvision.ops.sigmoid_focal_loss(src_logits, target, self.alpha, self.gamma, reduction='none')
         if depth_weight is not None:
             loss = loss * depth_weight.view(src_logits.shape[0], src_logits.shape[1], 1)
+        if self.cls_loss_weights is not None and src_logits.shape[-1] == len(self.cls_loss_weights):
+            w_cls = torch.as_tensor(self.cls_loss_weights, dtype=loss.dtype, device=loss.device)
+            loss = loss * w_cls.view(1, 1, -1)
         loss = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
-
         return {'loss_focal': loss}
 
     def loss_labels_vfl(self, outputs, targets, indices, num_boxes, values=None, depth_weight=None):
@@ -106,8 +143,12 @@ class DEIMCriterion(nn.Module):
         if values is None:
             src_boxes = outputs['pred_boxes'][idx]
             target_boxes = torch.cat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0)
-            ious, _ = box_iou(box_cxcywh_to_xyxy(src_boxes), box_cxcywh_to_xyxy(target_boxes))
-            ious = torch.diag(ious).detach()
+            sb_xyxy = box_cxcywh_to_xyxy(src_boxes)
+            tb_xyxy = box_cxcywh_to_xyxy(target_boxes)
+            ious, _ = box_iou(sb_xyxy, tb_xyxy)
+            diag_iou = torch.diag(ious).detach()
+            nwd = box_nwd(sb_xyxy, tb_xyxy).detach()
+            ious = 0.6 * diag_iou + 0.4 * nwd
         else:
             ious = values
 
@@ -128,6 +169,9 @@ class DEIMCriterion(nn.Module):
         loss = F.binary_cross_entropy_with_logits(src_logits, target_score, weight=weight, reduction='none')
         if depth_weight is not None:
             loss = loss * depth_weight.view(src_logits.shape[0], src_logits.shape[1], 1)
+        if self.cls_loss_weights is not None and src_logits.shape[-1] == len(self.cls_loss_weights):
+            w_cls = torch.as_tensor(self.cls_loss_weights, dtype=loss.dtype, device=loss.device)
+            loss = loss * w_cls.view(1, 1, -1)
         loss = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
         return {'loss_vfl': loss}
 
@@ -137,8 +181,12 @@ class DEIMCriterion(nn.Module):
         if values is None:
             src_boxes = outputs['pred_boxes'][idx]
             target_boxes = torch.cat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0)
-            ious, _ = box_iou(box_cxcywh_to_xyxy(src_boxes), box_cxcywh_to_xyxy(target_boxes))
-            ious = torch.diag(ious).detach()
+            sb_xyxy = box_cxcywh_to_xyxy(src_boxes)
+            tb_xyxy = box_cxcywh_to_xyxy(target_boxes)
+            ious, _ = box_iou(sb_xyxy, tb_xyxy)
+            diag_iou = torch.diag(ious).detach()
+            nwd = box_nwd(sb_xyxy, tb_xyxy).detach()
+            ious = 0.6 * diag_iou + 0.4 * nwd
         else:
             ious = values
 
@@ -160,12 +208,186 @@ class DEIMCriterion(nn.Module):
         else:
             weight = pred_score.pow(self.gamma) * (1 - target) + target
 
+        if getattr(self, 'cls_mal_scale', None) is not None:
+            cls_w = torch.as_tensor(self.cls_mal_scale, device=src_logits.device, dtype=weight.dtype)
+            weight = weight * cls_w.view(1, 1, -1)
+
         # print(" ### DEIM-gamma{}-alpha{} ### ".format(self.gamma, self.mal_alpha))
         loss = F.binary_cross_entropy_with_logits(src_logits, target_score, weight=weight, reduction='none')
         if depth_weight is not None:
             loss = loss * depth_weight.view(src_logits.shape[0], src_logits.shape[1], 1)
         loss = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
         return {'loss_mal': loss}
+
+    def loss_labels_tadl(self, outputs, targets, indices, num_boxes, values=None, depth_weight=None):
+        """Task-Aligned Decoupled Loss (TADL).
+        
+        Key Mathematical Properties:
+        1. Decoupled Ceiling: The positive target is strictly 1.0 (decoupled from IoU).
+           Unlike MAL/VFL where target = IoU^1.5 (capping weak/distant objects at 0.35),
+           TADL allows ALL true objects to reach high confidence (0.80 ~ 0.95), aligning
+           with F5's hard Focal Loss confidence calibration.
+        2. Task-Aligned Quality Weighting: Positives are weighted by q^beta where
+           q = clamp(IoU_quality, min=tadl_min_iou, max=1.0). Higher quality proposals
+           receive proportionally stronger positive gradients, maintaining optimal ranking.
+        3. Anti-Hallucination Rare Class Negative Suppression: Background queries are
+           weighted by alpha * p^gamma, with class-specific multipliers (e.g. 2.0x for ball
+           and tricycle), preventing false positives in long-tail categories.
+        """
+        assert 'pred_boxes' in outputs and 'pred_logits' in outputs
+        idx = self._get_src_permutation_idx(indices)
+        batch_idx, src_idx = idx
+
+        if values is None:
+            src_boxes = outputs['pred_boxes'][idx]
+            target_boxes = torch.cat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+            sb_xyxy = box_cxcywh_to_xyxy(src_boxes)
+            tb_xyxy = box_cxcywh_to_xyxy(target_boxes)
+            ious, _ = box_iou(sb_xyxy, tb_xyxy)
+            diag_iou = torch.diag(ious).detach()
+            nwd = box_nwd(sb_xyxy, tb_xyxy).detach()
+            ious = 0.6 * diag_iou + 0.4 * nwd
+        else:
+            ious = values
+
+        src_logits = outputs['pred_logits']
+        target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(targets, indices)])
+        target_classes = torch.full(src_logits.shape[:2], self.num_classes,
+                                    dtype=torch.int64, device=src_logits.device)
+        target_classes[idx] = target_classes_o
+        target = F.one_hot(target_classes, num_classes=self.num_classes + 1)[..., :-1].float()
+
+        # 1. Quality factor q for positive matches
+        q_clamped = torch.clamp(ious, min=self.tadl_min_iou, max=1.0).pow(self.tadl_beta)
+
+        # 2. Positive weighting matrix (only scales positive entries)
+        pos_scale = torch.ones_like(target)
+        pos_scale[batch_idx, src_idx, target_classes_o] = q_clamped.to(pos_scale.dtype)
+
+        # 3. Rare-class negative suppression multipliers
+        if self.cls_neg_scale is not None and len(self.cls_neg_scale) == self.num_classes:
+            neg_cls_tensor = torch.as_tensor(self.cls_neg_scale, dtype=src_logits.dtype, device=src_logits.device).view(1, 1, -1)
+            neg_scale = (1.0 - target) * (neg_cls_tensor - 1.0) + 1.0
+        else:
+            neg_scale = 1.0
+
+        # 3b. Near-Duplicate Suppression Loss (NDSL):
+        # Heavily penalize unmatched queries that substantially overlap with GT boxes
+        dup_scale = 1.0
+        if getattr(self, 'use_ndsl', False) and 'pred_boxes' in outputs:
+            dup_scale_mat = torch.ones_like(target)
+            matched_mask = torch.zeros(src_logits.shape[:2], dtype=torch.bool, device=src_logits.device)
+            matched_mask[batch_idx, src_idx] = True
+
+            for b_i in range(src_logits.shape[0]):
+                unmatched_q = (~matched_mask[b_i]).nonzero(as_tuple=True)[0]
+                tgt_boxes_b = targets[b_i]['boxes']
+                if len(unmatched_q) > 0 and len(tgt_boxes_b) > 0:
+                    pred_b_unm = outputs['pred_boxes'][b_i, unmatched_q]
+                    sb_xy = box_cxcywh_to_xyxy(pred_b_unm)
+                    tb_xy = box_cxcywh_to_xyxy(tgt_boxes_b)
+                    ious_unm, union_unm = box_iou(sb_xy, tb_xy)
+                    
+                    # Compute Part-Whole Containment: fraction of query area inside a GT box
+                    sb_area = (sb_xy[:, 2] - sb_xy[:, 0]).clamp(min=0) * (sb_xy[:, 3] - sb_xy[:, 1]).clamp(min=0)
+                    inter_mat = ious_unm * union_unm
+                    containment = inter_mat / (sb_area.unsqueeze(1) + 1e-6)
+                    max_containment = containment.max(dim=1).values
+                    max_iou_unm = ious_unm.max(dim=1).values
+                    
+                    # Suppress near-duplicates and partial appendages (e.g. peacock tail/body duplicate)
+                    dup_mask = (max_iou_unm >= self.ndsl_min_iou) | (max_containment >= 0.40)
+                    if dup_mask.any():
+                        dup_q_idx = unmatched_q[dup_mask]
+                        dup_penalty_val = torch.maximum(max_iou_unm[dup_mask], max_containment[dup_mask])
+                        boost = 1.0 + self.ndsl_factor * dup_penalty_val.clamp(0.0, 1.0).pow(2)
+                        dup_scale_mat[b_i, dup_q_idx, :] = boost.unsqueeze(-1).to(dup_scale_mat.dtype)
+            dup_scale = dup_scale_mat
+
+        # 4. Focal modulation
+        p = torch.sigmoid(src_logits)
+        p_t = p * target + (1.0 - p) * (1.0 - target)
+        modulating = (1.0 - p_t.detach()).pow(self.gamma)
+        alpha_factor = self.alpha * target + (1.0 - self.alpha) * (1.0 - target)
+
+        weight = alpha_factor * modulating * pos_scale * neg_scale * dup_scale
+
+        # 5. Decoupled binary cross entropy with target = 1.0 for positives, 0.0 for negatives
+        bce = F.binary_cross_entropy_with_logits(src_logits, target, reduction='none')
+        loss = weight * bce
+
+        if depth_weight is not None:
+            loss = loss * depth_weight.view(src_logits.shape[0], src_logits.shape[1], 1)
+
+        loss = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
+        return {'loss_tadl': loss}
+
+    def loss_labels_rs(self, outputs, targets, indices, num_boxes, values=None, depth_weight=None):
+        """Rank & Sort Loss (Oksuz et al., ICCV 2021) adapted to DETR sigmoid heads.
+
+        Directly optimizes the AP-relevant ordering: every TP must rank above
+        every FP (ascending-rank hinge), and positives must be ordered by IoU
+        (sort term). This targets the failure mode where high-scoring FPs
+        outrank low-scoring TPs (e.g. sign: TP floor 0.062, 2161 FPs above it).
+
+        Simplifications for multi-class sigmoid channels:
+          - positives = matched queries, score = sigmoid logit of assigned class
+          - negatives = unmatched queries, score = max over class channels
+          - per-image computation, normalized by #FPs above each TP (paper Eq.)
+        """
+        src_logits = outputs['pred_logits']          # [B, Q, C]
+        B, Q, _ = src_logits.shape
+        scores = src_logits.sigmoid()
+        total = src_logits.new_zeros(())
+        total_pos = 0
+        for b in range(B):
+            src_idx, tgt_idx = indices[b]
+            if src_idx.numel() == 0:
+                continue
+            pos_cls = targets[b]['labels'][tgt_idx]
+            pos_score = scores[b, src_idx, pos_cls]                    # [P], grad flows
+            if values is not None:
+                # flat IoU tensor aligned with indices order (same as MAL)
+                pos_iou = values[total_pos:total_pos + src_idx.numel()].detach()
+            else:
+                src_boxes = outputs['pred_boxes'][b, src_idx]
+                tgt_boxes = targets[b]['boxes'][tgt_idx]
+                iou, _ = box_iou(box_cxcywh_to_xyxy(src_boxes.detach()),
+                                 box_cxcywh_to_xyxy(tgt_boxes))
+                pos_iou = torch.diag(iou).detach()
+            neg_mask = torch.ones(Q, dtype=torch.bool, device=scores.device)
+            neg_mask[src_idx] = False
+            neg_score = scores[b][neg_mask].max(dim=1).values          # [N], grad flows
+            if neg_score.numel() == 0:
+                total_pos += pos_score.numel()
+                continue
+
+            # ---- ascending rank loss: each TP penalized by FPs ranked above ----
+            hinge = (self.rs_margin - pos_score.unsqueeze(1)
+                     + neg_score.unsqueeze(0)).clamp(min=0)             # [P, N]
+            ranks = (neg_score.unsqueeze(0) > pos_score.unsqueeze(1)).sum(dim=1).float()
+            l_rank = torch.where(ranks > 0, hinge.sum(dim=1) / ranks.clamp(min=1),
+                                 torch.zeros_like(ranks))
+            l_rank = l_rank.sum() / pos_score.numel()
+
+            # ---- sort term: IoU order must follow score order ----
+            l_sort = src_logits.new_zeros(())
+            if pos_score.numel() > 1:
+                order = torch.argsort(pos_score, descending=True)
+                s_sorted = pos_score[order]
+                iou_sorted = pos_iou[order]
+                w = (iou_sorted[:-1] - iou_sorted[1:]).clamp(min=0)     # IoU inversions
+                hinge_s = (s_sorted[:-1] - s_sorted[1:]).clamp(min=0)   # push down low-IoU-above
+                l_sort = (w * hinge_s).sum() / (pos_score.numel() - 1)
+
+            total = total + l_rank + self.rs_sort_w * l_sort
+            total_pos += pos_score.numel()
+
+        if total_pos == 0:
+            return {'loss_rs': src_logits.sum() * 0.0}
+        loss = total * src_logits.shape[1] / max(num_boxes, 1)
+        return {'loss_rs': loss}
+
 
     def loss_boxes(self, outputs, targets, indices, num_boxes, boxes_weight=None, depth_weight=None):
         """Compute the losses related to the bounding boxes, the L1 regression loss and the GIoU loss
@@ -183,8 +405,13 @@ class DEIMCriterion(nn.Module):
             loss_bbox = loss_bbox * dw.unsqueeze(-1)
         losses['loss_bbox'] = loss_bbox.sum() / num_boxes
 
-        loss_giou = 1 - torch.diag(generalized_box_iou(\
+        raw_giou = 1 - torch.diag(generalized_box_iou(\
             box_cxcywh_to_xyxy(src_boxes), box_cxcywh_to_xyxy(target_boxes)))
+        # NWD enhancement: Gaussian Wasserstein distance provides smooth non-vanishing gradients for small targets
+        nwd_sim = box_nwd(src_boxes, target_boxes, C=0.5)
+        loss_nwd = 1.0 - nwd_sim
+        loss_giou = 0.6 * raw_giou + 0.4 * loss_nwd
+
         loss_giou = loss_giou if boxes_weight is None else loss_giou * boxes_weight
         if dw is not None:
             loss_giou = loss_giou * dw
@@ -234,7 +461,7 @@ class DEIMCriterion(nn.Module):
             idx = self._get_src_permutation_idx(indices)
             target_boxes = torch.cat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0)
 
-            pred_corners = outputs['pred_corners'][idx].reshape(-1, (self.reg_max+1))
+            pred_corners = outputs['pred_corners'][idx].reshape(-1, (self.reg_max+1)).clamp(-20.0, 20.0)
             ref_points = outputs['ref_points'][idx].detach()
             with torch.no_grad():
                 if self.fgl_targets_dn is None and 'is_dn' in outputs:
@@ -256,6 +483,8 @@ class DEIMCriterion(nn.Module):
             if 'teacher_corners' in outputs:
                 pred_corners = outputs['pred_corners'].reshape(-1, (self.reg_max+1))
                 target_corners = outputs['teacher_corners'].reshape(-1, (self.reg_max+1))
+                pred_corners = torch.nan_to_num(pred_corners, nan=0.0, posinf=20.0, neginf=-20.0).clamp(-20.0, 20.0)
+                target_corners = torch.nan_to_num(target_corners, nan=0.0, posinf=20.0, neginf=-20.0).clamp(-20.0, 20.0)
                 if not torch.equal(pred_corners, target_corners):
                     weight_targets_local = outputs['teacher_logits'].sigmoid().max(dim=-1)[0]
 
@@ -276,6 +505,54 @@ class DEIMCriterion(nn.Module):
                     losses['loss_ddf'] = (loss_match_local1 * self.num_pos + loss_match_local2 * self.num_neg) / (self.num_pos + self.num_neg)
 
         return losses
+
+    def loss_fcr(self, outputs, targets, indices, num_boxes, **kwargs):
+        """Fourier Contrastive Regularization Loss (V1-054 / ECCV 2024).
+        Computes 1D FFT amplitude spectra of matched foreground queries vs unmatched background queries.
+        Pushes foreground frequency representations away from background noise representations.
+        Helps discern low-contrast poles and faint boats in nighttime / glare scenes.
+        """
+        if 'pred_corners' not in outputs or len(indices) == 0:
+            return {'loss_fcr': torch.tensor(0.0, device=outputs['pred_logits'].device)}
+        
+        corners = outputs['pred_corners'] # (B, Q, 4 * (reg_max + 1))
+        B, Q, C_c = corners.shape
+        corners_4d = corners.view(B, Q, 4, -1) # (B, Q, 4, 33)
+        
+        # 1D FFT along distribution bins (dim=-1) - cast to float32 for cuFFT under AMP
+        fft_amp = torch.abs(torch.fft.rfft(corners_4d.float(), dim=-1)) # (B, Q, 4, 17)
+        fft_flat = fft_amp.view(B, Q, -1) # (B, Q, 68)
+        
+        losses = []
+        for b in range(B):
+            src_idx, _ = indices[b]
+            if len(src_idx) == 0:
+                continue
+            all_idx = torch.arange(Q, device=corners.device)
+            neg_mask = torch.ones(Q, dtype=torch.bool, device=corners.device)
+            neg_mask[src_idx] = False
+            neg_idx = all_idx[neg_mask]
+            
+            if len(neg_idx) == 0:
+                continue
+                
+            pos_fft = fft_flat[b, src_idx] # (N_pos, 68)
+            neg_fft = fft_flat[b, neg_idx] # (N_neg, 68)
+            
+            pos_norm = F.normalize(pos_fft, p=2, dim=-1, eps=1e-5)
+            neg_norm = F.normalize(neg_fft, p=2, dim=-1, eps=1e-5)
+            
+            neg_proto = neg_norm.mean(dim=0, keepdim=True) # (1, 68)
+            sim = torch.sum(pos_norm * neg_proto, dim=-1) # (N_pos,)
+            loss_b = F.relu(sim - 0.3).mean()
+            losses.append(loss_b)
+            
+        if len(losses) == 0:
+            loss_fcr = torch.tensor(0.0, device=corners.device)
+        else:
+            loss_fcr = torch.stack(losses).mean()
+            
+        return {'loss_fcr': loss_fcr}
 
     def _get_src_permutation_idx(self, indices):
         # permute predictions following indices
@@ -322,7 +599,10 @@ class DEIMCriterion(nn.Module):
             'focal': self.loss_labels_focal,
             'vfl': self.loss_labels_vfl,
             'mal': self.loss_labels_mal,
+            'tadl': self.loss_labels_tadl,
+            'rs': self.loss_labels_rs,
             'local': self.loss_local,
+            'fcr': self.loss_fcr,
         }
         assert loss in loss_map, f'do you really want to compute {loss} loss?'
         return loss_map[loss](outputs, targets, indices, num_boxes, **kwargs)
@@ -353,7 +633,6 @@ class DEIMCriterion(nn.Module):
             for i, aux_outputs in enumerate(outputs['enc_aux_outputs']):
                 indices_enc = self.matcher(aux_outputs, targets, epoch=epoch)['indices']
                 cached_indices_enc.append(indices_enc)
-                indices_aux_list.append(indices_enc)
             indices_go = self._get_go_indices(indices, indices_aux_list)
 
             num_boxes_go = sum(len(x[0]) for x in indices_go)
@@ -381,6 +660,26 @@ class DEIMCriterion(nn.Module):
             l_dict = self.get_loss(loss, outputs, targets, indices_in, num_boxes_in, **meta)
             l_dict = {k: l_dict[k] * self.weight_dict[k] for k in l_dict if k in self.weight_dict}
             losses.update(l_dict)
+
+        if 'loss_cmal' in outputs:
+            w_cmal = self.weight_dict.get('loss_cmal', 0.5)
+            losses['loss_cmal'] = outputs['loss_cmal'] * w_cmal
+
+        if 'loss_distill' in outputs:
+            w_distill = self.weight_dict.get('loss_distill', 1.0)
+            losses['loss_distill'] = outputs['loss_distill'] * w_distill
+
+        if 'loss_co_cls' in outputs:
+            w_co_cls = self.weight_dict.get('loss_co_cls', 1.0)
+            losses['loss_co_cls'] = outputs['loss_co_cls'] * w_co_cls
+
+        if 'loss_co_reg' in outputs:
+            w_co_reg = self.weight_dict.get('loss_co_reg', 2.0)
+            losses['loss_co_reg'] = outputs['loss_co_reg'] * w_co_reg
+
+        if 'loss_physics' in outputs:
+            w_physics = self.weight_dict.get('loss_physics', 1.0)
+            losses['loss_physics'] = outputs['loss_physics'] * w_physics
 
         # In case of auxiliary losses, we repeat this process with the output of each intermediate layer.
         if 'aux_outputs' in outputs:
@@ -427,9 +726,8 @@ class DEIMCriterion(nn.Module):
 
             for i, aux_outputs in enumerate(outputs['enc_aux_outputs']):
                 for loss in self.losses:
-                    use_uni_set = self.use_uni_set and (loss == 'boxes')
-                    indices_in = indices_go if use_uni_set else cached_indices_enc[i]
-                    num_boxes_in = num_boxes_go if use_uni_set else num_boxes
+                    indices_in = cached_indices_enc[i]
+                    num_boxes_in = num_boxes
                     meta = self.get_loss_meta_info(loss, aux_outputs, enc_targets, indices_in)
                     l_dict = self.get_loss(loss, aux_outputs, enc_targets, indices_in, num_boxes_in, **meta)
                     l_dict = {k: l_dict[k] * self.weight_dict[k] for k in l_dict if k in self.weight_dict}
@@ -552,7 +850,7 @@ class DEIMCriterion(nn.Module):
 
         if loss in ('boxes', ):
             meta['boxes_weight'] = iou
-        elif loss in ('vfl', 'mal'):
+        elif loss in ('vfl', 'mal', 'rs', 'tadl'):
             meta['values'] = iou
 
         return meta
@@ -585,14 +883,22 @@ class DEIMCriterion(nn.Module):
 
 
     def unimodal_distribution_focal_loss(self, pred, label, weight_right, weight_left, weight=None, reduction='sum', avg_factor=None):
-        dis_left = label.long()
-        dis_right = dis_left + 1
+        n_classes = pred.shape[1]
+        label = torch.nan_to_num(label, nan=0.0, posinf=float(n_classes - 1), neginf=0.0)
+        dis_left = label.clamp(0, n_classes - 1).long().clamp(0, n_classes - 1)
+        dis_right = (dis_left + 1).clamp(0, n_classes - 1)
 
-        loss = F.cross_entropy(pred, dis_left, reduction='none') * weight_left.reshape(-1) \
-             + F.cross_entropy(pred, dis_right, reduction='none') * weight_right.reshape(-1)
+        w_l = torch.nan_to_num(weight_left, nan=0.0).reshape(-1)
+        w_r = torch.nan_to_num(weight_right, nan=0.0).reshape(-1)
+
+        pred_f32 = pred.float().clamp(-20.0, 20.0).contiguous()
+        dis_left = dis_left.contiguous()
+        dis_right = dis_right.contiguous()
+        loss = F.cross_entropy(pred_f32, dis_left, reduction='none') * w_l \
+             + F.cross_entropy(pred_f32, dis_right, reduction='none') * w_r
 
         if weight is not None:
-            weight = weight.float()
+            weight = torch.nan_to_num(weight.float(), nan=0.0)
             loss = loss * weight
 
         if avg_factor is not None:

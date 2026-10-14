@@ -40,4 +40,5 @@ work/
 *.pkl
 *.out
 *.bak*
-_tmp_*.py
+_tmp_*
+**/_tmp_*

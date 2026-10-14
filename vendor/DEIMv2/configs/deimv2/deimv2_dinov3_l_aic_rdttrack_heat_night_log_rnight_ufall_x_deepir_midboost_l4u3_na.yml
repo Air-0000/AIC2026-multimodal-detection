@@ -1,0 +1,159 @@
+__include__: [
+  '../dataset/aic_detection.yml',
+  '../runtime.yml',
+  '../base/dataloader.yml',
+  '../base/optimizer.yml',
+  '../base/deimv2.yml',
+]
+
+# =============================================================================
+# 解冻量 SWEEP V1 = L4 + L3  (不含 L2 采样)
+# -----------------------------------------------------------------------------
+# 动机: combo(=L2+L3+L4) 输给单杠杆 L4; 且 combo 的 night01=0.197 反而低于 L3
+#   单独的 0.212 -> 怀疑失败项是 L2 采样(上界 0.45->0.80 稀释了暗端), 而非解冻。
+#   故本变体只把 L3 的「解冻 + 高 LR」叠到 L4 的强光度上, 不带 L2 的 bands 采样:
+#   * unfreeze_rgb_stages: 2 -> 3
+#   * RGB dinov3 两组 LR: 3e-5 -> 1e-4
+#   * 光度增强 / 采样 / epoch 保持 L4 原样
+# 相对 L4 的变量 = 「RGB 解冻量 + RGB LR」两项(与 L3 同参, 各自已验证有效)。
+# 裁决: 若 night01/005 涨且 day 不掉 -> 解冻是暗端专属杠杆, 值得再扫 6/12。
+# =============================================================================
+# =============================================================================
+# l4u3_na —— IR 对齐实验（基线臂）: l4u3 配方原样, 干净 _na 数据, 无对齐模块
+#   与 l4u3_na_sedcn 唯一 diff = aux_se / aux_dcn 两行。from-scratch, 无 -t。
+# =============================================================================
+output_dir: ./outputs/deimv2_dinov3_l_aic_rdttrack_heat_night_log_rnight_ufall_x_deepir_midboost_l4u3_na
+
+freeze_bn: false
+accum_steps: 2
+use_ema: True
+
+DEIM:
+  backbone: DINOv3STAsRDTTrack
+
+DINOv3STAsRDTTrack:
+  name: dinov3_vits16plus
+  weights_path: null
+  interaction_indexes: [5, 8, 11]
+  conv_inplane: 32
+  hidden_dim: 256
+  ir_drop_prob: 0.15
+  depth_drop_prob: 0.15
+  depth_in_chans: 1
+  ir_in_chans: 2
+  unfreeze_rgb_stages: 3        # L3: 多解冻 1 个 stage
+  input_norm: instance
+
+HybridEncoder:
+  in_channels: [256, 256, 256]
+  hidden_dim: 256
+  dim_feedforward: 1024
+  expansion: 1.25
+  depth_mult: 1.37
+
+DEIMTransformer:
+  feat_channels: [256, 256, 256]
+  hidden_dim: 256
+  num_layers: 6
+  eval_idx: -1
+  dim_feedforward: 2048
+
+## DEIM LR-Scheduler (longer: 50ep gives photometric adaptation room)
+epoches: 50
+lrsheduler: flatcosine
+lr_gamma: 0.5
+warmup_iter: 400
+flat_epoch: 25
+no_aug_epoch: 3
+
+## Optimizer (unchanged from v1)
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*.dinov3)(?!.*(?:ir_dinov3|depth_dinov3))(?!.*(?:norm|bn|bias)).*$'
+      lr: 0.0001
+    -
+      params: '^(?=.*.dinov3)(?!.*(?:ir_dinov3|depth_dinov3))(?=.*(?:norm|bn|bias)).*$'
+      lr: 0.0001
+      weight_decay: 0.
+    -
+      params: '^(?=.*(?:ir_dinov3|depth_dinov3))(?!.*(?:norm|bn|bias)).*$'
+      lr: 0.00015
+    -
+      params: '^(?=.*(?:ir_dinov3|depth_dinov3))(?=.*(?:norm|bn|bias)).*$'
+      lr: 0.00015
+      weight_decay: 0.
+    -
+      params: '^(?=.*(?:sta|encoder|decoder))(?=.*(?:norm|bn|bias)).*$'
+      weight_decay: 0.
+  lr: 0.0003
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+## Tri-modal dataset -- only the photometric op is strengthened vs v1
+train_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModalCached
+    cache_img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deepir_cache_na/train
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/images
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_heat_na/images
+    raw_ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_ir_na/images
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomPhotometricDistort5ch, p: 0.8, brightness: [0.6, 1.4], contrast: [0.5, 1.5], saturation: [0.5, 1.5], hue: [-0.1, 0.1]}
+        - {type: RandomZoomOut, fill: 0}
+        - {type: RandomIoUCrop, p: 0.8}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [640, 640]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomNight5ch, p: 0.5, level: [0.005, 0.45], photon_max: 70.0, read_sigma: 0.012, log_level: true, lamps: [1, 4]}  # same mid oversample as v1
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: True
+  num_workers: 8
+  drop_last: True
+  total_batch_size: 10   # 与 L4 一致 (accum2 -> micro 5), 保持严格单变量对照。
+                         # bs 拉大实测不可行: micro 8 OOM(峰值 12.8G), micro 6 也 OOM(峰值 13.08G);
+                         # 本卡系统基线占 2.35G, 实际可用仅 ~13.1G, 无余量。
+
+  collate_fn:
+    type: BatchImageCollateFunction
+    mixup_epochs: [4, 34]
+    stop_epoch: 60
+    copyblend_epochs: [4, 60]
+    base_size_repeat: 1
+
+val_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/images
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_heat_na/valid
+    raw_ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_ir_na/valid
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [640, 640]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: False
+  num_workers: 4
+  drop_last: False
+  total_batch_size: 4
+
+## DEIM Loss
+DEIMCriterion:
+  matcher:
+    matcher_change_epoch: 50

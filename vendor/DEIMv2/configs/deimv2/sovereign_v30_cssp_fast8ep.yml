@@ -1,0 +1,198 @@
+# =============================================================================
+# Sovereign V30: Cascaded Spectral-Spatial Perception (CSSP) & ABC (Fast 8-Epoch Tuning)
+# 算力平台: 本地 NVIDIA RTX 5060 Ti (16GB VRAM)
+# 核心战略:
+#   1. 激活 CSSP + ABC 浅层多模态显著性感知模块 (use_cssp: True, 30.24k 参数)
+#   2. 跨模态差分显著性门控: 抑制平滑背景杂波，放大暗弱小目标 (无人机、球等)
+#   3. 零初始化恒等映射热启动 (Step 0 Exact Identity): 锁定成熟主干 (5e-7), 专项激活 CSSP (1e-4)
+#   4. 8 轮快速退火 (4 轮平坦 + 3 轮关停增广吸附), 绝不过拟合, 15 分钟内极速完成
+# =============================================================================
+__include__: [
+  '../deim_dfine/dfine_hgnetv2_x_coco.yml',
+  '../dataset/aic_detection.yml',
+]
+
+task: detection
+eval_spatial_size: [576, 1024]
+output_dir: ./outputs/sovereign_v30_cssp_fast8ep
+
+DEIM:
+  backbone: HGNetv2MultiModal
+  use_scene_gate: True
+  use_internal_sahi: False
+  use_internal_tta: True
+  use_p2_cascade_zoom: False
+  use_planar_rigidity_gate: True
+  num_classes: 12
+
+HGNetv2MultiModal:
+  name: B5
+  ir_in_chans: 2          # 2 通道 IR: Ch0=高精对齐 IR, Ch1=LBG 滤波 IR
+  inject_stages: [2, 3]   # stride 16 / 32
+  fusion: cssa
+  use_cssp: True          # ★ 核心激活：Cascaded Spectral-Spatial Perception + ABC 显著性模块
+  use_midboost: True      # 自适应照度门控
+  use_dcda: True          # DCDA 深度引导形变视差对齐
+  use_3d_lift: True       # 3D 物理空间坐标升维
+  use_dog: True           # DOG 深度阶跃遮挡隔离门控
+  use_bilateral_pool: True # 视差双边抗混叠池化模块
+  use_shallow_edge_fuse: True # 浅层高频边缘注入
+  use_rfgm_edge: True         # 频域相位残差补偿
+  use_frontend_rfgm: True     # 前端照度重构
+  use_trunk_bridge: True      # Stage 0 -> Stage 1 微残差直通桥
+  use_mixstyle: True          # MixStyle 跨域泛化
+  mixstyle_p: 0.2
+  pretrained_ir_stem: True
+  return_idx: [0, 1, 2, 3]
+  stem_base: 64
+  ir_drop_prob: 0.05
+  freeze_at: 0
+  freeze_norm: True
+  local_model_dir: weight/hgnetv2/
+  pretrained: False
+
+HybridEncoder:
+  csp_type: csp
+  use_ssm_levels: [0, 1]
+  ssm_d_state: 16
+  use_p2_guidance: True
+  p2_version: "v10_1"
+  p2_dim: 128
+  use_lfp: True
+  use_pbd: True
+  use_starconv: True
+
+DFINETransformer:
+  use_snr_sharpen: True
+  snr_sharpen_alpha: 0.5
+  use_diam: True
+  use_sdqs: False
+
+DEIMCriterion:
+  weight_dict:
+    loss_cmal: 0.5
+    loss_tadl: 2.0
+    loss_bbox: 5.0
+    loss_giou: 3.5
+    loss_fgl: 0.25
+    loss_ddf: 1.5
+    loss_fcr: 0.2
+  losses: ['tadl', 'boxes', 'local', 'fcr']
+  gamma: 1.5
+  tadl_beta: 0.5
+  tadl_min_iou: 0.35
+  use_ndsl: False
+  cls_neg_scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  matcher:
+    type: HungarianMatcher
+    weight_dict:
+      cost_class: 2.0
+      cost_bbox: 5.0
+      cost_giou: 3.5
+    alpha: 0.25
+    gamma: 2.0
+
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*backbone)(?!.*norm|.*ir_stem|.*ir_proj|.*ir_align|.*occlusion_gate|.*coord_lift|.*bilateral_pool|.*shallow_edge_fuse|.*frontend_rfgm|.*s0_to_p3_trunk|.*cssp_shallow).*$'
+      lr: 0.0000005           # 骨干稳定锁定 5e-7
+    -
+      params: '^(?=.*cssp_shallow).*$'
+      lr: 0.0001              # ★ 核心：CSSP + ABC 模块独立高学习率 1e-4 专项激活
+    -
+      params: '^(?=.*ir_align).*$'
+      lr: 0.0001              # DCDA 视差分支 1e-4
+    -
+      params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.
+  lr: 0.000015                # 解码器等其余新分支 1.5e-5
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+epoches: 8
+lrsheduler: flatcosine
+lr_gamma: 1
+warmup_iter: 20
+flat_epoch: 4
+no_aug_epoch: 3               # 末 3 轮关停增广，纯净特征吸附退火
+
+accum_steps: 4                # 2 * 4 = 8 等效 Batch Size
+print_freq: 20
+checkpoint_freq: 2
+
+train_dataloader:
+  total_batch_size: 2
+  num_workers: 4
+  persistent_workers: True
+  pin_memory: True
+  prefetch_factor: 2
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/visible
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/infrared_aligned
+    raw_ir_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/infrared
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    depth_read: raw16
+    destripe_ir: True
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Mosaic, output_size: [576, 1024], rotation_range: 10, translation_range: [0.1, 0.1], scaling_range: [0.7, 1.3],
+           probability: 1.0, fill_value: 0, use_cache: True, max_cached_images: 30, random_pop: True}
+        - {type: RandomPhotometricDistort5ch, p: 0.5, brightness: [0.8, 1.2], contrast: [0.8, 1.2], saturation: [0.8, 1.2], hue: [-0.05, 0.05]}
+        - {type: RandomZoomOut, fill: 0}
+        - {type: RandomIoUCrop, p: 0.8}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [576, 1024]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+      policy:
+        name: stop_epoch
+        epoch: [1, 4, 5]
+        ops: ['Mosaic', 'RandomPhotometricDistort5ch', 'RandomZoomOut', 'RandomIoUCrop']
+      mosaic_prob: 0.5
+  collate_fn:
+    type: BatchImageCollateFunction
+    base_size: 1024
+    base_size_repeat: ~
+    mixup_prob: 0.5
+    mixup_epochs: [1, 4]
+    copyblend_prob: 0.5
+    copyblend_epochs: [1, 4]
+    stop_epoch: 5
+
+val_dataloader:
+  type: DataLoader
+  total_batch_size: 2
+  num_workers: 2
+  pin_memory: True
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/visible
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/infrared_aligned
+    raw_ir_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/infrared
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    depth_read: raw16
+    destripe_ir: True
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [576, 1024]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: False
+  drop_last: False
+
+ema:
+  warmups: 20
+  decay: 0.9998

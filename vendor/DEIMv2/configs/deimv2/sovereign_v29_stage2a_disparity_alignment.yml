@@ -1,0 +1,175 @@
+# =============================================================================
+# Sovereign V29 Stage 2-A: 深度引导物理视差觉醒与红外对齐攻坚
+# 硬件平台: 实验室科研服务器 ailab40 (Tesla V100-SXM2 32GB, 0 元/小时)
+# 训练哲学:
+#   1. 没有红外对齐，就没有红外学习:
+#      绝不在未对齐状态下强行融合语义。先让红外与可见光光轴物理视差彻底归零。
+#   2. 深度绝对引导 (DCDA 1e-4 高学习率攻坚):
+#      利用 16-bit 真实公制深度 1/Z 物理先验，驱动 DCN 极线形变卷积与视差投影层。
+#   3. 锚定保护已有点火成果:
+#      Stage 1 已建立 12 类语义与 90.6% 高召回基底。RGB 骨干锁死 1e-6，分类头保护微调 1.5e-5。
+#   4. 跨模态高频一致性监督 (loss_cmal: 1.0):
+#      拉普拉斯高频一致性损失强迫红外热轮廓与 RGB 边缘严丝合缝贴合，根除双边缘重影。
+# =============================================================================
+
+__include__: [
+  '../deim_dfine/dfine_hgnetv2_x_coco.yml',
+  '../dataset/aic_detection.yml',
+]
+
+task: detection
+eval_spatial_size: [1024, 1824]
+output_dir: ./outputs/sovereign_v29_stage2a_disparity_alignment
+
+DEIM:
+  backbone: HGNetv2MultiModal
+  use_scene_gate: False
+  use_internal_sahi: False
+  use_internal_tta: False
+  use_p2_cascade_zoom: False
+  use_planar_rigidity_gate: False
+  num_classes: 12
+  num_queries: 300
+  use_dinov3_distill: False     # 卸载 DINOv3 教师，学生模型独占算力与显存
+
+HGNetv2MultiModal:
+  name: B5
+  ir_in_chans: 2                # 2 通道 IR: Ch0=高精对齐 IR, Ch1=LBG 滤波 IR
+  inject_stages: [2, 3]         # stride 16 / 32
+  fusion: cssa
+  use_midboost: False           # 训练期直通
+  use_dcda: True                # 核心：DCDA 深度引导形变视差对齐
+  use_3d_lift: False            # Stage 2-B 解锁
+  use_dog: False                # Stage 2-B 解锁
+  use_bilateral_pool: False     # Stage 2-B 解锁
+  use_shallow_edge_fuse: True   # 浅层高频边缘注入
+  use_rfgm_edge: False
+  use_frontend_rfgm: False
+  use_trunk_bridge: False
+  use_mixstyle: False
+  pretrained_ir_stem: True      # 从 RGB 迁移边缘高斯滤波核，杜绝冷启动噪声
+  return_idx: [1, 2, 3]
+  stem_base: 64
+  ir_drop_prob: 0.0             # 对齐阶段红外恒定在线
+  freeze_at: 0
+  freeze_norm: True
+  local_model_dir: weight/hgnetv2/
+  pretrained: False
+
+HybridEncoder:
+  csp_type: csp
+
+DEIMCriterion:
+  weight_dict:
+    loss_cmal: 1.0              # 核心：跨模态高频特征一致性对齐损失 (拉普拉斯高频吸附)
+    loss_vfl: 1.0
+    loss_bbox: 5.0
+    loss_giou: 3.5
+    loss_fgl: 0.25
+    loss_ddf: 1.5
+  losses: ['vfl', 'boxes', 'local']
+  cls_neg_scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] # 纯净无偏
+  matcher:
+    type: HungarianMatcher
+    weight_dict:
+      cost_class: 2.0
+      cost_bbox: 5.0
+      cost_giou: 3.5
+    alpha: 0.25
+    gamma: 2.0
+
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*(?:ir_align|disp_proj|phys_disp_scale|offset_net)).*$'
+      lr: 0.0001                # 核心：DCDA 视差分支独立高学习率 1e-4 专项激活觉醒
+    -
+      params: '^(?=.*(?:ir_stem|ir_proj|shallow_edge_fuse)).*$'
+      lr: 0.0001                # 红外 Stem 与浅层边缘融合独立高学习率 1e-4
+    -
+      params: '^(?=.*backbone.rgb_net)(?!.*norm).*$'
+      lr: 0.000001              # 骨干网络锁定 1e-6 作为稳定几何锚点，严防点火成果被冲刷
+    -
+      params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.
+    -
+      params: '^(?=.*(?:score_head|class_embed)).*$'
+      lr: 0.000015              # 分类头微调步长 1.5e-5
+  lr: 0.00002                   # 解码器主体 2e-5
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+epoches: 8                      # 阶段 2-A：8 轮专项完成几何视差消除与光热边缘贴合
+lrsheduler: flatcosine
+lr_gamma: 1
+warmup_iter: 30
+flat_epoch: 5                   # 前 5 轮平原期充分学习特征形变对齐
+no_aug_epoch: 2                 # 末 2 轮关停增广做纯净退火，稳定对齐场
+
+accum_steps: 1                  # 满血单步反向传播
+print_freq: 10
+checkpoint_freq: 2
+
+train_dataloader:
+  total_batch_size: 3           # 单卡 3 张 (1088x1920 6通道稳态显存 ~25-27GB，压满 VRAM 算力)
+  num_workers: 6
+  persistent_workers: True
+  pin_memory: True
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/dataset/train/visible
+    ir_folder: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/dataset/train/infrared_aligned
+    raw_ir_folder: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/work_dir/train_lbg_ir
+    depth_folder: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/dataset/train/depth
+    depth_read: raw16
+    destripe_ir: True
+    ann_file: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomPhotometricDistort5ch, p: 0.5, brightness: [0.8, 1.2], contrast: [0.8, 1.2], saturation: [0.8, 1.2], hue: [-0.05, 0.05]}
+        - {type: RandomZoomOut, fill: 0}
+        - {type: RandomIoUCrop, p: 0.8}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [1024, 1824]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+      policy:
+        name: stop_epoch
+        epoch: 6
+        ops: ['RandomPhotometricDistort5ch', 'RandomZoomOut', 'RandomIoUCrop']
+  collate_fn:
+    type: BatchImageCollateFunction
+    base_size: 1824
+    base_size_repeat: ~
+    stop_epoch: 6
+
+val_dataloader:
+  type: DataLoader
+  total_batch_size: 3
+  num_workers: 4
+  pin_memory: True
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/dataset/train/visible
+    ir_folder: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/dataset/train/infrared_aligned
+    raw_ir_folder: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/work_dir/train_lbg_ir
+    depth_folder: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/dataset/train/depth
+    depth_read: raw16
+    destripe_ir: True
+    ann_file: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [1024, 1824]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: False
+  drop_last: False

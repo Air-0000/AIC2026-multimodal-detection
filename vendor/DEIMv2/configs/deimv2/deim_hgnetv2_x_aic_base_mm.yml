@@ -1,0 +1,115 @@
+# =============================================================================
+# DEIM-D-FINE-X (HGNetv2-B5) AIC 多模态对齐消融实验 -- Base 对照组 (无 DCDA)
+# -----------------------------------------------------------------------------
+# 架构: HGNetv2-B5 (RGB) + ModalityStem (2ch IR: Heat + Raw) + CSSA 融合
+# 唯一控制变量: use_dcda: False (无深度视差引导, 标准像素对齐)
+# =============================================================================
+__include__: [
+  '../deim_dfine/dfine_hgnetv2_x_coco.yml',
+  '../dataset/aic_detection.yml',
+]
+
+output_dir: ./outputs/deim_hgnetv2_x_aic_base_mm
+
+DEIM:
+  backbone: HGNetv2MultiModal
+
+HGNetv2MultiModal:
+  name: B5
+  ir_in_chans: 1          # 1 通道 IR (匹配最佳预训练 checkpoint: Heat / LBG)
+  inject_stages: [2, 3]   # stride 8 / 16
+  fusion: cssa
+  use_dcda: False         # BASE 对照组: 禁用 DCDA
+  stem_base: 64
+  ir_drop_prob: 0.15
+  freeze_at: 0
+  freeze_norm: True
+  local_model_dir: weight/hgnetv2/
+  pretrained: True
+
+HybridEncoder:
+  csp_type: csp
+
+DFINETransformer:
+  activation: relu
+  mlp_act: relu
+
+optimizer:
+  params:
+    -
+      params: '^(?=.*backbone\.ir_)'
+      lr: 0.00025
+    -
+      params: '^(?=.*backbone)(?!.*norm|bn)(?!.*ir_).*$'
+      lr: 0.0000025
+    -
+      params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.
+
+epoches: 15
+lrsheduler: flatcosine
+lr_gamma: 1
+warmup_iter: 50
+flat_epoch: 12000
+no_aug_epoch: 2
+
+accum_steps: 4
+print_freq: 20
+checkpoint_freq: 2
+
+train_dataloader:
+  total_batch_size: 16
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/images
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/infrared
+    raw_ir_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/infrared
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomPhotometricDistort5ch, p: 0.8, brightness: [0.6, 1.4], contrast: [0.5, 1.5], saturation: [0.5, 1.5], hue: [-0.1, 0.1]}
+        - {type: RandomZoomOut, fill: 0}
+        - {type: RandomIoUCrop, p: 0.8}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [640, 640]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  collate_fn:
+    type: BatchImageCollateFunction
+    mixup_epochs: [2, 10]
+    stop_epoch: 13
+    copyblend_epochs: [2, 13]
+    base_size_repeat: 1
+
+val_dataloader:
+  type: DataLoader
+  total_batch_size: 4
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/images
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/infrared
+    raw_ir_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/infrared
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    n_channels: 6
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [640, 640]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  shuffle: False
+  num_workers: 4
+  drop_last: False
+
+ema:
+  warmups: 200
+lr_warmup_scheduler:
+  warmup_duration: 0

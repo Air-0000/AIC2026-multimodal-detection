@@ -1,0 +1,10 @@
+__include__: [
+  'deim_hgnetv2_x_aic_obj2coco_ft_dcnmm.yml',
+]
+
+output_dir: ./outputs/deim_hgnetv2_x_aic_obj2coco_ft_dcnmm_val_val_night01
+
+# night 档: RGB 换暗化副本, IR/热图不变 (日/夜同 IR, 数据集语义与 RGB 线评测一致)
+val_dataloader:
+  dataset:
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/data_aux/aic_valid_rgb_night01

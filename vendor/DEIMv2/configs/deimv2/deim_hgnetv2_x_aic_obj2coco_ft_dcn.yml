@@ -1,0 +1,82 @@
+# =============================================================================
+# DEIM-D-FINE-X (HGNetv2-B5) AIC 12类单阶段微调 -- 从官方 Objects365+COCO 成品热启动
+# -----------------------------------------------------------------------------
+# 起点: ckpts/dfine_x_obj2coco.pth (D-FINE-X, O365预训练→COCO微调完, COCO AP 59.3)
+#       整个网络(主干+encoder+decoder)已检测适配; 分类头 80→12 由 _matched_state
+#       strict=False 自动重置。合规依据: 细则十一允许 ImageNet/COCO/Objects365 预训练。
+# 配方: 逐字沿用官方 configs/deim_dfine/object365/deim_hgnetv2_x_obj2coco_24e.yml
+#       (24ep / flat lr 无衰减 / warmup 0 / relu), 仅按小数据集(1800张)放大 epoch:
+#       50ep, 增强节奏 [2,25,46] 等比放大官方 [2,12,20]@24ep。
+# 关键设置:
+#   - HGNetv2 freeze_at 0 / freeze_norm True (官方微调默认, 小数据防 BN 漂移)
+#   - DFINETransformer relu (与 checkpoint 训练时一致)
+#   - flat lr: backbone 2.5e-6 / 头部 2.5e-4 (官方微调值, 不另调)
+#   - batch 16 = micro4 x accum4 (RTX 5060 Ti 16G, CNN 主干远轻于 ViT-L)
+#   - matcher 不换挡 (官方微调配方即如此, 短程 flat 训练无需)
+#   - EMA warmups 0 (官方微调配方)
+# 评测: 同目录 *_val_*.yml (day + 9 档 night), 由 gen_dfine_x_val_cfgs.py 生成
+# =============================================================================
+__include__: [
+  '../deim_dfine/dfine_hgnetv2_x_coco.yml',   # HGNetv2-B5 + HybridEncoder + DFINETransformer
+  '../dataset/aic_detection.yml',             # AIC 12类 RGB (覆盖 COCO 数据集)
+  '../base/deim.yml',                         # Dense O2O 增强 (Mosaic/Photometric/IoUCrop/mixup)
+]
+
+output_dir: ./outputs/deim_hgnetv2_x_aic_obj2coco_ft_dcn
+
+## 恢复官方微调的冻结设置 (deim.yml 会解冻 BN, 这里压回); 本地 ImageNet 主干缓存路径
+HGNetv2:
+  dcn_stages: [2, 3]   # DCNv2 zero-init residual (red=128, depthwise), ~0.85M
+  freeze_at: 0
+  freeze_norm: True
+  local_model_dir: weight/hgnetv2/
+
+## D-FINE ckpt (dfine_x_obj2coco.pth) 的 encoder 用经典双分支 CSPLayer = csp_type 'csp';
+## fork 里 'csp' 分支原缺失(UnboundLocalError), 已在 hybrid_encoder.py 补上
+HybridEncoder:
+  csp_type: csp
+
+## 与 checkpoint 训练时一致
+DFINETransformer:
+  activation: relu
+  mlp_act: relu
+
+## 微调节奏 (官方 obj2coco_24e: 24ep/gamma1/warmup0/flat到底; 1800张放大到 50ep)
+epoches: 50
+lrsheduler: flatcosine
+lr_gamma: 1          # 官方微调 = 恒定 lr, 不走余弦
+warmup_iter: 100    # 官方为 0, 但本框架 flatcosine 在 warmup_iter=0 时除零崩溃 (logs/dfine_x_ft_train.log 04:48 实锤); 100 iter ≈ 0.9ep 平滑起步
+flat_epoch: 12000    # 恒定
+no_aug_epoch: 4
+
+## batch: 16 = micro4 x accum4
+accum_steps: 4
+
+train_dataloader:
+  total_batch_size: 16
+  dataset:
+    transforms:
+      policy:
+        epoch: [2, 25, 46]   # 官方 [2,12,20]@24ep 等比放大
+  collate_fn:
+    mixup_epochs: [2, 25]
+    stop_epoch: 46
+
+val_dataloader:
+  total_batch_size: 4
+  dataset:
+    transforms:
+      # aic_detection.yml 的 val transforms 是 ops: None (PIL 直进 collate 会崩,
+      # 07:01 实锤 "'Image' object is not subscriptable"); 覆写为 base 同款
+      ops:
+        - {type: Resize, size: [640, 640]}
+        - {type: ConvertPILImage, dtype: 'float32', scale: True}
+
+## 官方微调配方是 warmups:0 (常数 decay 0.9999) —— 那是 17.7万 iter 的尺度;
+## 本任务 50ep 仅 ~5600 iter, 0.9999 恒定下 EMA 10ep 后仍是 ~89% 初始权重,
+## val(评 EMA) 全程 AP=0 实锤。改用框架默认 warmups=1000 (decay 随 iter 从 0
+## 指数爬升到 0.9999), 早期紧贴模型、后期平滑。
+ema:
+  warmups: 1000
+lr_warmup_scheduler:
+  warmup_duration: 0

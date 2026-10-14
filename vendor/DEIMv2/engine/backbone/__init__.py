@@ -18,6 +18,9 @@ from .csp_resnet import CSPResNet
 from .csp_darknet import CSPDarkNet, CSPPAN
 
 from .hgnetv2 import HGNetv2
+from .hgnetv2_mm import HGNetv2MultiModal
+from .hgnetv2_vit_dualstream import HGNetv2ViTDualStream
 
 from .dinov3_adapter import *
 from .multimodal_backbones import *
+
