@@ -23,26 +23,27 @@ __all__ = ['HybridEncoder']
 
 class HaarWaveletDownsample(nn.Module):
     """基于 Haar 离散小波的高频无损下采样层 (来源: V1-246 MWHL)
+    采用标准分组卷积 (Grouped Conv2d, groups=C) 实现，硬件级 16 字节对齐，彻底免疫 Volta (SM_70/V100) FP16 内存不对齐异常
     将 (B, C, 2H, 2W) 下采样为 (B, 4C, H, W)，显式分离 LL、LH、HL(垂直)、HH
     """
     def __init__(self, in_channels):
         super().__init__()
         self.in_channels = in_channels
+        w_base = torch.tensor([
+            [[0.5, 0.5], [0.5, 0.5]],      # LL: x1 + x3 + x2 + x4
+            [[-0.5, -0.5], [0.5, 0.5]],    # HL: -x1 + x2 - x3 + x4
+            [[-0.5, 0.5], [-0.5, 0.5]],    # LH: -x1 - x2 + x3 + x4
+            [[0.5, -0.5], [-0.5, 0.5]],    # HH: x1 - x2 - x3 + x4
+        ], dtype=torch.float32).unsqueeze(1) # (4, 1, 2, 2)
+        weight = w_base.repeat(in_channels, 1, 1, 1) # (4*in_channels, 1, 2, 2)
+        self.register_buffer('weight', weight, persistent=False)
 
     def forward(self, x):
-        x01 = x[:, :, 0::2, :] / 2.0
-        x02 = x[:, :, 1::2, :] / 2.0
-        x1 = x01[:, :, :, 0::2]
-        x2 = x02[:, :, :, 0::2]
-        x3 = x01[:, :, :, 1::2]
-        x4 = x02[:, :, :, 1::2]
-        
-        ll = x1 + x2 + x3 + x4      # 低频近似
-        lh = -x1 - x2 + x3 + x4     # 水平高频
-        hl = -x1 + x2 - x3 + x4     # 垂直高频 (重点保护立柱!)
-        hh = x1 - x2 - x3 + x4      # 对角高频
-        
-        return torch.cat([ll, hl, lh, hh], dim=1)
+        B, C, H2, W2 = x.shape
+        w = self.weight.to(device=x.device, dtype=x.dtype)
+        out_conv = F.conv2d(x, w, stride=2, groups=C)
+        H, W = out_conv.shape[-2:]
+        return out_conv.view(B, C, 4, H, W).permute(0, 2, 1, 3, 4).reshape(B, 4 * C, H, W).contiguous()
 
 
 class LocalMixedCrossConv(nn.Module):
@@ -123,23 +124,25 @@ class P2CrossScaleRefinementV10_1(nn.Module):
 
         # 天空与水面波纹高频噪声精准截断 (Sky-Water Noise Attenuator)
         B, _, H_f, W_f = h_fused.shape
-        y_grid = torch.linspace(0.0, 1.0, H_f, device=h_fused.device).view(1, 1, H_f, 1).expand(B, 1, H_f, W_f)
-        clean_mask = torch.ones_like(y_grid)
-        if depth is not None:
-            depth_raw = torch.clamp(F.interpolate(depth, size=(H_f, W_f), mode='nearest') * 0.5 + 0.5, 0.0, 1.0)
-            # 1. 天空区域高频净化 (y < 0.28 且无有效深度回波)
-            sky_factor = torch.clamp((y_grid - 0.10) / 0.15, 0.0, 1.0)
-            clean_mask = torch.where((y_grid < 0.28) & (depth_raw < 0.02), sky_factor, clean_mask)
+        with torch.no_grad():
+            y_grid = torch.linspace(0.0, 1.0, H_f, device=h_fused.device, dtype=h_fused.dtype).view(1, 1, H_f, 1).expand(B, 1, H_f, W_f).contiguous()
+            clean_mask = torch.ones_like(y_grid)
+            if depth is not None:
+                depth_raw = torch.clamp(F.interpolate(depth.to(dtype=h_fused.dtype), size=(H_f, W_f), mode='nearest') * 0.5 + 0.5, 0.0, 1.0)
+                # 1. 天空区域高频净化 (y < 0.28 且无有效深度回波)
+                sky_factor = torch.clamp((y_grid - 0.10) / 0.15, 0.0, 1.0)
+                clean_mask = torch.where((y_grid < 0.28) & (depth_raw < 0.02), sky_factor, clean_mask)
 
-            # 2. 水面波纹高频净化 (y > 0.48 且无 3D 刚体阶跃梯度)
-            d_pad = F.pad(depth_raw, (1, 1, 1, 1), mode='replicate')
-            grad_x = d_pad[:, :, 1:-1, 2:] - d_pad[:, :, 1:-1, :-2]
-            grad_y = d_pad[:, :, 2:, 1:-1] - d_pad[:, :, :-2, 1:-1]
-            grad_d = torch.sqrt(grad_x**2 + grad_y**2 + 1e-6)
-            water_factor = torch.clamp(grad_d / 0.015, 0.0, 1.0)
-            clean_mask = torch.where((y_grid > 0.48) & (grad_d < 0.015), water_factor, clean_mask)
+                # 2. 水面波纹高频净化 (y > 0.48 且无 3D 刚体阶跃梯度)
+                d_pad = F.pad(depth_raw, (1, 1, 1, 1), mode='replicate')
+                grad_x = d_pad[:, :, 1:-1, 2:] - d_pad[:, :, 1:-1, :-2]
+                grad_y = d_pad[:, :, 2:, 1:-1] - d_pad[:, :, :-2, 1:-1]
+                grad_d = torch.sqrt(grad_x**2 + grad_y**2 + 1e-4)
+                water_factor = torch.clamp(grad_d / 0.015, 0.0, 1.0)
+                clean_mask = torch.where((y_grid > 0.48) & (grad_d < 0.015), water_factor, clean_mask).to(dtype=h_fused.dtype)
 
-        delta = self.proj_v10_1(h_fused * spatial_gate * clean_mask)
+        gated_feat = (h_fused * spatial_gate * clean_mask).to(dtype=h_fused.dtype)
+        delta = self.proj_v10_1(gated_feat)
         return p3_feat + delta
 
 
@@ -389,13 +392,15 @@ class RepNCSPELAN4(nn.Module):
         self.cv4 = ConvNormLayer_fuse(c3+(2*c4), c2, 1, 1, bias=bias, act=act)
 
     def forward_chunk(self, x):
-        y = list(self.cv1(x).chunk(2, 1))
-        y.extend((m(y[-1])) for m in [self.cv2, self.cv3])
+        y = [t.contiguous() for t in self.cv1(x).chunk(2, 1)]
+        for m in [self.cv2, self.cv3]:
+            y.append(m(y[-1]).contiguous())
         return self.cv4(torch.cat(y, 1))
 
     def forward(self, x):
-        y = list(self.cv1(x).split((self.c, self.c), 1))
-        y.extend(m(y[-1]) for m in [self.cv2, self.cv3])
+        y = [t.contiguous() for t in self.cv1(x).split((self.c, self.c), 1)]
+        for m in [self.cv2, self.cv3]:
+            y.append(m(y[-1]).contiguous())
         return self.cv4(torch.cat(y, 1))
 
 
@@ -753,8 +758,8 @@ class HybridEncoder(nn.Module):
             feat_heigh = self.lateral_convs[len(self.in_channels) - 1 - idx](feat_heigh)
             inner_outs[0] = feat_heigh
             upsample_feat = F.interpolate(feat_heigh, scale_factor=2., mode='nearest')
-            fused_feat = (upsample_feat + feat_low) \
-                if self.fuse_op == 'sum' else torch.concat([upsample_feat, feat_low], dim=1)
+            fused_feat = (upsample_feat + feat_low).contiguous() \
+                if self.fuse_op == 'sum' else torch.concat([upsample_feat, feat_low], dim=1).contiguous()
             inner_out = self.fpn_blocks[len(self.in_channels)-1-idx](fused_feat)
             inner_outs.insert(0, inner_out)
 
@@ -770,8 +775,8 @@ class HybridEncoder(nn.Module):
             feat_low = outs[-1]
             feat_height = inner_outs[idx + 1]
             downsample_feat = self.downsample_convs[idx](feat_low)
-            fused_feat = (downsample_feat + feat_height) \
-                if self.fuse_op == 'sum' else torch.concat([downsample_feat, feat_height], dim=1)
+            fused_feat = (downsample_feat + feat_height).contiguous() \
+                if self.fuse_op == 'sum' else torch.concat([downsample_feat, feat_height], dim=1).contiguous()
             out = self.pan_blocks[idx](fused_feat)
             outs.append(out)
 

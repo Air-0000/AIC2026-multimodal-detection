@@ -473,11 +473,14 @@ class DFINETransformer(nn.Module):
                  snr_sharpen_alpha=0.5,
                  use_diam=False,
                  use_sdqs=False,
+                 use_distinct_queries=False,
+                 distinct_kernel_size=3,
                  ):
         super().__init__()
-        self.use_sdqs = use_sdqs
-        if use_sdqs:
-            print("[DFINETransformer] Spatial Diversity Query Selection (SDQS - Anti-Cluster 2D Local-Max): ON")
+        self.use_sdqs = bool(use_sdqs or use_distinct_queries)
+        self.distinct_kernel_size = int(distinct_kernel_size)
+        if self.use_sdqs:
+            print(f"[DFINETransformer] Spatial Diversity Query Selection (SDQS / Distinct Query, kernel_size={self.distinct_kernel_size}): ON")
         assert len(feat_channels) <= num_levels
         assert len(feat_strides) == len(feat_channels)
 
@@ -735,63 +738,59 @@ class DFINETransformer(nn.Module):
 
     def _select_topk(self, memory: torch.Tensor, outputs_logits: torch.Tensor, outputs_anchors_unact: torch.Tensor, topk: int, spatial_shapes=None):
         total_len = outputs_logits.shape[1]
-        outputs_logits_clean = torch.nan_to_num(outputs_logits, nan=-10.0, posinf=10.0, neginf=-10.0)
-        if self.query_select_method == 'default':
-            if spatial_shapes is not None and len(spatial_shapes) >= 2:
-                scores = outputs_logits_clean.max(-1).values
-                p3_len = spatial_shapes[0][0] * spatial_shapes[0][1]
-                p3_k = min(int(topk * 0.35), p3_len)
-                global_k = topk - p3_k
+        with torch.no_grad():
+            outputs_logits_clean = torch.nan_to_num(outputs_logits.detach(), nan=-10.0, posinf=10.0, neginf=-10.0)
+            if self.query_select_method == 'default':
+                if spatial_shapes is not None and len(spatial_shapes) >= 2:
+                    scores = outputs_logits_clean.max(-1).values
+                    p3_len = spatial_shapes[0][0] * spatial_shapes[0][1]
+                    p3_k = min(int(topk * 0.35), p3_len)
+                    global_k = topk - p3_k
 
-                if getattr(self, 'use_sdqs', False):
-                    # Spatial Diversity Query Selection (SDQS):
-                    # Suppress spatial neighbors of local peaks using 2D max pooling
-                    H3, W3 = spatial_shapes[0]
-                    scores_p3_2d = scores[:, :p3_len].view(-1, 1, H3, W3)
-                    p3_max = F.max_pool2d(scores_p3_2d, kernel_size=5, stride=1, padding=2)
-                    p3_peaks = (scores_p3_2d >= (p3_max - 1e-4))
-                    scores_p3_filtered = torch.where(p3_peaks, scores_p3_2d, scores_p3_2d - 100.0).view(-1, p3_len)
-                    _, p3_topk_ind = torch.topk(scores_p3_filtered, p3_k, dim=-1)
-                    p3_topk_ind = p3_topk_ind.clamp(0, p3_len - 1)
+                    if getattr(self, 'use_sdqs', False):
+                        # Spatial Diversity Query Selection (SDQS / Distinct Query Selection):
+                        # Suppress spatial neighbors of local peaks across ALL pyramid levels
+                        k_sz = getattr(self, 'distinct_kernel_size', 3)
+                        pad = k_sz // 2
+                        scores_filtered = scores.clone()
+                        cur_offset = 0
+                        for lvl in range(len(spatial_shapes)):
+                            H_lvl, W_lvl = spatial_shapes[lvl]
+                            lvl_len = H_lvl * W_lvl
+                            scores_lvl_2d = scores[:, cur_offset:cur_offset + lvl_len].view(-1, 1, H_lvl, W_lvl)
+                            lvl_max = F.max_pool2d(scores_lvl_2d, kernel_size=k_sz, stride=1, padding=pad)
+                            lvl_peaks = (scores_lvl_2d >= (lvl_max - 1e-4))
+                            scores_lvl_filtered = torch.where(lvl_peaks, scores_lvl_2d, scores_lvl_2d - 1000.0).view(-1, lvl_len)
+                            scores_filtered[:, cur_offset:cur_offset + lvl_len] = scores_lvl_filtered
+                            cur_offset += lvl_len
 
-                    scores_masked = scores.clone()
-                    scores_masked.scatter_(1, p3_topk_ind, -1e4)
+                        _, p3_topk_ind = torch.topk(scores_filtered[:, :p3_len], p3_k, dim=-1)
+                        p3_topk_ind = p3_topk_ind.clamp(0, p3_len - 1)
 
-                    # Also apply 2D local peak filter to P4 and P5
-                    cur_offset = p3_len
-                    for lvl in range(1, len(spatial_shapes)):
-                        H_lvl, W_lvl = spatial_shapes[lvl]
-                        lvl_len = H_lvl * W_lvl
-                        scores_lvl_2d = scores_masked[:, cur_offset:cur_offset + lvl_len].view(-1, 1, H_lvl, W_lvl)
-                        lvl_max = F.max_pool2d(scores_lvl_2d, kernel_size=3, stride=1, padding=1)
-                        lvl_peaks = (scores_lvl_2d >= (lvl_max - 1e-4))
-                        scores_lvl_filtered = torch.where(lvl_peaks, scores_lvl_2d, scores_lvl_2d - 100.0).view(-1, lvl_len)
-                        scores_masked[:, cur_offset:cur_offset + lvl_len] = scores_lvl_filtered
-                        cur_offset += lvl_len
+                        scores_filtered.scatter_(1, p3_topk_ind, -1e4)
+                        _, global_topk_ind = torch.topk(scores_filtered, global_k, dim=-1)
+                        global_topk_ind = global_topk_ind.clamp(0, total_len - 1)
+                    else:
+                        _, p3_topk_ind = torch.topk(scores[:, :p3_len], p3_k, dim=-1)
+                        p3_topk_ind = p3_topk_ind.clamp(0, p3_len - 1)
+                        scores_masked = scores.clone()
+                        scores_masked.scatter_(1, p3_topk_ind, -1e4)
+                        _, global_topk_ind = torch.topk(scores_masked, global_k, dim=-1)
+                        global_topk_ind = global_topk_ind.clamp(0, total_len - 1)
 
-                    _, global_topk_ind = torch.topk(scores_masked, global_k, dim=-1)
-                    global_topk_ind = global_topk_ind.clamp(0, total_len - 1)
+                    topk_ind = torch.cat([p3_topk_ind, global_topk_ind], dim=-1)
                 else:
-                    _, p3_topk_ind = torch.topk(scores[:, :p3_len], p3_k, dim=-1)
-                    p3_topk_ind = p3_topk_ind.clamp(0, p3_len - 1)
-                    scores_masked = scores.clone()
-                    scores_masked.scatter_(1, p3_topk_ind, -1e4)
-                    _, global_topk_ind = torch.topk(scores_masked, global_k, dim=-1)
-                    global_topk_ind = global_topk_ind.clamp(0, total_len - 1)
+                    _, topk_ind = torch.topk(outputs_logits_clean.max(-1).values, topk, dim=-1)
 
-                topk_ind = torch.cat([p3_topk_ind, global_topk_ind], dim=-1)
-            else:
-                _, topk_ind = torch.topk(outputs_logits_clean.max(-1).values, topk, dim=-1)
+            elif self.query_select_method == 'one2many':
+                _, topk_ind = torch.topk(outputs_logits_clean.flatten(1), topk, dim=-1)
+                topk_ind = topk_ind // self.num_classes
 
-        elif self.query_select_method == 'one2many':
-            _, topk_ind = torch.topk(outputs_logits_clean.flatten(1), topk, dim=-1)
-            topk_ind = topk_ind // self.num_classes
+            elif self.query_select_method == 'agnostic':
+                _, topk_ind = torch.topk(outputs_logits_clean.squeeze(-1), topk, dim=-1)
 
-        elif self.query_select_method == 'agnostic':
-            _, topk_ind = torch.topk(outputs_logits_clean.squeeze(-1), topk, dim=-1)
-
-        topk_ind: torch.Tensor
-        topk_ind = topk_ind.clamp(0, total_len - 1)
+            topk_ind: torch.Tensor
+            topk_ind = topk_ind.clamp(0, total_len - 1).long()
 
         topk_anchors = outputs_anchors_unact.gather(dim=1, \
             index=topk_ind.unsqueeze(-1).repeat(1, 1, outputs_anchors_unact.shape[-1]))

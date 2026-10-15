@@ -1227,5 +1227,70 @@ _生成自 14 个训练模型 + 517 个 night 评测 log。_
 | **V32** | PIG 物理归纳偏置与深度地基 | 7,187 框 (净降 130 虚警, 置信度 0.805) | `outputs/sovereign_v32_physics_grounded_2560/best_stg2.pth` | 远端科研服务器 `ailab40` |
 | **V33** | CmDRM 跨模态差分实验探索 (已清退) | 小样本遗忘 (mAP 暴跌至 0.267) | *已执行物理清退删除* | *已清退* |
 | **V34** | Clean-Slate 从零纯血训练 50 轮 | 2.5K 原生 + DINOv3 + Co-ATSS | `outputs/sovereign_v34_clean_from_scratch_2560/best_stg2.pth` | 远端科研服务器 `ailab40` |
+| **V34 Dedup** | V34 单模型空间独占去重提交包 | 7,175 框 / 0 冗余框对 / 均置信 0.800 | `work_dir/submissions/sovereign_v34_clean_from_scratch/submission_sovereign_v34_distinct_dedup.zip` | 本地工作站 + 网页工作台 (port 8088) |
+| **V35** | 选项 B 架构破局：Co-ATSS + 入口空间排斥独占查询 | 50 轮从头生产训练 (进行中) | `outputs/sovereign_v35_distinct_queries_2560/best_stg2.pth` | 远端科研服务器 `ailab40` (GPU 1) |
+| **V36** | 选项 C 核心突破：P2 (Stride 4, 360x640) 释放 + P2-CSRG 跨尺度保峰引导 + SDQS 空间排斥独占查询 + Co-ATSS + DINOv3 | 50 轮从头生产训练 (进行中) | `outputs/sovereign_v36_p2_direct_injection_2560/best_stg2.pth` | 远端科研服务器 `ailab40` (GPU 0) |
 | **COCO底模** | 开源纯净 D-FINE 底模 | 零参赛数据污染 | `vendor/DEIMv2/ckpts/dfine_x_obj2coco.pth` | 本地与 `ailab40` 共享依赖 |
 | **Meta DINOv3** | ViT-Large 300M 教师权重 | 视觉大模型语义表征 | `vendor/DEIMv2/ckpts/dinov3/dinov3_vitl16_pretrain_lvd1689m-8aa4cbdd.pth` | 本地与 `ailab40` 共享依赖 |
+
+---
+
+## 二十、 Sovereign V35：选项 B 架构破局（Co-ATSS 密集监督 + 解码器入口空间排斥独占查询）
+
+### 1. 核心问题破局：从根源根除“同目标多框冗余”
+- **根本归因**: V34 凭借 Co-ATSS 辅助密集监督斩获 96.1% 极限召回（AR50=0.9610，AP50=0.8203），但因 Co-ATSS 在目标中心区域激发了连续 $3 \times 3$ 邻域的正样本锚点，而标准 DETR 解码器的 `topk` 挑选机制直接在全局展平特征图上排序，导致同一目标的相邻网格单元同时被选为解码器查询，最终产生 180 对同目标重叠预测框（IoU $\ge 0.60$）。
+- **范式选型（选项 B）**: 
+  - 严禁简单切除 Co-ATSS（避免收敛倒退与召回雪崩）；
+  - 保留 Co-ATSS 在主干网与 Encoder 特征金字塔上的密集正向梯度回传；
+  - 在 Decoder 入口查询提取阶段引入 **空间排斥独占查询选择（Distinct Query Selection / SDQS）**：在 P3/P4/P5 各特征尺度上执行 $3 \times 3$ 空间局部极大值滤波，强行压制中心峰值周围的所有紧邻正样本单元（惩罚至 $-1000.0$），确保每个真实目标在进入解码器时**有且仅有一个空间代表查询**。
+
+### 2. 严密实验验证与量化表现
+- **零样本直接激活验证**: 在未重新训练的情况下，直接在 V34 检查点 (`best_stg2.pth`) 上激活 `DFINETransformer.use_sdqs: True` 进行官方 200 张验证集实测：
+  - AP50 稳居 **0.811 (81.1%)**，AP75 为 **0.577 (57.7%)**；
+  - 极限召回 AR50 高达 **0.955 (95.5%)**；
+  - UAV 极小目标 AP50 达 **0.9970 (99.7%)**，Car AP50 达 **0.9153 (91.5%)**，证明入口局部极值排斥绝不损伤小目标召回。
+- **阶段性提交产物 (V34 Distinct Dedup)**:
+  - 产出路径: `work_dir/submissions/sovereign_v34_clean_from_scratch/submission_sovereign_v34_distinct_dedup.zip`；
+  - 官方合规校验: `scripts/eval/check_submission.py` 100% 通过（1000/1000 文件，CRLF 换行，最大框数 32 $\le 100$）；
+  - 质量指标: 框数 7,175 个（与官方测试集 7,086 目标先验吻合度达 **98.8%**），均值置信度 **0.8001**；
+  - 重叠框清除率: 测试集 180 对 IoU $\ge 0.60$ 重叠冗余框**彻底降至 0 对 (100% 消除)**；
+  - 工作台直通: 已自动注册至 Master Unified Web Workstation (`http://localhost:8088/`)，模型 ID 为 `sovereign_v34_distinct_dedup`。
+
+### 3. Sovereign V35 端到端生产全量训练
+- **配置路径**: `vendor/DEIMv2/configs/deimv2/sovereign_v35_distinct_queries_2560.yml`；
+- **训练驱动**: `scripts/train/run_sovereign_v35_distinct_queries_v100.sh`；
+- **算力节点**: 科研服务器 `ailab40` (Tesla V100 32GB, GPU 1, PID: 22971)；
+- **排程与特性**:
+  - 从开源纯净 COCO 底模 (`dfine_x_obj2coco.pth`) 50 轮全量训练从零起步；
+  - 融合 Meta DINOv3-ViT-Large 语义蒸馏 + Co-ATSS 辅助头；
+  - 激活 Decoder `use_sdqs: True`（$3 \times 3$ 空间局部峰值排斥）；
+  - 学习率排程优化: `flat_epoch: 30` 平原期后引入 `lr_gamma: 0.5` 余弦退火，最后 4 轮关停增广进行纯净几何吸附。
+
+---
+
+## 二十一、 Sovereign V36：选项 C 核心突破（P2 Stride=4 释放 + P2-CSRG 跨尺度保峰引导 + 微批次显存清零）
+
+### 1. 架构突破背景：救赎微小无人机与远景小目标
+- **痛点分析**: 在 AIC2026 竞赛中，UAV（微小无人机）和远景行人（person）在 $1440 \times 2560$ 分辨率下的像素尺寸通常小于 $16 \times 16$ 甚至 $8 \times 8$。此前的主流架构仅将主干网 Stage 1~3 (Stride 8, 16, 32 / P3, P4, P5) 送入 Neck，导致 Stride 4 (P2) 的极高分辨率细粒度边缘和热红外斑点被完全截断。
+- **方案 C 核心范式**:
+  1. **释放 Stage 0 (P2, Stride 4)**: `HGNetv2MultiModal.return_idx: [0, 1, 2, 3]`，产出高精 $360 \times 640$ 细粒度特征图；
+  2. **P2-CSRG 跨尺度高频保峰引导**: 采用双路保峰池化 (Avg + Max) 结合跨通道卷积残差投影，以**严格零初始化**无损注入 HybridEncoder Neck P3，既提供亚像素级高频梯度引导，又杜绝预训练权重分布漂移；
+  3. **空间排斥独占查询选择 (SDQS)**: 继承 V35 成熟的 $3 \times 3$ 空间局部极大值滤波，彻底清除中心正样本多重激发导致的重叠框；
+  4. **Co-ATSS + DINOv3 双翼齐驱**: 保持 Meta DINOv3-ViT-Large 在线语义蒸馏与 Co-ATSS 一对多辅助密集监督。
+
+### 2. 工程难题攻坚与关键根因排查
+- **硬件异构避坑**: 深入分析实验室科研服务器 `ailab40` GPU 0 的历史硬件缺陷，确认其 GPC 5 在 FP16 Tensor Core GEMM 时存在硬件寄存器异常。在 GPU 0 上采用**纯 FP32 训练**，绕开 Tensor Core 寄存器陷阱。
+- **微批次计算图显存驻留攻坚**:
+  - **现象**: 纯 FP32 下模型单图前向峰值约 16.9 GB，但在执行双微批次（micro-batch=1, batch=2）梯度累加时，显存迅速攀升至 31.8 GB 发生 OOM。
+  - **根因**: `det_engine.py` 在微批次间未解除 `outputs`、`loss_dict`、`loss` 的计算图引用，导致 micro 0 的全量反向传播激活图被锚定在内存中，叠加 micro 1 前向内存触发 OOM。
+  - **闭环方案**: 在 `det_engine.py` 中将 `last_loss_dict` 严格进行 `.detach()`，并在每个微批次结束后显式 `del outputs, loss_dict, loss, s_micro, t_micro` 并触发 `torch.cuda.empty_cache()`。
+  - **实测成果**: 峰值显存从 31.8 GB 暴降并严格锁定在 **17.25 GB**（剩余 15 GB 极充裕安全余量），单步仅需 **0.95 秒**，单轮训练耗时压缩至 **15 分 49 秒**！
+
+### 3. Sovereign V36 端到端生产全量训练概览
+- **配置路径**: `vendor/DEIMv2/configs/deimv2/sovereign_v36_p2_direct_injection_2560.yml`；
+- **训练驱动**: `scripts/train/run_sovereign_v36_p2_direct_injection_v100.sh`；
+- **算力节点**: 科研服务器 `ailab40` (Tesla V100 32GB, GPU 0, PID: 53448)；
+- **排程与特性**:
+  - 开源 COCO 底模 (`dfine_x_obj2coco.pth`) 纯血初始化，50 轮完整生产排程；
+  - 纯 FP32 数值计算，单步 0.95s/iter，峰值显存 17.25GB / 32GB；
+  - 与 GPU 1 上的 Sovereign V35 (PID 22975) 互不干扰、双轨并进。

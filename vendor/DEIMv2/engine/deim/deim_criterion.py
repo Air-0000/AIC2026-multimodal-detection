@@ -497,12 +497,14 @@ class DEIMCriterion(nn.Module):
 
                     loss_match_local = weight_targets_local * (T ** 2) * (nn.KLDivLoss(reduction='none')
                     (F.log_softmax(pred_corners / T, dim=1), F.softmax(target_corners.detach() / T, dim=1))).sum(-1)
-                    if 'is_dn' not in outputs:
+                    if 'is_dn' not in outputs or self.num_pos is None:
                         batch_scale = 8 / outputs['pred_boxes'].shape[0]  # Avoid the influence of batch size per GPU
                         self.num_pos, self.num_neg = (mask.sum() * batch_scale) ** 0.5, ((~mask).sum() * batch_scale) ** 0.5
                     loss_match_local1 = loss_match_local[mask].mean() if mask.any() else 0
                     loss_match_local2 = loss_match_local[~mask].mean() if (~mask).any() else 0
-                    losses['loss_ddf'] = (loss_match_local1 * self.num_pos + loss_match_local2 * self.num_neg) / (self.num_pos + self.num_neg)
+                    num_pos = self.num_pos if self.num_pos is not None else 1.0
+                    num_neg = self.num_neg if self.num_neg is not None else 1.0
+                    losses['loss_ddf'] = (loss_match_local1 * num_pos + loss_match_local2 * num_neg) / (num_pos + num_neg)
 
         return losses
 

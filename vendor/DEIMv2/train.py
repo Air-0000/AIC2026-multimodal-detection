@@ -24,11 +24,14 @@ try:
 except Exception:
     pass
 
-# Hardware performance acceleration flags
 if torch.cuda.is_available():
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
     torch.backends.cudnn.benchmark = False
+    # Volta SM_70 (Tesla V100) Winograd FP16 bug workaround for 2.5K high-res multi-modal inputs
+    if torch.cuda.get_device_capability() == (7, 0):
+        torch.backends.cudnn.enabled = False
+        print("[System Info] Volta SM_70 architecture detected: disabled cuDNN to use native cuBLAS/ATen GEMM for memory alignment safety.")
 
 from engine.misc import dist_utils
 from engine.core import YAMLConfig, yaml_utils

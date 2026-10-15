@@ -68,6 +68,11 @@ class DetSolver(BaseSolver):
         best_stat_print = best_stat.copy()
         start_time = time.time()
         start_epoch = self.last_epoch + 1
+
+        # Preload teacher distillation models into clean, unfragmented VRAM before training
+        if hasattr(self.model, 'dinov3_distiller') and self.model.dinov3_distiller is not None:
+            self.model.dinov3_distiller._ensure_teacher_loaded(self.device)
+
         for epoch in range(start_epoch, args.epoches):
 
             self.train_dataloader.set_epoch(epoch)

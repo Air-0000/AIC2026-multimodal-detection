@@ -523,9 +523,9 @@ class HGNetv2MultiModal(nn.Module):
                 y = y + (g_aux * residual if (self.use_midboost and not self.training) else residual)
             if idx in self.return_idx:
                 if idx == 1 and p3_out is not None:
-                    outs.append(p3_out)
+                    outs.append(p3_out.clone().contiguous())
                 else:
-                    outs.append(y)
+                    outs.append(y.clone().contiguous())
         return outs
 
     def get_align_loss(self):

@@ -63,24 +63,27 @@ class DINOv3TeacherDistiller(nn.Module):
         return None
 
     def _ensure_teacher_loaded(self, device):
-        if self.teacher is None or self._device != device:
+        device = torch.device(device)
+        dev_str = f"{device.type}:{device.index}" if device.index is not None else (f"cuda:{torch.cuda.current_device()}" if device.type == "cuda" else str(device))
+        target_dev = torch.device(dev_str)
+        if self.teacher is None or self._device != target_dev:
             ckpt_path = self._find_checkpoint()
             print(f"[DINOv3Teacher] Initializing native DinoVisionTransformer (dinov3_vitl16)...")
             self.teacher = DinoVisionTransformer(name="dinov3_vitl16")
             if ckpt_path:
-                print(f"[DINOv3Teacher] Loading official weights from {ckpt_path} onto {device}...")
+                print(f"[DINOv3Teacher] Loading official weights from {ckpt_path} onto {target_dev}...")
                 state_dict = torch.load(ckpt_path, map_location="cpu")
                 res = self.teacher.load_state_dict(state_dict, strict=True)
                 print(f"[DINOv3Teacher] Weights loaded successfully (strict=True): {res}")
             else:
                 print(f"[DINOv3Teacher] WARNING: Checkpoint not found at {self.model_path}, using uninitialized weights!")
 
-            self.teacher.to(device)
+            self.teacher.to(target_dev)
             self.teacher.eval()
             for p in self.teacher.parameters():
                 p.requires_grad = False
-            self._device = device
-            print("[DINOv3Teacher] Teacher successfully frozen in eval mode.")
+            self._device = target_dev
+            print(f"[DINOv3Teacher] Teacher successfully frozen in eval mode on {target_dev}.")
 
     @torch.no_grad()
     def get_teacher_features(self, rgb):
@@ -136,19 +139,21 @@ class DINOv3TeacherDistiller(nn.Module):
         if proj_s.shape[-2:] != feat_t.shape[-2:]:
             proj_s = F.interpolate(proj_s, size=feat_t.shape[-2:], mode='bilinear', align_corners=False)
 
-        # 3. Directional Cosine Similarity Loss
-        norm_s = F.normalize(proj_s, p=2, dim=1)
-        norm_t = F.normalize(feat_t, p=2, dim=1)
+        # 3. Directional Cosine Similarity Loss (in FP32 for numerical stability)
+        norm_s = F.normalize(proj_s.float(), p=2, dim=1, eps=1e-5)
+        norm_t = F.normalize(feat_t.float(), p=2, dim=1, eps=1e-5)
         cos_sim = (norm_s * norm_t).sum(dim=1) # [B, H, W]
         loss_cos = (1.0 - cos_sim).mean()
 
         # 4. Gram Matrix Inter-channel Topological Correlation Loss
         # Gram matrix: G = F * F^T / (H * W)
         B, C, H_g, W_g = norm_s.shape
-        flat_s = norm_s.view(B, C, H_g * W_g)
-        flat_t = norm_t.view(B, C, H_g * W_g)
-        gram_s = torch.bmm(flat_s, flat_s.transpose(1, 2)) / (H_g * W_g) # [B, C, C]
-        gram_t = torch.bmm(flat_t, flat_t.transpose(1, 2)) / (H_g * W_g) # [B, C, C]
+        flat_s = norm_s.view(B, C, H_g * W_g).contiguous()
+        flat_t = norm_t.view(B, C, H_g * W_g).contiguous()
+        trans_s = flat_s.transpose(1, 2).contiguous()
+        trans_t = flat_t.transpose(1, 2).contiguous()
+        gram_s = torch.bmm(flat_s, trans_s) / float(H_g * W_g) # [B, C, C]
+        gram_t = torch.bmm(flat_t, trans_t) / float(H_g * W_g) # [B, C, C]
         loss_gram = F.mse_loss(gram_s, gram_t)
 
         total_loss = self.loss_cos_weight * loss_cos + self.loss_gram_weight * loss_gram

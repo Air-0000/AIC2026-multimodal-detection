@@ -52,8 +52,6 @@ def train_one_epoch(self_lr_scheduler, lr_scheduler, model: torch.nn.Module, cri
     cur_iters = epoch * len(data_loader)
 
     for i, (samples, targets) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
-        samples = samples.to(device)
-        targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
         global_step = epoch * len(data_loader) + i
         metas = dict(epoch=epoch, step=i, global_step=global_step, epoch_step=len(data_loader))
 
@@ -73,8 +71,8 @@ def train_one_epoch(self_lr_scheduler, lr_scheduler, model: torch.nn.Module, cri
             optimizer.zero_grad()
 
         for a in range(n_micro):
-            s_micro = samples[a*micro_bs:(a+1)*micro_bs]
-            t_micro = targets[a*micro_bs:(a+1)*micro_bs]
+            s_micro = samples[a*micro_bs:(a+1)*micro_bs].to(device, non_blocking=True)
+            t_micro = [{k: v.to(device, non_blocking=True) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets[a*micro_bs:(a+1)*micro_bs]]
 
             if scaler is not None:
                 amp_dtype = torch.float16 if (torch.cuda.is_available() and torch.cuda.get_device_capability()[0] < 8) else torch.bfloat16
@@ -87,12 +85,14 @@ def train_one_epoch(self_lr_scheduler, lr_scheduler, model: torch.nn.Module, cri
                         break
                 if has_invalid:
                     print(f'[NaN-guard] iter {global_step} micro {a}: pred NaN/Inf -> skip micro backward')
+                    del outputs, s_micro, t_micro
                     continue
                 with torch.autocast(device_type=str(device), enabled=False):
                     loss_dict = criterion(outputs, t_micro, **metas)
                 loss = sum(loss_dict.values())
                 if torch.isnan(loss).any() or torch.isinf(loss).any():
                     print(f'[NaN-guard] iter {global_step} micro {a}: loss NaN/Inf -> skip micro backward')
+                    del outputs, loss_dict, loss, s_micro, t_micro
                     continue
                 scaler.scale(loss / n_micro).backward()
             else:
@@ -103,16 +103,21 @@ def train_one_epoch(self_lr_scheduler, lr_scheduler, model: torch.nn.Module, cri
                         has_invalid = True
                         break
                 if has_invalid:
+                    del outputs, s_micro, t_micro
                     continue
                 loss_dict = criterion(outputs, t_micro, **metas)
                 loss = sum(loss_dict.values())
                 if torch.isnan(loss).any() or torch.isinf(loss).any():
+                    del outputs, loss_dict, loss, s_micro, t_micro
                     continue
                 (loss / n_micro).backward()
 
-            loss_accum += float(loss)
+            loss_accum += float(loss.item())
             n_valid += 1
-            last_loss_dict = loss_dict
+            last_loss_dict = {k: v.detach() for k, v in loss_dict.items()}
+            del outputs, loss_dict, loss, s_micro, t_micro
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         if n_valid == 0:
             # every micro-batch was NaN -> nothing to optimize this iter

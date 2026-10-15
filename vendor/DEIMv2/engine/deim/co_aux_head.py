@@ -39,26 +39,29 @@ def box_cxcywh_to_xyxy(x: torch.Tensor) -> torch.Tensor:
 
 
 def generalized_box_iou(boxes1: torch.Tensor, boxes2: torch.Tensor) -> torch.Tensor:
-    """Generalized IoU between pairs of boxes of shape (N, 4)."""
+    """Generalized IoU between pairs of boxes of shape (N, 4) with FP32 safety."""
     assert boxes1.shape == boxes2.shape
-    area1 = (boxes1[:, 2] - boxes1[:, 0]).clamp(min=0) * (boxes1[:, 3] - boxes1[:, 1]).clamp(min=0)
-    area2 = (boxes2[:, 2] - boxes2[:, 0]).clamp(min=0) * (boxes2[:, 3] - boxes2[:, 1]).clamp(min=0)
+    b1 = boxes1.float()
+    b2 = boxes2.float()
+    area1 = (b1[:, 2] - b1[:, 0]).clamp(min=0) * (b1[:, 3] - b1[:, 1]).clamp(min=0)
+    area2 = (b2[:, 2] - b2[:, 0]).clamp(min=0) * (b2[:, 3] - b2[:, 1]).clamp(min=0)
 
-    lt = torch.max(boxes1[:, :2], boxes2[:, :2])
-    rb = torch.min(boxes1[:, 2:], boxes2[:, 2:])
+    lt = torch.max(b1[:, :2], b2[:, :2])
+    rb = torch.min(b1[:, 2:], b2[:, 2:])
     wh = (rb - lt).clamp(min=0)
     inter = wh[:, 0] * wh[:, 1]
     union = area1 + area2 - inter
-    iou = inter / union.clamp(min=1e-6)
+    iou = inter / union.clamp(min=1e-5)
 
     # Convex hull
-    c_lt = torch.min(boxes1[:, :2], boxes2[:, :2])
-    c_rb = torch.max(boxes1[:, 2:], boxes2[:, 2:])
+    c_lt = torch.min(b1[:, :2], b2[:, :2])
+    c_rb = torch.max(b1[:, 2:], b2[:, 2:])
     c_wh = (c_rb - c_lt).clamp(min=0)
     c_area = c_wh[:, 0] * c_wh[:, 1]
 
-    giou = iou - (c_area - union) / c_area.clamp(min=1e-6)
-    return giou
+    giou = iou - (c_area - union) / c_area.clamp(min=1e-5)
+    return giou.clamp(min=-1.0, max=1.0).to(boxes1.dtype)
+
 
 
 class CoATSSAuxHead(nn.Module):
@@ -185,13 +188,20 @@ class CoATSSAuxHead(nn.Module):
         reg_preds_cat = torch.cat(reg_preds_all, dim=1)   # (B, N_total, 4)
 
         # Decode predicted boxes from distance offsets (ltrb) in normalized coordinates
-        # reg_pred: [l, t, r, b]
-        dist_ltrb = torch.exp(reg_preds_cat) # (B, N_total, 4)
-        pred_x1 = (all_centers[:, 0].unsqueeze(0) - dist_ltrb[..., 0] * (all_strides.unsqueeze(0) / float(W_img))).clamp(0.0, 1.0)
-        pred_y1 = (all_centers[:, 1].unsqueeze(0) - dist_ltrb[..., 1] * (all_strides.unsqueeze(0) / float(H_img))).clamp(0.0, 1.0)
-        pred_x2 = (all_centers[:, 0].unsqueeze(0) + dist_ltrb[..., 2] * (all_strides.unsqueeze(0) / float(W_img))).clamp(0.0, 1.0)
-        pred_y2 = (all_centers[:, 1].unsqueeze(0) + dist_ltrb[..., 3] * (all_strides.unsqueeze(0) / float(H_img))).clamp(0.0, 1.0)
-        pred_boxes_cat = torch.stack([pred_x1, pred_y1, pred_x2, pred_y2], dim=-1) # (B, N_total, 4)
+        # Clamp in log-space [-8.0, 5.0] to prevent exp overflow in FP16
+        dist_ltrb = torch.exp(torch.clamp(reg_preds_cat.float(), min=-8.0, max=5.0))
+        all_centers_f = all_centers.float()
+        all_strides_f = all_strides.float()
+        # Maintain strictly positive width (x2 > x1) and height (y2 > y1) to prevent zero-area box collapse
+        offset_x = dist_ltrb[..., [0, 2]] * (all_strides_f.unsqueeze(0).unsqueeze(-1) / float(W_img))
+        offset_y = dist_ltrb[..., [1, 3]] * (all_strides_f.unsqueeze(0).unsqueeze(-1) / float(H_img))
+        pred_x1 = all_centers_f[:, 0].unsqueeze(0) - offset_x[..., 0]
+        pred_y1 = all_centers_f[:, 1].unsqueeze(0) - offset_y[..., 0]
+        pred_x2 = all_centers_f[:, 0].unsqueeze(0) + offset_x[..., 1]
+        pred_y2 = all_centers_f[:, 1].unsqueeze(0) + offset_y[..., 1]
+        pred_boxes_cat = torch.stack([pred_x1, pred_y1, pred_x2, pred_y2], dim=-1)
+
+
 
         # Target Assignment per Image
         total_loss_cls = torch.tensor(0.0, device=device)
@@ -224,24 +234,25 @@ class CoATSSAuxHead(nn.Module):
             cand_indices = []
             offset_idx = 0
             for h, w, stride in grid_info:
-                gj = (gt_cx * float(w)).long().clamp(1, w - 2)
-                gi = (gt_cy * float(h)).long().clamp(1, h - 2)
+                gj = (gt_cx * float(w)).long().clamp(1, max(1, w - 2))
+                gi = (gt_cy * float(h)).long().clamp(1, max(1, h - 2))
                 # 3x3 offsets
                 dx = torch.tensor([-1, 0, 1], device=device)
                 dy = torch.tensor([-1, 0, 1], device=device)
                 mesh_dy, mesh_dx = torch.meshgrid(dy, dx, indexing='ij')
-                gx = gj.unsqueeze(1).unsqueeze(2) + mesh_dx.unsqueeze(0) # (M, 3, 3)
-                gy = gi.unsqueeze(1).unsqueeze(2) + mesh_dy.unsqueeze(0) # (M, 3, 3)
+                gx = (gj.unsqueeze(1).unsqueeze(2) + mesh_dx.unsqueeze(0)).clamp(0, w - 1) # (M, 3, 3)
+                gy = (gi.unsqueeze(1).unsqueeze(2) + mesh_dy.unsqueeze(0)).clamp(0, h - 1) # (M, 3, 3)
                 flat_idx = (gy * w + gx).reshape(M, 9) + offset_idx      # (M, 9)
                 cand_indices.append(flat_idx)
                 offset_idx += (h * w)
 
-            cand_idx = torch.cat(cand_indices, dim=1) # (M, 27)
-            cand_anchors = all_anchors[cand_idx]      # (M, 27, 4)
-            cand_centers = all_centers[cand_idx]      # (M, 27, 2)
+            cand_idx = torch.cat(cand_indices, dim=1).clamp(0, N_total - 1) # (M, K_cands)
+            K_cands = cand_idx.shape[1]
+            cand_anchors = all_anchors[cand_idx]      # (M, K_cands, 4)
+            cand_centers = all_centers[cand_idx]      # (M, K_cands, 2)
 
             # IoU between candidate anchors and corresponding GT
-            gt_expand = gt_xyxy.unsqueeze(1).expand(-1, 27, -1)
+            gt_expand = gt_xyxy.unsqueeze(1).expand(-1, K_cands, -1)
             inter_x1 = torch.max(cand_anchors[..., 0], gt_expand[..., 0])
             inter_y1 = torch.max(cand_anchors[..., 1], gt_expand[..., 1])
             inter_x2 = torch.min(cand_anchors[..., 2], gt_expand[..., 2])
@@ -252,7 +263,7 @@ class CoATSSAuxHead(nn.Module):
             area_cand = (cand_anchors[..., 2] - cand_anchors[..., 0]) * (cand_anchors[..., 3] - cand_anchors[..., 1])
             area_gt = (gt_expand[..., 2] - gt_expand[..., 0]) * (gt_expand[..., 3] - gt_expand[..., 1])
             union = (area_cand + area_gt - inter_area).clamp(min=1e-6)
-            cand_ious = inter_area / union # (M, 27)
+            cand_ious = inter_area / union # (M, K_cands)
 
             iou_mean = cand_ious.mean(dim=1, keepdim=True)
             iou_std = cand_ious.std(dim=1, keepdim=True)
@@ -265,7 +276,7 @@ class CoATSSAuxHead(nn.Module):
                 (cand_centers[..., 1] <= gt_expand[..., 3])
             )
 
-            is_pos = (cand_ious >= iou_thresh) & inside_gt # (M, 27)
+            is_pos = (cand_ious >= iou_thresh) & inside_gt # (M, K_cands)
 
             # Fallback: if no anchor passed threshold for a GT, take top-1 candidate with highest IoU
             for m in range(M):
@@ -280,7 +291,7 @@ class CoATSSAuxHead(nn.Module):
 
             for m in range(M):
                 pos_cand_mask = is_pos[m]
-                selected_anchor_idx = cand_idx[m][pos_cand_mask]
+                selected_anchor_idx = cand_idx[m][pos_cand_mask].clamp(0, N_total - 1)
                 lbl = gt_labels[m].item()
                 target_onehot[selected_anchor_idx, lbl] = 1.0
 
@@ -288,14 +299,16 @@ class CoATSSAuxHead(nn.Module):
                 pos_gt_boxes.append(gt_xyxy[m:m+1].expand(len(selected_anchor_idx), -1))
 
             if len(pos_anchor_indices) > 0:
-                pos_anchor_idx_cat = torch.cat(pos_anchor_indices, dim=0)
+                pos_anchor_idx_cat = torch.cat(pos_anchor_indices, dim=0).clamp(0, N_total - 1)
                 pos_gt_boxes_cat = torch.cat(pos_gt_boxes, dim=0)
 
-                # Regression Loss on Positive Anchors (GIoU Loss)
+                # Regression Loss on Positive Anchors (GIoU Loss via torchvision native kernel)
                 pred_boxes_pos = pred_boxes_b[pos_anchor_idx_cat]
-                giou = generalized_box_iou(pred_boxes_pos, pos_gt_boxes_cat)
-                loss_reg_b = (1.0 - giou).sum()
+                loss_reg_b = torchvision.ops.generalized_box_iou_loss(
+                    pred_boxes_pos.float(), pos_gt_boxes_cat.float(), reduction='sum'
+                )
                 num_pos_b = len(pos_anchor_idx_cat)
+
             else:
                 loss_reg_b = torch.tensor(0.0, device=device)
                 num_pos_b = 0
@@ -309,7 +322,7 @@ class CoATSSAuxHead(nn.Module):
             total_loss_reg = total_loss_reg + loss_reg_b
             total_num_pos += num_pos_b
 
-        num_pos_norm = max(float(total_num_pos), 1.0)
+        num_pos_norm = max(float(total_num_pos), 4.0)
         norm_loss_cls = (total_loss_cls / num_pos_norm) * self.loss_weight_cls
         norm_loss_reg = (total_loss_reg / num_pos_norm) * self.loss_weight_reg
 
