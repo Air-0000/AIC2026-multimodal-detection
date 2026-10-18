@@ -16,6 +16,15 @@ SUB_DIR = sys.argv[1] if len(sys.argv) > 1 else "work_dir/submission_wbf"
 ANN_JSON = sys.argv[2] if len(sys.argv) > 2 else \
     "work_dir/deimv2_dataset/valid/annotations/instances_val.json"
 
+if not os.path.isdir(SUB_DIR):
+    print(f"Error: submission directory '{SUB_DIR}' does not exist.")
+    sys.exit(1)
+
+if not os.path.isfile(ANN_JSON):
+    print(f"Error: ground truth annotation file '{ANN_JSON}' does not exist.")
+    print("Usage: python eval_submission.py [SUB_DIR] [ANN_JSON]")
+    sys.exit(1)
+
 from PIL import Image
 import faster_coco_eval
 faster_coco_eval.init_as_pycocotools()

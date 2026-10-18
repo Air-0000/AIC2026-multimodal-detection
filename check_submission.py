@@ -17,6 +17,11 @@ TEST_DIR = sys.argv[2] if len(sys.argv) > 2 else os.path.join("dataset", "test",
 NUM_CLASSES = 12
 MAX_BOXES = 100
 
+if not os.path.isdir(SUB_DIR):
+    print(f"Error: submission directory '{SUB_DIR}' does not exist.")
+    print("Usage: python3 check_submission.py [SUBMISSION_DIR] [TEST_VISIBLE_DIR]")
+    sys.exit(1)
+
 test_stems = {os.path.splitext(os.path.basename(p))[0] for p in glob.glob(os.path.join(TEST_DIR, "*"))}
 sub_files = [f for f in os.listdir(SUB_DIR) if f.endswith(".txt")]
 sub_stems = {os.path.splitext(f)[0] for f in sub_files}
@@ -30,12 +35,15 @@ max_lines = 0
 n_total_boxes = 0
 
 # 1) coverage: every test image must have a txt (empty allowed)
-missing = test_stems - sub_stems
-if missing:
-    errors.append(f"missing {len(missing)} prediction files (e.g. {sorted(missing)[:5]})")
-extra = sub_stems - test_stems
-if extra:
-    warn.append(f"{len(extra)} extra prediction files not in test set")
+if test_stems:
+    missing = test_stems - sub_stems
+    if missing:
+        errors.append(f"missing {len(missing)} prediction files (e.g. {sorted(missing)[:5]})")
+    extra = sub_stems - test_stems
+    if extra:
+        warn.append(f"{len(extra)} extra prediction files not in test set")
+else:
+    warn.append(f"test directory '{TEST_DIR}' is empty or not found, skipping coverage check")
 
 for fn in sub_files:
     path = os.path.join(SUB_DIR, fn)
