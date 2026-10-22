@@ -1,0 +1,12 @@
+# AIC 离线 Copy-Paste 数据集: 贴图与标签已在训练前生成好 (train_cpoff),
+# 训练直接读现成数据, 在线只跑其余增广 (无 RandomCopyPaste)。
+# 贴入规则与在线版逐字一致: build_cp_dataset.py 复用同一 RandomCopyPaste 算子
+# (class 尺寸 / 只缩不放 / 零重叠 / sqrt 采样 / min_score 0.7)。
+__include__: [
+  '../dataset/aic_detection.yml',
+]
+
+train_dataloader:
+  dataset:
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train_cpoff/images
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train_cpoff/annotations/instances_train_cp.json
