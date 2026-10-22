@@ -138,6 +138,7 @@ $PY scripts/collect_model_records.py
 | 数据预处理 / 对齐 / 深度优化中台 | `docs/02_collaboration_and_specs/AIC_MASTER_COLLABORATION_REGISTRY.md` |
 | 提交前把关 / 后处理准则 | `docs/05_postprocessing_and_inference/SAFE_POSTPROCESSING_GUIDELINES.md` |
 | 测试集先验（目标数 7,086 / 密度 7.09） | `docs/01_competition/SUBMISSION_CONFIDENCE_THRESHOLD_PRIOR.md` |
+| 半决赛技术报告骨架与提交清单 | `docs/06_semifinal_submission/`（`TECHNICAL_REPORT_DRAFT.md`、`SUBMISSION_CHECKLIST.md`） |
 | 历史审计（对齐/权重溯源/CP 消融） | `docs/04_audits_and_ablations/` |
 
 ## 8. 整理记录（2026-10-07）
