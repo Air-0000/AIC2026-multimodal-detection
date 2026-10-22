@@ -35,8 +35,8 @@
 
 ## E. 推理与结果文件
 
-- ☐ 新写统一推理入口 `predict.py`：**复用训练用的数据加载类 `CocoDetectionMultiModal`**（或经逐像素契约测试证明一致），参数化输入目录、权重、输出目录；输出逐图 txt（CRLF、坐标归一化、按置信度降序、每图 ≤100 框、空图写空文件），末尾调用格式校验。
-- ☐ 契约测试：在 200 张验证图上，`predict.py` 的输入张量与训练验证加载器逐像素一致，验证集 mAP 与训练框架评测一致。
+- ☑ 统一推理入口 `scripts/inference/predict.py`：复用配置自身的 `CocoDetectionMultiModal`（严格模式，缺文件即报错）与 `PostProcessor`，参数化输入目录、权重、输出目录与阈值；输出逐图 txt（CRLF、坐标归一化、按置信度降序、每图 ≤100 框、空图写空文件），可打包 zip，目录模式下调用格式校验与工作台注册。
+- ☑ 契约测试 `scripts/diagnostics/test_predict_contract.py`（2026-10-22，冻结 V36 + `run_1.yml`）：200 张验证图输入张量与训练验证加载器逐位相同；mAP 0.5200238929 与记录一致；txt 通过 `check_submission.py`，读回误差 ≤5e-7。最终模型确定后须用其配置与权重重跑一次。
 - ☐ 置信度阈值与每图框数只在有标注的验证集上确定，不依据测试集总框数（AIC_TASK_MAP 已撤回旧说法）。
 - ☐ 跑 `scripts/eval/check_submission.py`；产出提交包后按 AGENTS.md 红线 11 导入可视化工作台。
 
