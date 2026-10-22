@@ -121,7 +121,7 @@ $PY scripts/collect_model_records.py
 - **训练用 COCO 划分**：`work_dir/deimv2_dataset/{train 1800, valid 200}`（seed=42）。标注两个口径：`instances_train.json`（官方老标注，V23 起主线）与 `instances_train_quality1998.json`（质量补标，**会产生官方判定 FP，已弃用**）。
 - **`interaction_indexes` 三流共用**：RGB 与 aux 的 ViT 层数不等（ViT-L 24 层 + ViT-S 12 层）会越界断言，已由 `_scale_interaction_indexes()` 按 depth 比例缩放；新增 backbone 组合时留意。
 - **桌面合成器抢显存**：Wayland/niri 曾独占 ~12 GiB，导致"只有 13GB 可用"的误解（卡本身 15.46 GiB）。`accum_steps` 就是为此加的。
-- **`.gitignore`** 忽略 `*.pth/*.pt/*.log/*.pkl/*.out`、`dataset/`、`/data_aux/`、`**/work_dir/`、`archive/`、`vendor/Depth-Anything-V2/`，但**特意放行 `vendor/` 内框架自带 dataset 代码目录**（commit `95b2090`）——改 gitignore 别误伤。
+- **`.gitignore`** 忽略 `*.pth/*.pt/*.log/*.pkl/*.out`、`/dataset`（只锚定仓库根目录的原始数据，目录或软链都匹配）、`/data_aux/`、`**/work_dir/`、`archive/`、`vendor/Depth-Anything-V2/`。**不要改回不带 `/` 前缀的 `dataset/`**：它会连带忽略 `vendor/DEIMv2/` 下 `engine/data/dataset/`、`configs/dataset/`、`tools/dataset/` 三个代码目录，新建文件被静默忽略（`95b2090` 修过一次，`bc383e2` 又改回，2026-10-22 恢复）。截至 2026-10-22，本地工作站上有 21 个 `configs/dataset/aic_detection_{night*,dndt_*,cp*,nightify}.yml` 因此从未入库，却被 120 个已入库实验 config `__include__`。
 - **git 跟踪范围**：`docs/` 与 `scripts/` 已入库（约 1,770 个跟踪文件：`vendor/DEIMv2` ~960、`scripts/` ~750、`docs/` ~50），`docs/` 的改动可用 git 追溯与回滚。`dataset/`、`work_dir/`、`outputs/`、`logs/`、`archive/` 与权重仍被 gitignore，对它们的破坏性操作前仍要先备份到 `archive/backups/`。
 - **历史遗留混淆项**：`scripts/` 下大量 `predict_*`/`tta_*` 老脚本依赖已废弃的 `rfdetr` 环境，当前不可运行；日常请用 `predict_mm_tta.py` 与 `scripts/inference/`。
 
