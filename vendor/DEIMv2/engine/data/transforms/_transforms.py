@@ -342,12 +342,16 @@ class RandomDNDTNightify(T.Transform):
 
     IR/Depth (channels >= 3) are illumination-invariant and pass through untouched,
     so this is safe for 3/4/5-channel inputs. Geometry is unchanged -> boxes valid.
+
+    ``seeded=True`` draws the nightify noise generator's seed from torch's RNG, so a
+    seeded / resumed run reproduces the same darkening; the default keeps the
+    historical fresh-entropy behaviour.
     """
 
     _transformed_types = (torch.Tensor,)
 
     def __init__(self, p=0.5, bright_range=(0.005, 0.5), log_bright=True,
-                 curriculum=True, total_epochs=30, mid_bright=0.06):
+                 curriculum=True, total_epochs=30, mid_bright=0.06, seeded=False):
         super().__init__()
         self.p = p
         self.bright_range = bright_range
@@ -355,6 +359,7 @@ class RandomDNDTNightify(T.Transform):
         self.curriculum = curriculum
         self.total_epochs = total_epochs
         self.mid_bright = mid_bright
+        self.seeded = seeded
 
     @staticmethod
     def _log_uniform(lo, hi, u):
@@ -378,10 +383,13 @@ class RandomDNDTNightify(T.Transform):
         epoch = None
         if len(flat_inputs) > 2:
             epoch = getattr(flat_inputs[2], "epoch", None)
-        return {
+        params = {
             "apply": bool(torch.rand(1).item() < self.p),
             "target_bright": self._sample_bright(epoch),
         }
+        if self.seeded:
+            params["seed"] = int(torch.randint(0, 2**31 - 1, (1,)).item())
+        return params
 
     def transform(self, inpt, params):
         if not params["apply"]:
@@ -393,7 +401,7 @@ class RandomDNDTNightify(T.Transform):
         aux = inpt[3:]
         arr = (rgb.mul(255).round().byte().cpu().numpy()
                .transpose(1, 2, 0))
-        out = nightify(arr, np.random.default_rng(), params["target_bright"])
+        out = nightify(arr, np.random.default_rng(params.get("seed")), params["target_bright"])
         ten = torch.from_numpy(out).float().div(255.0).permute(2, 0, 1)
         if aux.shape[0] == 0:
             return ten

@@ -2111,3 +2111,16 @@ D2每query平均翻转80.35/1024，两边均激活220.00；D3为93.64与230.04�
 - **对排期的含义**：10-27 决策点除精度外须同时比较鲁棒性剖面。候选实验为在 v1 配方上加入 RGB 变暗增强（代码库已有 nightify 变换，V24 时期有暗光训练先例）或 RGB 随机丢弃，使红外在 RGB 不可靠时承担检测；需一次约 2.5 天的训练，未启动。
 - **产物**：`outputs/reports/modality_robustness_v36_frozen_20261022/`（`report.md` SHA256 `b3fa5c5816525de824fa6c9900cb1cddae5ed9af87686cdf752922926b1c7b5c`；`manifest.json` SHA256 `5cd729492c5f62d45dd06a2229aed873c9671d49ee3035ed0547aaf21a6c171f`，内含各条件预测 SHA、配置与权重 SHA、运行环境；14 份 `*_predictions.json` 与 13 份 `*_vs_clean.md`），日志 `logs/modality_robustness_v36_frozen_20261022.log`（SHA256 `81c12d6614c55bc1c87271919234620367405f901bc7be005bdc4af1de41b789`）。
 
+
+## 三十九、2026-10-23 红外预处理来源核查：训练与测试的配准 IR / LBG IR 不一致（CPU，无训练无推理）
+
+- **性质**：只做文件级比对与 CPU 重新生成，无模型推理、无训练。测试集只用于生成推理输入，未读取任何标注。
+- **训练数据的生成器（已确证）**：`scripts/prep/batch_generate_server_ir_lbg.py` 的 `process_single_image`（文件 SHA256 `96c53e45894d8e2b0d4f58de4f1d25c85d777fc2b600f10b92b719efabe76c34`）——PNG 直接保留原始红外，JPG 走 `align_image_pair_v3`，LBG 为对已保存配准图做 cv2 中值 top-hat（k=31）。在 Linux 工作站对全部 2000 张训练图重新生成，配准 IR 与 `dataset/train/infrared_aligned`、LBG 与 `train_lbg_ir` **2000/2000 逐字节相同**（分支：149 张 JPG 配准、1851 张 PNG 原样）。另抽 5 张核对，ailab40 上纯净 v1 实际读取的 `AIC_V29/dataset/train/infrared_aligned` 与 `AIC_V29/work_dir/train_lbg_ir` 和工作站逐字节相同。
+- **测试集现状**：
+  - `dataset/test/AIC2026_PHASE_2_1000/infrared_aligned`：与训练同法生成结果 **1000/1000 逐字节相同**，可直接使用（仅工作站有，ailab40 上没有）。
+  - `work_dir/test_aligned_ir`：由旧版 `scripts/prep/align_ir_pixel_pipeline.py`（v1 配准器）生成（抽 3 张逐字节一致），与训练同法结果 **1000/1000 不同**，差异图像的平均绝对像素差中位 1.49、最大 21.34（0–255）。ailab40 与工作站上该目录逐字节相同，且是 ailab40 上唯一的测试配准红外。
+  - `work_dir/test_lbg_ir`：由 `prep_ir_localbg.py`（PIL 读写）作用于上述 v1 配准图生成，与训练同法结果 **1000/1000 不同**（中位 0.70、最大 9.29）。此前不存在与训练一致的测试 LBG。
+- **影响**：历史 V36 测试推理脚本优先读取 `work_dir/test_aligned_ir` 与 `work_dir/test_lbg_ir`，即测试时红外两路的生成方式与训练不同；凡用这两个目录产出的测试预测都存在训练/测试输入不一致。对精度的影响尚未量化（需在验证集上用 v1 配准器生成同样的输入并对比推理，属 GPU 工作，待做）。
+- **处置**：新增 `scripts/prep/gen_ir_like_train.py`（文件 SHA256 `9411d747639047c6ff2f3867c8b446c7fde7c19b333418784eab51931e05348f`），对任意可见光/红外目录按训练同法生成配准 IR 与 LBG 并写清单。已在工作站生成 `work_dir/test_ir_like_train/{infrared_aligned,lbg_ir}`（1000 张，0 失败；117 张 JPG 配准、883 张 PNG 原样；`manifest.json` SHA256 `4abf204948ec63dbd836eff1561bb9d5a9dd2724e93866bc76eb58f4e7ce84f1`）。最终测试推理应使用 `--ir-dir work_dir/test_ir_like_train/infrared_aligned`（与 `dataset/test/.../infrared_aligned` 相同）与 `--lbg-dir work_dir/test_ir_like_train/lbg_ir`。旧目录未改动。
+- **证据**：全量重生成清单 `work_dir/audits/ir_generator_check_20261023/manifest.json`（SHA256 `3507459c68ff53f3a2c158aae2a3013636a1a30889d67d25e559cada3ed81a26`，含 2000 个文件的 SHA；重生成的图像本身与训练文件逐字节相同，已删除以节省 4.3G）。
+

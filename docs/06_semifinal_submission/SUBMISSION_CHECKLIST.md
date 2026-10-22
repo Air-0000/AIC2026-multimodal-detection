@@ -5,6 +5,8 @@
 
 ## A. 待向组委会确认（越早越好）
 
+◐ 已起草，待发送：[QUESTIONS_TO_ORGANIZERS.md](QUESTIONS_TO_ORGANIZERS.md)。
+
 - ☐ 半决赛具体截止时间与提交方式。
 - ☐ “指定测试环境”的硬件、CUDA / PyTorch 版本、是否联网、显存上限。
 - ☐ DINOv3-ViT-L（LVD-1689M 预训练，仅训练期作为蒸馏教师）是否属于允许的“公开预训练权重”。细则举例为 ImageNet、COCO、Objects365。
@@ -24,8 +26,9 @@
 
 ## C. 测试集预处理
 
-- ☐ 测试集的配准红外与 LBG 红外必须用与训练数据**相同版本**的脚本和参数生成。记录：两台机器生成的 IR/LBG 曾经不一致（MODEL_RECORDS §三十一）。
+- ☑ 测试集配准红外与 LBG 红外按训练同法生成（MODEL_RECORDS §三十九）：训练数据的生成器已确证为 `batch_generate_server_ir_lbg.py`（2000/2000 逐字节复现）；用 `scripts/prep/gen_ir_like_train.py` 生成了 `work_dir/test_ir_like_train/{infrared_aligned,lbg_ir}`。**不要再用** `work_dir/test_aligned_ir`（旧 v1 配准器）与 `work_dir/test_lbg_ir`，两者与训练 1000/1000 不一致。最终提交代码须包含该生成步骤。
 - ☐ 深度使用与训练一致的来源：纯净 v1 训练使用原始 `depth`（raw16），不是 `depth_p0`。
+- ☐ 量化历史测试输入不一致的影响：在验证集上用 v1 配准器 + `prep_ir_localbg.py` 生成同类输入，对比推理（需 GPU）。
 
 ## D. 模型文件
 
@@ -42,6 +45,7 @@
 
 ## F. 运行环境
 
+- ◐ 两个现有环境的依赖已导出，见 [env/README.md](env/README.md)；仍需选定一个提交环境。
 - ☐ 统一一个提交环境并导出依赖清单（`conda env export` 或 `pip freeze`）。现状：训练在 ailab40 的 `aic2026` 环境（torch 2.6.0+cu124，V100），本地工作站为 `deimv2` 环境（Python 3.11.15、torch 2.13.0+cu130、torchvision 0.28.0、faster_coco_eval 1.7.2、numpy 2.4.6）。须确认最终权重在提交环境下的验证集输出与训练环境一致或差异可忽略。
 - ☐ 说明推理显存需求（1440×2560、FP32、batch 1）。
 - ☐ 注意：DEIMv2 的 `engine/data/dataset/coco_dataset.py` 导入时会用 `faster_coco_eval.init_as_pycocotools()` 全局替换 pycocotools；评测口径须在报告中写明。

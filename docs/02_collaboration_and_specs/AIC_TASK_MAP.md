@@ -18,6 +18,8 @@
 | 决策后 → 截止前约 5 天 | 1–2 个决策实验 | 技术报告实验部分 |
 | 截止前约 5 天 | 用全部 2000 张训练最终模型（约 2.5 天，须预留 GPU） | 提交生成与格式校验、工作台导入、技术报告定稿、代码与环境整理；不再开新实验 |
 
+就绪状态（2026-10-23）：纯 RGB 对照的 ailab40 部署 / 启动 / 排队脚本已备好（`scripts/train/{deploy_rgb_control_ailab40,run_clean_baseline_v1_rgb_control_ailab40,queue_rgb_control_after_v1_ailab40}.sh`），尚未部署；暗光训练臂 `aic_clean_baseline_v1_night.yml` 与 CPU 契约测试已备好（3/3 通过），未开训；测试集红外已按训练同法重生成（MODEL_RECORDS §三十九）。
+
 扩容途径：GPU0 释放或短租云 GPU 可使实验吞吐翻倍；v1 为避开 V100 Winograd 数值问题禁用了 cuDNN，验证安全后重新启用可能明显提速，但同一组对比内必须保持一致。
 
 ## 历史任务地图
