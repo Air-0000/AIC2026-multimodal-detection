@@ -99,13 +99,53 @@ def error(g, d, im):
                 dlogw=float(np.log(max(dw, 1e-6)/max(gw, 1e-6))), dlogh=float(np.log(max(dh, 1e-6)/max(gh, 1e-6))))
 
 
+def decompose(ids, b, s):
+    """Per-GT TP@.5/.75 transitions from baseline matches b to shifted matches s."""
+    c = dict(gt=len(ids), baseline_tp50=0, shifted_tp50=0, lost50=0, recovered50=0, baseline_tp75=0,
+             shifted_tp75=0, kept75=0, loosened=0, lost=0, tightened=0, appeared=0)
+    for gid in ids:
+        b50, b75, s50, s75 = gid in b[.5], gid in b[.75], gid in s[.5], gid in s[.75]
+        c['baseline_tp50'] += b50
+        c['shifted_tp50'] += s50
+        c['lost50'] += b50 and not s50
+        c['recovered50'] += s50 and not b50
+        c['baseline_tp75'] += b75
+        c['shifted_tp75'] += s75
+        c['kept75'] += b75 and s75
+        c['loosened'] += b75 and not s75 and s50
+        c['lost'] += b75 and not s75 and not s50
+        c['tightened'] += s75 and not b75 and b50
+        c['appeared'] += s75 and not b75 and not b50
+    assert c['shifted_tp75']-c['baseline_tp75'] == c['tightened']+c['appeared']-c['loosened']-c['lost']
+    return c
+
+
+def contribution(ap, arms, e):
+    """Class AP change / number of classes with GT; sums exactly to the overall change."""
+    base = ap['BASELINE'][1]
+    k = sum(v['mAP'] is not None for v in base.values())
+    out = {}
+    for arm in arms:
+        rows = {name: {m: (ap[arm][1][name][m]-r[m])/k for m in ('AP50', 'AP75', 'mAP')}
+                for name, r in base.items() if r['mAP'] is not None}
+        for m, thr in (('AP50', .5), ('AP75', .75)):
+            j = index(e, thr)
+            assert np.isclose(sum(x[m] for x in rows.values()), ap[arm][0][j]-ap['BASELINE'][0][j])
+        assert np.isclose(sum(x['mAP'] for x in rows.values()), np.mean(ap[arm][0])-np.mean(ap['BASELINE'][0]))
+        out[arm] = rows
+    return out
+
+
 def analyze(coco, evals, arms, cuts, light):
     gts = [g for g in coco.anns.values() if not g.get('iscrowd', 0) and not g.get('ignore', 0)]
     groups = {g['id']: tags(g, coco.imgs[g['image_id']], light) for g in gts}
     members = {name: [gid for gid, t in groups.items() if name in t] for name in GROUPS}
+    classes = {coco.cats[k]['name']: [g['id'] for g in gts if g['category_id'] == k] for k in sorted(coco.cats)}
+    classes = {name: ids for name, ids in classes.items() if ids}
     ap = {arm: ap_table(e) for arm, e in evals.items()}
     out = dict(iou_thresholds=[round(float(t), 2) for t in evals['BASELINE'].params.iouThrs],
                ap_by_iou={arm: v[0] for arm, v in ap.items()}, ap_by_class={arm: v[1] for arm, v in ap.items()},
+               ap_contribution=contribution(ap, arms, evals['BASELINE']),
                n_images=len(coco.imgs), group_sizes={name: len(v) for name, v in members.items()}, cuts={})
 
     def err(e, gid, did):
@@ -114,7 +154,7 @@ def analyze(coco, evals, arms, cuts, light):
 
     for cut in cuts:
         m = {arm: matches(e, cut) for arm, e in evals.items()}
-        row = dict(tp_iou={}, histogram={}, signed_error={}, paired={}, decomposition={})
+        row = dict(tp_iou={}, histogram={}, signed_error={}, paired={}, decomposition={}, per_class={})
         for arm, e in evals.items():
             row['tp_iou'][arm], row['histogram'][arm], row['signed_error'][arm] = {}, {}, {}
             for name, ids in members.items():
@@ -138,23 +178,8 @@ def analyze(coco, evals, arms, cuts, light):
                     delta_iou=describe(si-bi), delta_le_minus05=int(np.sum(si-bi <= -.05)),
                     crossed_below75=int(np.sum((bi >= .75) & (si < .75))), crossed_above75=int(np.sum((bi < .75) & (si >= .75))),
                     delta_error={k: describe([x[k]-y[k] for x, y in moved]) for k in ERRORS})
-                c = dict(gt=len(ids), baseline_tp50=0, shifted_tp50=0, lost50=0, recovered50=0, baseline_tp75=0,
-                         shifted_tp75=0, kept75=0, loosened=0, lost=0, tightened=0, appeared=0)
-                for gid in ids:
-                    b50, b75, s50, s75 = gid in b[.5], gid in b[.75], gid in s[.5], gid in s[.75]
-                    c['baseline_tp50'] += b50
-                    c['shifted_tp50'] += s50
-                    c['lost50'] += b50 and not s50
-                    c['recovered50'] += s50 and not b50
-                    c['baseline_tp75'] += b75
-                    c['shifted_tp75'] += s75
-                    c['kept75'] += b75 and s75
-                    c['loosened'] += b75 and not s75 and s50
-                    c['lost'] += b75 and not s75 and not s50
-                    c['tightened'] += s75 and not b75 and b50
-                    c['appeared'] += s75 and not b75 and not b50
-                assert c['shifted_tp75']-c['baseline_tp75'] == c['tightened']+c['appeared']-c['loosened']-c['lost']
-                row['decomposition'][arm][name] = c
+                row['decomposition'][arm][name] = decompose(ids, b, s)
+            row['per_class'][arm] = {name: decompose(ids, b, s) for name, ids in classes.items()}
         out['cuts'][key(cut)] = row
     return out
 
@@ -193,14 +218,29 @@ def render(out, arms, cuts, checks):
         v = out['ap_by_iou'][arm]
         L.append(f'| delta {arm} (pp) | ' + ' | '.join(f'{100*(x-y):+.3f}' for x, y in zip(v, base))
                  + f' | {100*(np.mean(v)-np.mean(base)):+.3f} |')
-    L += ['', '## Per-class AP change (pp)', '', '| arm | class | baseline AP50 | baseline AP75 | dAP50 | dAP75 | dmAP |', '|---|---|---:|---:|---:|---:|---:|']
+    cut = cuts[0]
+    L += ['', f'## Per-class contribution (sorted by AP75 contribution; TP counts at score >= {cut:g})', '',
+          'contrib = class AP change / number of classes with GT (COCO averages classes equally), so contributions sum exactly '
+          'to the overall change; dAP and contrib in pp. cum columns accumulate down the table.', '',
+          '| arm | class | GT | base AP75 | dAP50 | dAP75 | dmAP | AP75 contrib | mAP contrib | cum AP75 % | cum GT % | '
+          'TP@.75 base->shifted | loosened | lost | tightened | appeared | TP@.5 lost/recovered |',
+          '|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---|']
     for arm in arms:
-        for name, v in out['ap_by_class'][arm].items():
-            r = out['ap_by_class']['BASELINE'][name]
-            if None in (v['AP50'], r['AP50']):
-                continue
-            L.append(f"| {arm} | {name} | {pct(r['AP50'])} | {pct(r['AP75'])} | {100*(v['AP50']-r['AP50']):+.3f} | "
-                     f"{100*(v['AP75']-r['AP75']):+.3f} | {100*(v['mAP']-r['mAP']):+.3f} |")
+        contrib = out['ap_contribution'][arm]
+        per = out['cuts'][key(cut)]['per_class'][arm]
+        total = sum(x['AP75'] for x in contrib.values())
+        ngt = sum(c['gt'] for c in per.values())
+        run_ap = run_gt = 0.
+        for name in sorted(contrib, key=lambda n: contrib[n]['AP75']):
+            x, c = contrib[name], per[name]
+            r, v = out['ap_by_class']['BASELINE'][name], out['ap_by_class'][arm][name]
+            run_ap += x['AP75']
+            run_gt += c['gt']
+            share = f'{100*run_ap/total:.1f}' if abs(total) > 1e-12 else '-'
+            L.append(f"| {arm} | {name} | {c['gt']} | {pct(r['AP75'])} | {100*(v['AP50']-r['AP50']):+.3f} | "
+                     f"{100*(v['AP75']-r['AP75']):+.3f} | {100*(v['mAP']-r['mAP']):+.3f} | {100*x['AP75']:+.3f} | "
+                     f"{100*x['mAP']:+.3f} | {share} | {100*run_gt/ngt:.1f} | {c['baseline_tp75']}->{c['shifted_tp75']} | "
+                     f"{c['loosened']} | {c['lost']} | {c['tightened']} | {c['appeared']} | {c['lost50']}/{c['recovered50']} |")
     L += ['', '## TP@.75 change decomposition', '',
           'loosened = TP@.75 in baseline, still TP@.5 but not TP@.75 after shift; lost = not even TP@.5 after shift. net = tightened + appeared - loosened - lost.', '',
           '| score >= | arm | group | GT | base TP@.75 | shifted TP@.75 | net | kept | loosened | lost | tightened | appeared | TP@.5 lost/recovered |',
@@ -303,6 +343,13 @@ def self_test():
     t = out['cuts']['0.48']['tp_iou']['BASELINE']['all']
     assert t['n'] == 5 and np.isclose(t['median'], iou(10)) and np.isclose(t['ge75'], .8)
     assert sum(out['cuts']['0.48']['histogram']['BASELINE']['all']['counts']) == 5
+    per = out['cuts']['0.48']['per_class']['SHIFT']
+    assert per['car'] == dict(gt=5, baseline_tp50=4, shifted_tp50=3, lost50=2, recovered50=1, baseline_tp75=4,
+                              shifted_tp75=2, kept75=1, loosened=1, lost=2, tightened=0, appeared=1)
+    assert per['light'] == out['cuts']['0.48']['decomposition']['SHIFT']['light']
+    contrib = out['ap_contribution']['SHIFT']
+    assert set(contrib) == {'car', 'light'}
+    assert np.isclose(sum(x['AP75'] for x in contrib.values()), out['ap_by_iou']['SHIFT'][5]-out['ap_by_iou']['BASELINE'][5])
     assert np.isclose(out['cuts']['0.48']['signed_error']['BASELINE']['interior']['dcx']['mean'], (5+10+5+30+10)/5)
     render(out, ['SHIFT'], [.48, 0.], [])
 
