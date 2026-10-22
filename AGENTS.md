@@ -13,7 +13,7 @@
 - **单一主干框架**：**DEIMv2**（DINOv3-ViT / HGNetv2-X Backbone + HybridEncoder + D-FINE/RT-DETR 式解码器），vendored 在 `vendor/DEIMv2/`。RF-DETR 路线已废弃。
 - **数据**：`dataset/train/` 2000 张（visible/infrared/infrared_aligned/depth/labels）；`dataset/test/AIC2026_PHASE_2_1000/` 1000 张**无标签**。
 - **版本现状（2026-10-22）**：官方最高分仍是 **V23 TADL 53.555**（τ=0.45，7,459 框；F5 标杆 58.105）。V23 为**两段式**：Stage A 补标口径 72 轮预训练 → Stage B 旧标注口径 TADL 精调 **21 轮**（单卡约 2h），详见 `docs/MODEL_RECORDS.md` §11.5。此后 V24–V36 均已跑过：**V27 纯净无偏**（val mAP 0.8959 / AP50 0.9638）与 **V28-A 视差觉醒**（val AP75 0.9502）是历史 val 高点；**V28-B 72 轮长跑单调退化（0.888→0.778），`best_stg2` 落在最差轮次，禁止使用**；V29 循环蒸馏、V30 CSSP、V31 Co-ATSS、V32 PIG 有记录；V33 失败结案；**V36**（HGNetv2-B5 六通道 + P2-v10 + DINOv3 教师蒸馏 + Co-ATSS）在 ailab40 完成 50 轮纯 FP32 训练并产出 1000 图提交包。⚠️ V23/V27/V28 与 V34–V36 的验证集输入、标注和来源不同，**不能拼成统一排名**。
-- **当前主线：纯净基准 v1**（`vendor/DEIMv2/configs/deimv2/aic_clean_baseline_v1.yml`，修复 14 项通用正确性缺陷后的完全展开配置），2026-10-22 起在 ailab40 GPU1 跑 50 轮，**尚无成绩**。定义与修复清单见 `docs/02_collaboration_and_specs/CLEAN_BASELINE.md`，任务完成度见同目录 `AIC_TASK_MAP.md`，记录见 `docs/MODEL_RECORDS.md` §三十五。
+- **当前主线：纯净基准 v1**（`vendor/DEIMv2/configs/deimv2/aic_clean_baseline_v1.yml`，修复 14 项通用正确性缺陷后的完全展开配置），2026-10-22 起在 ailab40 GPU1 跑 50 轮，10-23 在第 6 轮因该卡显存硬件错误中断（`docs/MODEL_RECORDS.md` §四十），**尚无成绩**；计划迁到新 GPU 从头重训，步骤见 `docs/02_collaboration_and_specs/CLOUD_MIGRATION_RUNBOOK.md`。定义与修复清单见 `docs/02_collaboration_and_specs/CLEAN_BASELINE.md`，任务完成度见同目录 `AIC_TASK_MAP.md`，记录见 `docs/MODEL_RECORDS.md` §三十五。
 
 ## 2. 环境与运行约定
 
@@ -34,7 +34,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 - **训练入口** `vendor/DEIMv2/train.py` —— **必须 `cd vendor/DEIMv2` 执行**，`-c` 配置路径与 `output_dir` 都相对该目录（`configs/deimv2/<exp>.yml`）。
 - **推理/分析脚本** —— 从仓库根目录驱动；脚本顶部普遍硬编码 `ROOT = "/home/constant/CodeBuddy/Dev/AIC"`，且 `scripts/eval/predict_*.py` 会 `os.chdir(vendor/DEIMv2)`（chdir 后相对路径含义变化，`predict_mm_tta.py` 会把 `--out` resolve 回 ROOT）。
 - **本地 GPU 仅 RTX 5060 Ti 15.46 GiB**（开发调试）。远端训练节点：
-  - **ailab40（当前主力，纯净基准 v1 / V36 均在此训练）**：实验室服务器，Tesla V100 32GB（GPU 0、1；纯净基准用 GPU 1）。项目根 `/home/ailab40/hejianzhong/AIC_CLEAN_BASELINE_20261021`，python 为 `/home/ailab/ssd/bigdata/hejianzhong/_infra/envs/aic2026/bin/python`（**不是** `deimv2` 环境）；启动脚本 `scripts/train/run_clean_baseline_v1_ailab40.sh`。V100（SM_70）上**必须纯 FP32、禁用 cuDNN、不加 `--use-amp`**——V36 早期 AMP 运行因 FP16 溢出有 92.9% 的步被 NaN-guard 跳过。
+  - **ailab40（V36 与中断的纯净基准 v1 在此训练）**：⚠️ 两张卡 ECC 均关闭，GPU1 显存静默出错（自检 88/720 次读校验不一致），不要再用它训练；任何新卡开训前先跑 `scripts/train/preflight_cloud.sh`。实验室服务器，Tesla V100 32GB（GPU 0、1；纯净基准用 GPU 1）。项目根 `/home/ailab40/hejianzhong/AIC_CLEAN_BASELINE_20261021`，python 为 `/home/ailab/ssd/bigdata/hejianzhong/_infra/envs/aic2026/bin/python`（**不是** `deimv2` 环境）；启动脚本 `scripts/train/run_clean_baseline_v1_ailab40.sh`。V100（SM_70）上**必须纯 FP32、禁用 cuDNN、不加 `--use-amp`**——V36 早期 AMP 运行因 FP16 溢出有 92.9% 的步被 NaN-guard 跳过。
   - 以下两个 seetacloud 节点路径根均为 `/root/autodl-tmp/AIC`：
   - **8 卡节点（V28 时期主力）**：`ssh -p 32426 root@connect.westb.seetacloud.com`（`~/.ssh/config` 别名 `seeta8`），8 × RTX PRO 6000 Blackwell。
   - **96GB 单卡节点（V23 主训练）**：`ssh -p 33715 root@connect.westd.seetacloud.com`（别名 `seeta`），RTX 6000 Ada / RTX PRO 6000。
@@ -139,6 +139,7 @@ $PY scripts/collect_model_records.py
 | 提交前把关 / 后处理准则 | `docs/05_postprocessing_and_inference/SAFE_POSTPROCESSING_GUIDELINES.md` |
 | 测试集先验（目标数 7,086 / 密度 7.09） | `docs/01_competition/SUBMISSION_CONFIDENCE_THRESHOLD_PRIOR.md` |
 | 半决赛技术报告骨架与提交清单 | `docs/06_semifinal_submission/`（`TECHNICAL_REPORT_DRAFT.md`、`SUBMISSION_CHECKLIST.md`） |
+| 训练迁到新 GPU（自检、数据打包、上线前检查、启动） | `docs/02_collaboration_and_specs/CLOUD_MIGRATION_RUNBOOK.md` |
 | 历史审计（对齐/权重溯源/CP 消融） | `docs/04_audits_and_ablations/` |
 
 ## 8. 整理记录（2026-10-07）
