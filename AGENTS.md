@@ -12,7 +12,8 @@
 - **12 类固定顺序**（class_id 0–11）：person, boat, animal, seat, sign, bicycle, car, ball, light, garbage can, uav, tricycle
 - **单一主干框架**：**DEIMv2**（DINOv3-ViT / HGNetv2-X Backbone + HybridEncoder + D-FINE/RT-DETR 式解码器），vendored 在 `vendor/DEIMv2/`。RF-DETR 路线已废弃。
 - **数据**：`dataset/train/` 2000 张（visible/infrared/infrared_aligned/depth/labels）；`dataset/test/AIC2026_PHASE_2_1000/` 1000 张**无标签**。
-- **版本现状（2026-10-07 核对远端）**：官方最高分仍是 **V23 TADL 53.555**（τ=0.45，7,459 框；F5 标杆 58.105）。V23 为**两段式**：Stage A 补标口径 72 轮预训练 → Stage B 旧标注口径 TADL 精调 **21 轮**（单卡约 2h），详见 `docs/MODEL_RECORDS.md` §11.5。验证集最强为 **V27 纯净无偏**（mAP 0.8959 / AP50 0.9638）与 **V28-A 视差觉醒**（AP75 **0.9502**，全项目最高）；**V28-B 72 轮长跑单调退化（0.888→0.778），`best_stg2` 落在最差轮次，禁止使用**；**V29 尚未启动**。详见 `docs/MODEL_RECORDS.md` §十三。
+- **版本现状（2026-10-22）**：官方最高分仍是 **V23 TADL 53.555**（τ=0.45，7,459 框；F5 标杆 58.105）。V23 为**两段式**：Stage A 补标口径 72 轮预训练 → Stage B 旧标注口径 TADL 精调 **21 轮**（单卡约 2h），详见 `docs/MODEL_RECORDS.md` §11.5。此后 V24–V36 均已跑过：**V27 纯净无偏**（val mAP 0.8959 / AP50 0.9638）与 **V28-A 视差觉醒**（val AP75 0.9502）是历史 val 高点；**V28-B 72 轮长跑单调退化（0.888→0.778），`best_stg2` 落在最差轮次，禁止使用**；V29 循环蒸馏、V30 CSSP、V31 Co-ATSS、V32 PIG 有记录；V33 失败结案；**V36**（HGNetv2-B5 六通道 + P2-v10 + DINOv3 教师蒸馏 + Co-ATSS）在 ailab40 完成 50 轮纯 FP32 训练并产出 1000 图提交包。⚠️ V23/V27/V28 与 V34–V36 的验证集输入、标注和来源不同，**不能拼成统一排名**。
+- **当前主线：纯净基准 v1**（`vendor/DEIMv2/configs/deimv2/aic_clean_baseline_v1.yml`，修复 14 项通用正确性缺陷后的完全展开配置），2026-10-22 起在 ailab40 GPU1 跑 50 轮，**尚无成绩**。定义与修复清单见 `docs/02_collaboration_and_specs/CLEAN_BASELINE.md`，任务完成度见同目录 `AIC_TASK_MAP.md`，记录见 `docs/MODEL_RECORDS.md` §三十五。
 
 ## 2. 环境与运行约定
 
@@ -23,7 +24,7 @@
 | `deimv2` | `/home/constant/miniconda3/envs/deimv2/bin/python` | 训练、评测、推理、数据准备（几乎全部） |
 | `aic-2` | `/home/constant/miniconda3/envs/aic-2/bin/python` | 少量辅助 / 夜化预处理 |
 
-标准前缀（缺了会 ImportError，因为 `engine/data/transforms` 会 `import nightify_aic`）：
+标准前缀（**缺了不会报错，只会静默降级**：`engine/data/transforms/_transforms.py` 对 `nightify_aic` 的 import 包了 try/except，找不到时 `nightify=None`，夜化增强变成 no-op；非 strict 数据集的 IR destripe 也会静默回退。只有 `strict_inputs: true` 的 config（如纯净基准）会直接报错。所以"能跑但结果不对"时先查这一项）：
 
 ```bash
 export PYTHONPATH="/home/constant/CodeBuddy/Dev/AIC/scripts/lib:/home/constant/CodeBuddy/Dev/AIC/vendor/DEIMv2:${PYTHONPATH:-}"
@@ -32,8 +33,10 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 - **训练入口** `vendor/DEIMv2/train.py` —— **必须 `cd vendor/DEIMv2` 执行**，`-c` 配置路径与 `output_dir` 都相对该目录（`configs/deimv2/<exp>.yml`）。
 - **推理/分析脚本** —— 从仓库根目录驱动；脚本顶部普遍硬编码 `ROOT = "/home/constant/CodeBuddy/Dev/AIC"`，且 `scripts/eval/predict_*.py` 会 `os.chdir(vendor/DEIMv2)`（chdir 后相对路径含义变化，`predict_mm_tta.py` 会把 `--out` resolve 回 ROOT）。
-- **本地 GPU 仅 RTX 5060 Ti 15.46 GiB**（开发调试）。远端训练节点两个（路径根均为 `/root/autodl-tmp/AIC`）：
-  - **8 卡节点（V28 起主力）**：`ssh -p 32426 root@connect.westb.seetacloud.com`（`~/.ssh/config` 别名 `seeta8`），8 × RTX PRO 6000 Blackwell。
+- **本地 GPU 仅 RTX 5060 Ti 15.46 GiB**（开发调试）。远端训练节点：
+  - **ailab40（当前主力，纯净基准 v1 / V36 均在此训练）**：实验室服务器，Tesla V100 32GB（GPU 0、1；纯净基准用 GPU 1）。项目根 `/home/ailab40/hejianzhong/AIC_CLEAN_BASELINE_20261021`，python 为 `/home/ailab/ssd/bigdata/hejianzhong/_infra/envs/aic2026/bin/python`（**不是** `deimv2` 环境）；启动脚本 `scripts/train/run_clean_baseline_v1_ailab40.sh`。V100（SM_70）上**必须纯 FP32、禁用 cuDNN、不加 `--use-amp`**——V36 早期 AMP 运行因 FP16 溢出有 92.9% 的步被 NaN-guard 跳过。
+  - 以下两个 seetacloud 节点路径根均为 `/root/autodl-tmp/AIC`：
+  - **8 卡节点（V28 时期主力）**：`ssh -p 32426 root@connect.westb.seetacloud.com`（`~/.ssh/config` 别名 `seeta8`），8 × RTX PRO 6000 Blackwell。
   - **96GB 单卡节点（V23 主训练）**：`ssh -p 33715 root@connect.westd.seetacloud.com`（别名 `seeta`），RTX 6000 Ada / RTX PRO 6000。
   - ⚠️ 容器可能未挂载 GPU（`v28_infer.log` 曾报 `Found no NVIDIA driver`），跑推理前先 `nvidia-smi -L` 确认。
 
@@ -112,14 +115,14 @@ $PY scripts/collect_model_records.py
 ## 6. 关键机制与坑点
 
 - **Config 体系**：`configs/{base,dataset,deimv2}/`；实验 config 用 `__include__` 深合并，**后 include 者覆盖前者**（`engine/core/yaml_utils.py`）。`dataset/` 下 `aic_detection.yml`(RGB 基线)、`aic_heat.yml`(heat)、`aic_detection*_nightXX.yml`(9 档暗光 night50→night0005)；6 通道数据块写在**各实验 config 内**。
-- **多模态实现集中在 `vendor/DEIMv2/engine/backbone/multimodal_backbones.py`**（约 1800 行），由 config 的 `DEIM.backbone:` 字段选择（**不是 `fusion:`**），另配同名参数块（如 `HGNetv2MultiModal:`）。主方案 `HGNetv2MultiModal`（DCDA 视差对齐 + 3D-Lift + DOG 深度阶跃门控 + 双边池化 + 浅层边缘融合）。
+- **多模态 backbone** 由 config 的 `DEIM.backbone:` 字段选择（**不是 `fusion:`**），另配同名参数块（如 `HGNetv2MultiModal:`）。**主方案 `HGNetv2MultiModal` 在 `vendor/DEIMv2/engine/backbone/hgnetv2_mm.py`**（DCDA 视差对齐 + 3D-Lift + DOG 深度阶跃门控 + 双边池化 + 浅层边缘融合）；`multimodal_backbones.py`（约 2400 行）放的是下一条列出的 `DINOv3STAs*` 历史变体与 CSSA/BiDir/RDT 等融合件。新 backbone 须在 `engine/backbone/__init__.py` 中 import 才会注册。
 - **可选 backbone 变体**（历史/消融）：`DINOv3STAs`(纯 RGB 基线) · `…CSD`(通道互补+CBAM) · `…BiDir`(RGB↔IR 双向交叉注意力) · `…DiffFuse`(模态主导度加权) · `…TriModal`(RGB+heat 共 stem) · `…PureIR`(单红外) · **`…RDTTrack`**(正交去冗余 + Fovea/PromptBlock 注入冻结 RGB，前期主方案) · `…RDT`/`…RDTDiffuse`(RGB-D 对照/差异融合注入) · `…BiDirPaper`(Tang'24 复现)。
 - **deepir** = `work_dir/deepir_cache/train/*.pt` 6 通道离线缓存 + `CocoDetectionMultiModalCached`；**midboost** = 暗光亮度采样聚焦中段（`level: [0.005,0.45]` + log-uniform 过采样）的微调策略。
 - **训练用 COCO 划分**：`work_dir/deimv2_dataset/{train 1800, valid 200}`（seed=42）。标注两个口径：`instances_train.json`（官方老标注，V23 起主线）与 `instances_train_quality1998.json`（质量补标，**会产生官方判定 FP，已弃用**）。
 - **`interaction_indexes` 三流共用**：RGB 与 aux 的 ViT 层数不等（ViT-L 24 层 + ViT-S 12 层）会越界断言，已由 `_scale_interaction_indexes()` 按 depth 比例缩放；新增 backbone 组合时留意。
 - **桌面合成器抢显存**：Wayland/niri 曾独占 ~12 GiB，导致"只有 13GB 可用"的误解（卡本身 15.46 GiB）。`accum_steps` 就是为此加的。
 - **`.gitignore`** 忽略 `*.pth/*.pt/*.log/*.pkl/*.out`、`dataset/`、`/data_aux/`、`**/work_dir/`、`archive/`、`vendor/Depth-Anything-V2/`，但**特意放行 `vendor/` 内框架自带 dataset 代码目录**（commit `95b2090`）——改 gitignore 别误伤。
-- **`docs/` 不在 git 跟踪范围内**（仓库只跟踪 208 个文件，其中 204 个在 `vendor/DEIMv2/`）。**对 `docs/` 的破坏性操作前先备份**到 `archive/backups/`。
+- **git 跟踪范围**：`docs/` 与 `scripts/` 已入库（约 1,770 个跟踪文件：`vendor/DEIMv2` ~960、`scripts/` ~750、`docs/` ~50），`docs/` 的改动可用 git 追溯与回滚。`dataset/`、`work_dir/`、`outputs/`、`logs/`、`archive/` 与权重仍被 gitignore，对它们的破坏性操作前仍要先备份到 `archive/backups/`。
 - **历史遗留混淆项**：`scripts/` 下大量 `predict_*`/`tta_*` 老脚本依赖已废弃的 `rfdetr` 环境，当前不可运行；日常请用 `predict_mm_tta.py` 与 `scripts/inference/`。
 
 ## 7. 我该看哪篇文档
