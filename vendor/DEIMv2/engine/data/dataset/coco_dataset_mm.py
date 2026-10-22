@@ -50,7 +50,8 @@ class CocoDetectionMultiModal(CocoDetection):
         n_channels=4,  # 4 = rgb+heat ; 5 = rgb+heat+depth ; 7 = rgb+heat+depth_geo(3)
         modality='rgb_ir',  # 'rgb_ir' = default ; 'ir' = pure infrared (1ch) ;
                             # 'ir_raw' = raw IR only ; 'rgb_depth' = RGB + Depth
-                            # bimodal (no IR) -- the depth-preprocessing rig
+                            # bimodal (no IR) -- the depth-preprocessing rig ;
+                            # 'rgb' = RGB only (3ch) -- the single-modality control
         depth_mode='raw',  # 'raw' = 1ch depth ; 'geo' = 3ch surface-normal encoding
         depth_read='raw16',  # 'raw16' = correct 16-bit mm read (DEFAULT, fixed) ;
                              # 'clip8' = legacy BROKEN PIL convert("L") read, kept
@@ -81,7 +82,10 @@ class CocoDetectionMultiModal(CocoDetection):
         self.destripe_ir = destripe_ir
         self.strict_inputs = bool(strict_inputs)
         if self.strict_inputs:
-            if n_channels != 6 or any(x is None for x in (ir_folder, raw_ir_folder, depth_folder)):
+            if modality == 'rgb':
+                if n_channels != 3 or any(x is not None for x in (ir_folder, raw_ir_folder, deleak_ir_folder, depth_folder)):
+                    raise ValueError('Strict RGB-only contract requires 3 channels and no IR/depth folders')
+            elif n_channels != 6 or any(x is None for x in (ir_folder, raw_ir_folder, depth_folder)):
                 raise ValueError('Strict AIC input contract requires RGB + aligned IR + LBG IR + depth (6 channels)')
             if depth_read != 'raw16' or depth_mode != 'raw':
                 raise ValueError('Strict AIC input contract requires raw16/raw depth')
@@ -222,7 +226,10 @@ class CocoDetectionMultiModal(CocoDetection):
             ir_ch = torch.cat([ir_ch, raw_ir], dim=0)
         if deleak_ir is not None:
             ir_ch = torch.cat([ir_ch, deleak_ir], dim=0)   # [1|2|3,H,W]
-        if self.modality == 'ir':
+        if self.modality == 'rgb':
+            # RGB ONLY: the exact tensor the fused layouts carry in channels 0..2.
+            x = rgb_t                                  # [3,H,W]
+        elif self.modality == 'ir':
             # PURE INFRARED: detect from the IR channel(s) only (heat residual,
             # + aligned raw IR as the 2nd channel when raw_ir_folder is set).
             # RGB is still read above purely to derive box coordinates /
