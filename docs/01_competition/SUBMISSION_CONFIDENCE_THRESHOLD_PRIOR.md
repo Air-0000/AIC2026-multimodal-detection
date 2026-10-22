@@ -265,6 +265,6 @@
    - 官方物理分布图表证实单图极限 $\le 30$ 框，60 框留足了 100% 遮挡缓冲空间，彻底切断长尾 query 幻影；
 3. **Sovereign V23 登顶行动**：
    - Sovereign V23 为**两段式**：Stage A（补标口径，`sovereign_v23_zero_distort_2048_fast32`，72 轮排程预训练）→ Stage B（官方旧标注口径，TADL 精调，**实跑 21 轮**）产出的交付权重；
-   - 训练完成后，统一由 [`scripts/inference/generate_sovereign_v23_submissions.py`](file:///home/constant/CodeBuddy/Dev/AIC/scripts/inference/generate_sovereign_v23_submissions.py) 产出精确卡位在 7,100~7,200 框的黄金提交包，直接冲击 58 ~ 60+ 分！
+   - 训练完成后，统一由 [`scripts/inference/generate_sovereign_v23_submissions.py`](../../scripts/inference/generate_sovereign_v23_submissions.py) 产出精确卡位在 7,100~7,200 框的黄金提交包，直接冲击 58 ~ 60+ 分！
 
 

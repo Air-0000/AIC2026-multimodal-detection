@@ -1,1 +1,0 @@
-03_architecture_designs/01_multimodal_representation_fusion_design.md

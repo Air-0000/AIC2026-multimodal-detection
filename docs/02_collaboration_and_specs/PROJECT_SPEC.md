@@ -48,18 +48,17 @@
 
 | 目录 | 职责范围 | 典型代表脚本 |
 |---|---|---|
-| `scripts/prep/` | **数据准备与特征预处理**：RGB/IR/Depth 转换、配准对齐、LBG 红外、P0 深度、缓存、外部集生成 | `align_ir_pixel_pipeline.py`, `prep_ir_localbg.py`, `prep_p0_depth_unified.py`, `prep_deepir_cache.py` |
-| `scripts/train/` | **训练驱动**：远端/本地自适应 Shell 驱动（GPU 排队、shm 缓存、磁盘守护）、显存探测 | `run_v28_full72ep_zoom_8gpu.sh`, `run_sovereign_v23_oldlabel1800_rtx6000.sh`, `probe_mem.py` |
-| `scripts/inference/` | **正式推理与提交包生成**（V18 起逐代独立入口，含原生 TTA 与对撞审计） | `infer_test2_v28_disparity_awakening.py`, `generate_sovereign_v23_submissions.py` |
-| `scripts/eval/` | **评测与提交把关**：官方口径评测器、暗光套件、模型汤、TTA/WBF、格式校验 | `official_competition_evaluator.py`, `eval_nightxx_suite.py`, `model_soup_apex.py`, `check_submission.py` |
-| `scripts/gen/` | **批量配置与脚本生成**：自动化生成实验矩阵 yaml 与批量评测 shell | `gen_dfine_x_val_cfgs.py`, `mk_*_configs.py` |
-| `scripts/analysis/` | **实验分析与可视化**：画 mAP 变化曲线、扫描日志、统计类分布、消融对比 | `plot_map_curve.py`, `scan_mAP.py`, `eval_exp*_*.py` |
-| `scripts/audit/` `scripts/diagnostics/` | **审计与诊断探针**：通道/权重/数据一致性核查、故障复现 | `scripts/diagnostics/test_vram_measure.py` |
-| `scripts/viz/` `scripts/utils/` | **可视化与通用小工具** | `scripts/viz/*.py` |
-| `scripts/lib/` | **跨模块共享库**：夜化变换、去条纹、深度工具等公共 Python 模块 | `nightify_aic.py`, `destripe_1d.py`, `depth_utils.py` |
+| `scripts/prep/` | **数据准备**：1800/200 划分与 COCO 标注、配准红外与 LBG 红外（训练集 / 测试集同法）、9 档暗光验证集、训练输入打包 | `prepare_dataset.py` → `yolo_to_coco.py`, `batch_generate_server_ir_lbg.py`, `gen_ir_like_train.py`, `prep_nightxx_server.py`, `pack_training_inputs.py` |
+| `scripts/train/` | **训练驱动**：纯净基准三臂启动、换卡自检与上线前检查、里程碑版本的启动脚本 | `run_clean_arm.sh`, `preflight_cloud.sh`, `run_clean_baseline_v1_ailab40.sh`, `run_sovereign_v23_oldlabel1800_rtx6000.sh` |
+| `scripts/inference/` | **正式推理与提交包生成** | `predict.py`（统一入口）；里程碑：`generate_sovereign_v23_submissions.py`, `infer_test2_v{27,28,34,35,36}_*.py`, `reproduce_f5_official.py` |
+| `scripts/eval/` | **评测与提交把关**：官方口径评测器、模态鲁棒性剖面、格式校验 | `official_competition_evaluator.py`, `eval_modality_robustness.py`, `eval_submission.py`, `check_submission.py` |
+| `scripts/analysis/` | **配对比较与 V36 平移诊断的分析端** | `compare_detectors_paired.py`, `analyze_translation_*.py` |
+| `scripts/diagnostics/` | **契约测试与诊断探针**：CPU 契约测试、GPU 只读验收、V36 平移干预 / 追踪 | `test_clean_baseline_contract.py`, `audit_clean_baseline.py`, `gpu_selftest.py`, `intervene_translation_*.py` |
+| `scripts/viz/` | **可视化工作台**（AGENTS.md 红线 11） | `import_submission_to_workstation.py`, `workstation_server.py` |
+| `scripts/lib/` | **跨模块共享库**：夜化变换、去条纹、深度工具、注入 stage 迁移 | `nightify_aic.py`, `destripe_1d.py`, `depth_utils.py`, `injection_stage_migration.py` |
 | `scripts/collect_model_records.py` | **全局总控工具**：重建唯一实验真相源 | `collect_model_records.py` |
 
-> 每个子目录的**入口脚本与职责边界**详见本文 §7 全链路流程与 §8 最小闭环命令清单。
+> 每个子目录的**入口脚本与职责边界**详见本文 §7 全链路流程与 §8 最小闭环命令清单。V1–V33 时期的配置生成（`scripts/gen/`）、一次性分析与可视化、旧推理 / 后处理脚本已于 2026-10-22 删除，见 [REPO_CLEANUP_LOG.md](REPO_CLEANUP_LOG.md)。
 
 ---
 
@@ -169,13 +168,13 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 ```mermaid
 flowchart TD
     A["原始三模态<br/>dataset/train · dataset/test"] --> B["① 数据准备<br/>scripts/prep/*.py"]
-    B --> C["派生几何产物<br/>infrared_aligned · LBG-IR · depth_p0"]
+    B --> C["派生几何产物<br/>infrared_aligned · LBG-IR（depth 直接按 raw16 读）"]
     C --> D["COCO 划分<br/>work_dir/deimv2_dataset/{train 1800, valid 200}"]
     D --> E["② 配置装配<br/>configs/deimv2/&lt;exp&gt;.yml（6 通道 dataloader）"]
-    E --> F["③ 训练（远端 96GB）<br/>scripts/train/run_*.sh → vendor/DEIMv2/train.py"]
-    F --> G["权重 outputs/&lt;exp&gt;/best_stg2.pth"]
-    G --> H["④ 评测<br/>200 张 val · 暗光 10 档 · 模型汤"]
-    H --> I["⑤ 推理与提交<br/>scripts/inference/infer_test2_vNN_*.py"]
+    E --> F["③ 训练<br/>scripts/train/run_clean_arm.sh → vendor/DEIMv2/train.py"]
+    F --> G["权重 outputs/&lt;exp&gt;/best.pth · final.pth"]
+    G --> H["④ 评测<br/>200 张 val · 9 档暗光 · 模态缺失"]
+    H --> I["⑤ 推理与提交<br/>scripts/inference/predict.py"]
     I --> J["格式校验<br/>scripts/eval/check_submission.py"]
     G --> K["⑥ 记录归档<br/>scripts/collect_model_records.py"]
     H --> K
@@ -187,8 +186,8 @@ flowchart TD
 | ① 数据准备 | `scripts/prep/` | `work_dir/deimv2_dataset/`、`work_dir/*_cache`、`data_aux/` |
 | ② 配置装配 | `vendor/DEIMv2/configs/deimv2/<exp>.yml` | 配置即实验契约（`__include__` 深合并，后者覆盖前者） |
 | ③ 训练 | `scripts/train/run_*.sh`（内部 `cd vendor/DEIMv2`） | `vendor/DEIMv2/outputs/<exp>/`、`logs/<exp>.log` |
-| ④ 评测 | `scripts/eval/official_competition_evaluator.py`、`train.py --test-only` | `outputs/*.json`、`outputs/reports/` |
-| ⑤ 推理提交 | `scripts/inference/`、`scripts/eval/predict_mm_tta.py` | `work_dir/submission_*` |
+| ④ 评测 | `scripts/eval/official_competition_evaluator.py`、`scripts/eval/eval_modality_robustness.py`、`scripts/analysis/compare_detectors_paired.py` | `outputs/*.json`、`outputs/reports/` |
+| ⑤ 推理提交 | `scripts/inference/predict.py`（里程碑版本用各自的 `infer_test2_v*.py`） | `work_dir/submissions/<exp>/` |
 | ⑥ 记录归档 | `scripts/collect_model_records.py` | `docs/MODEL_RECORDS.md` |
 
 ### 7.1 数据契约（改动前必读）
@@ -207,10 +206,9 @@ flowchart TD
 
 | 脚本 | 用途 |
 | :--- | :--- |
-| `scripts/inference/infer_test2_vNN_*.py` | **当前主力**：单模型原生 6 通道 + 内生化 Flip-TTA，直接产提交包 |
-| `scripts/inference/predict_sovereign_native.py` | 官方推荐统一原生推断入口 |
-| `scripts/eval/predict_mm_tta.py` | 通用：同一模型 hflip × 多尺度共识 |
-| `scripts/archive_legacy_postprocess/` ⛔ | **已废弃归档**：多模型 WBF、外部 CAA-SAHI 切片、外部多阈值投票，**不得用于提交** |
+| `scripts/inference/predict.py` | **统一入口**：复用配置自身的严格模式验证加载器与 `PostProcessor`，单次前向；逐图 txt、可打包 zip、自动格式校验与工作台导入 |
+| `scripts/inference/infer_test2_vNN_*.py` | 里程碑版本（V27 / V28-A / V34–V36）各自的原生推理入口，用于复现当时的提交包 |
+| ⛔ 多模型 WBF、外部 CAA-SAHI 切片、外部多阈值投票 | 原 `scripts/archive_legacy_postprocess/`，2026-10-22 已删除，**不得恢复用于提交** |
 
 > **合规红线**：赛题第十一条禁止不同结构/不同训练阶段模型的简单集成（投票/平均/WBF）。只允许**单模型**内生化后处理与同模型多尺度推断；禁止全局配额排序外挂与测试集截断投机。
 
@@ -223,20 +221,24 @@ export PY=/home/constant/miniconda3/envs/deimv2/bin/python
 export PYTHONPATH="/home/constant/CodeBuddy/Dev/AIC/scripts/lib:/home/constant/CodeBuddy/Dev/AIC/vendor/DEIMv2:${PYTHONPATH:-}"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-# ① 数据准备（首次或数据变更时）
+# ① 数据准备（首次或数据变更时）：1800/200 划分（seed=42）→ COCO 标注
 $PY scripts/prep/prepare_dataset.py
-$PY scripts/prep/prep_p0_depth_unified.py
-cd vendor/DEIMv2 && $PY prep_deepir_cache.py && cd ../..
+$PY scripts/prep/yolo_to_coco.py --src work_dir/rfdetr_dataset --dst work_dir/deimv2_dataset
+#    9 档暗光验证集（模态鲁棒性评测用；默认路径是 seeta 节点，换机时传 --src / --dst_root）
+$PY scripts/prep/prep_nightxx_server.py --src work_dir/deimv2_dataset/valid/images --dst_root data_aux
 
-# ②③ 训练（远端；日志自动落 logs/）
-bash scripts/train/run_v28_full72ep_zoom_8gpu.sh
+# ②③ 训练纯净基准（换卡先按 CLOUD_MIGRATION_RUNBOOK.md 自检与打包）
+cd vendor/DEIMv2 && $PY train.py -c configs/deimv2/aic_clean_baseline_v1.yml && cd ../..
 
-# ④ 评测（官方口径 200 张 val）
-$PY scripts/eval/official_competition_evaluator.py
+# ④ 评测：验证集模态鲁棒性剖面（clean / night* / rgb_black / ir_off / depth_off）
+$PY scripts/eval/eval_modality_robustness.py --config CFG --checkpoint CKPT --out work_dir/robustness_x
 
-# ⑤ 推理 → 提交包 → 校验
-$PY scripts/inference/infer_test2_v28_disparity_awakening.py --config configs/deimv2/sovereign_v28_disparity_awakening_2048.yml --checkpoint outputs/sovereign_v28_disparity_awakening_2048/best_stg1.pth
-$PY scripts/eval/check_submission.py work_dir/submission_v28 dataset/test/AIC2026_PHASE_2_1000/visible
+# ⑤ 推理 → 提交包（--zip 时自动做格式校验与工作台导入；完整参数见脚本头部示例）
+$PY scripts/inference/predict.py --config CFG --checkpoint CKPT --images dataset/test/AIC2026_PHASE_2_1000/visible \
+    --rgb-dir dataset/test/AIC2026_PHASE_2_1000/visible --ir-dir work_dir/test_ir_like_train/infrared_aligned \
+    --lbg-dir work_dir/test_ir_like_train/lbg_ir --depth-dir dataset/test/AIC2026_PHASE_2_1000/depth \
+    --score-thr 0.45 --out-dir work_dir/submissions/x/txt --zip work_dir/submissions/x/submission.zip
+$PY scripts/eval/check_submission.py work_dir/submissions/x/txt dataset/test/AIC2026_PHASE_2_1000/visible
 
 # ⑥ 记录
 $PY scripts/collect_model_records.py
@@ -255,7 +257,7 @@ $PY scripts/collect_model_records.py
 | `only N / 3 blocks found` | RGB 与 aux 的 ViT 层数不等导致 `interaction_indexes` 越界 | 已由 `_scale_interaction_indexes()` 缩放，新增组合需复核 |
 | 提交被官方判格式错 | 行尾非 CRLF / 超框数上限 / 坐标未归一化 | 跑 `check_submission.py` |
 | 显存不足但 `nvidia-smi` 显示空闲 | 桌面合成器占用 ~12 GiB | 关合成器或调 `accum_steps` |
-| 旧 `predict_*.py` 集体报错 | 依赖已废弃的 `rfdetr` 环境 | 改用 `predict_mm_tta.py` 与 `scripts/inference/` |
+| 记录里提到的脚本 / 配置在仓库里找不到 | 2026-10-22 整理时已删除 | 查 `REPO_CLEANUP_20261022_removed.txt`，`git show pre-cleanup-20261022:<path>` 取回 |
 
 
 

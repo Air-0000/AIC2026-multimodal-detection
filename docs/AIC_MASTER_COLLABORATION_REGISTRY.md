@@ -1,1 +1,0 @@
-02_collaboration_and_specs/AIC_MASTER_COLLABORATION_REGISTRY.md

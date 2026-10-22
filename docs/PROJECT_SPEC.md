@@ -1,1 +1,0 @@
-02_collaboration_and_specs/PROJECT_SPEC.md

@@ -118,7 +118,7 @@ $$\text{安全后处理} = \text{原生单尺度 640} + (\tau = 0.015 \sim 0.02 
 
 ### 3. Sovereign V23 标准生产后处理流水线 SOP
 
-针对 Sovereign V23 超高清 2048 旗舰模型，官方提交包生成必须强制执行 Compact 压框流水线（由 [`scripts/inference/generate_sovereign_v23_submissions.py`](file:///home/constant/CodeBuddy/Dev/AIC/scripts/inference/generate_sovereign_v23_submissions.py) 驱动）：
+针对 Sovereign V23 超高清 2048 旗舰模型，官方提交包生成必须强制执行 Compact 压框流水线（由 [`scripts/inference/generate_sovereign_v23_submissions.py`](../../scripts/inference/generate_sovereign_v23_submissions.py) 驱动）：
 
 ```python
 # Compact 压框核心参数规范

@@ -320,12 +320,12 @@ $$M_{clean} = 1.0 - \mathbb{I}(Y < 0.28 \land Z < 0.02) - \mathbb{I}(Y > 0.48 \l
   - 启动脚本：`scripts/train/run_sovereign_v11_csrg_plus_rtx6000.sh`
 
 ### 5.3 核心网络架构与算子源码
-- **MHLA 与 DIAM 顶会算子**：[`vendor/DEIMv2/engine/deim/sovereign_v6_modules.py`](file:///home/constant/CodeBuddy/Dev/AIC/vendor/DEIMv2/engine/deim/sovereign_v6_modules.py)
-- **双核多模态混合编码器 (Mamba + MHLA)**：[`vendor/DEIMv2/engine/deim/hybrid_encoder.py`](file:///home/constant/CodeBuddy/Dev/AIC/vendor/DEIMv2/engine/deim/hybrid_encoder.py)
-- **DIAM 骨架交互与自适应锐化解码头**：[`vendor/DEIMv2/engine/deim/dfine_decoder.py`](file:///home/constant/CodeBuddy/Dev/AIC/vendor/DEIMv2/engine/deim/dfine_decoder.py)
-- **傅里叶对比正则化损失 (cuFFT)**：[`vendor/DEIMv2/engine/deim/deim_criterion.py`](file:///home/constant/CodeBuddy/Dev/AIC/vendor/DEIMv2/engine/deim/deim_criterion.py)
-- **内生化 CAA-SAHI 前向推断核心**：[`vendor/DEIMv2/engine/deim/deim.py`](file:///home/constant/CodeBuddy/Dev/AIC/vendor/DEIMv2/engine/deim/deim.py)
-- **天水深度去噪与多模态主干**：[`vendor/DEIMv2/engine/backbone/dynamic_multimodal_modules.py`](file:///home/constant/CodeBuddy/Dev/AIC/vendor/DEIMv2/engine/backbone/dynamic_multimodal_modules.py)
+- **MHLA 与 DIAM 顶会算子**：[`vendor/DEIMv2/engine/deim/sovereign_v6_modules.py`](../../vendor/DEIMv2/engine/deim/sovereign_v6_modules.py)
+- **双核多模态混合编码器 (Mamba + MHLA)**：[`vendor/DEIMv2/engine/deim/hybrid_encoder.py`](../../vendor/DEIMv2/engine/deim/hybrid_encoder.py)
+- **DIAM 骨架交互与自适应锐化解码头**：[`vendor/DEIMv2/engine/deim/dfine_decoder.py`](../../vendor/DEIMv2/engine/deim/dfine_decoder.py)
+- **傅里叶对比正则化损失 (cuFFT)**：[`vendor/DEIMv2/engine/deim/deim_criterion.py`](../../vendor/DEIMv2/engine/deim/deim_criterion.py)
+- **内生化 CAA-SAHI 前向推断核心**：[`vendor/DEIMv2/engine/deim/deim.py`](../../vendor/DEIMv2/engine/deim/deim.py)
+- **天水深度去噪与多模态主干**：[`vendor/DEIMv2/engine/backbone/dynamic_multimodal_modules.py`](../../vendor/DEIMv2/engine/backbone/dynamic_multimodal_modules.py)
 
 ---
 
@@ -335,7 +335,7 @@ $$M_{clean} = 1.0 - \mathbb{I}(Y < 0.28 \land Z < 0.02) - \mathbb{I}(Y > 0.48 \l
    - 远端 96GB 超级工作站全速进行 $1152 \times 2048$ 零插值超高清训练；
    - 重点监控第 52 轮（关闭 Mixup/CopyBlend）与第 58 轮（彻底切除增强退火），确保损失与 mAP 达到物理极值点。
 2. **第二优先级行动：Compact 7,100~7,200 黄金提交包制备**
-   - 训练完成后提取 `best_stg2.pth`，执行 [`scripts/inference/generate_sovereign_v23_submissions.py`](file:///home/constant/CodeBuddy/Dev/AIC/scripts/inference/generate_sovereign_v23_submissions.py)；
+   - 训练完成后提取 `best_stg2.pth`，执行 [`scripts/inference/generate_sovereign_v23_submissions.py`](../../scripts/inference/generate_sovereign_v23_submissions.py)；
    - 严格匹配官方测试集 7,086 目标先验，生成 Compact 7,100~7,200 框提交包并通过 `check_submission.py` 质检；
    - 冲击复赛天梯榜 58 ~ 60+ 分！
 
@@ -447,7 +447,7 @@ graph TD
   - 传统 NMS 与初版 NDSL 均依赖对称交并比 $\text{IoU} = \frac{|A \cap B|}{|A \cup B|}$；
   - 对于孔雀等具有细长尾羽的特殊生物，尾羽面积远大于身体且两框重叠交集相对总体并集较小，导致对称 $\text{IoU}$ 轻易跌破 0.25 门限，网络匹配器因而分配了两个独立的 Query 正样本，将“身体”与“尾巴”割裂预测为两只 `animal`。
 - **模型级原生修复**：
-  - 在 [`vendor/DEIMv2/engine/deim/deim_criterion.py`](file:///home/constant/CodeBuddy/Dev/AIC/vendor/DEIMv2/engine/deim/deim_criterion.py) 的 `DEIMCriterion` 中升级近邻冗余损失（NDSL），引入 **空间包含度比率（Containment Ratio）**：
+  - 在 [`vendor/DEIMv2/engine/deim/deim_criterion.py`](../../vendor/DEIMv2/engine/deim/deim_criterion.py) 的 `DEIMCriterion` 中升级近邻冗余损失（NDSL），引入 **空间包含度比率（Containment Ratio）**：
     $$\text{Containment}(B_1, B_2) = \frac{\text{Area}(B_1 \cap B_2)}{\min(\text{Area}(B_1), \text{Area}(B_2))}$$
   - **动态挂件惩罚机制**：当两个同类候选 Query 满足 $\text{Containment} \ge 0.40$ 或 $\text{IoU} \ge 0.25$ 时，判定较小框为从属局部挂件/肢体分裂，对其分类 Logits 施加高达 **$3.5\times$ 负向梯度惩罚**；
   - 驱动网络在特征层抑制局部肢体 Query 的置信度，强行迫使单一主 Query 扩张包围盒，将身体与长尾统一回归为一个完整的整体大框。

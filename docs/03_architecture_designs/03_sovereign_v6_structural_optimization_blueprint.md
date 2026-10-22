@@ -2,7 +2,7 @@
 # Architectural Defect Diagnosis & Sovereign V6 Structural Optimization Blueprint
 
 > **创建时间**：2026-10-01 11:12:00  
-> **归档位置**：`docs/sovereign_v6_structural_optimization_blueprint.md`  
+> **归档位置**：`docs/03_architecture_designs/03_sovereign_v6_structural_optimization_blueprint.md`  
 > **面向对象**：下一代多模态目标检测架构（Sovereign V6 - Omni-Scale & Linear-Global Synergy）研发团队
 
 ---

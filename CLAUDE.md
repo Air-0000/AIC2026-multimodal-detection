@@ -10,6 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `~/Desktop/Project/AIC2026-multimodal-detection` 是 macOS 上的 **git 镜像**：只有 `vendor/DEIMv2/`、`scripts/`、`docs/`；没有 `dataset/ work_dir/ outputs/ weights/ logs/ archive/`，本机也没有 torch / conda 环境。这里只能读改代码与文档，**不能训练、推理或跑测试**——需要运行时，给出在 Linux 开发机或远端节点执行的命令。
 - 脚本与文档里的 `ROOT = "/home/constant/CodeBuddy/Dev/AIC"`、`/root/autodl-tmp/AIC`、`/home/ailab40/...` 等绝对路径指 Linux 机器，**不要把它们"修"成本机路径**。
+- 2026-10-22 起仓库只保留主线、里程碑（V23 / F5 / V27 / V28-A / V34–V37）与框架；`MODEL_RECORDS.md` 等历史叙述里提到但仓库里找不到的脚本 / 配置，查 `docs/02_collaboration_and_specs/REPO_CLEANUP_20261022_removed.txt`，用 `git show pre-cleanup-20261022:<path>`（无 tag 时用 `4d71413`）取回，不要凭记录重写。
 
 ## 1. 工作顺序（用户定下的规则）
 
@@ -28,7 +29,7 @@ CUDA_VISIBLE_DEVICES='' $PY scripts/diagnostics/test_clean_baseline_contract.py
 CUDA_VISIBLE_DEVICES='' $PY scripts/diagnostics/test_clean_baseline_contract.py CleanContracts.test_yaml_loads_are_independent
 ```
 
-- 改动基准用到的 `engine/` 代码后至少重跑 `test_clean_baseline_contract.py`。其他契约探针：`test_all_targeted_repairs.py`、`test_cssp_module.py`、`check_v36_*_contract.py`。
+- 改动基准用到的 `engine/` 代码后至少重跑 `test_clean_baseline_contract.py`。其他 CPU 契约测试：`test_rgb_control_contract.py`、`test_night_aug_contract.py`（RGB 对照 / 暗光两臂）、`test_light_val_analysis.py`、`test_cssp_module.py`、`check_v36_*_contract.py`；`test_predict_contract.py` 是 `predict.py` 的验证集推理契约（要 GPU 与数据）。
 - GPU 端只读验收用 `scripts/diagnostics/audit_clean_baseline.py`（完整命令见 `CLEAN_BASELINE.md`；`--out` 目录必须不存在，先确认 GPU 空闲）。
 
 ## 3. 训练入口补充（对 AGENTS.md §5 的修正）

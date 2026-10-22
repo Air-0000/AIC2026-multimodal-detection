@@ -3,7 +3,6 @@
 
 > **创建时间**：2026-10-01 17:00:00（更新于 17:35:00）  
 > **归档位置**：`docs/03_architecture_designs/04_sovereign_v10_p2_csrg_structural_improvement_ideas.md`  
-> **软链接镜像**：`docs/sovereign_v10_p2_csrg_structural_improvement_ideas.md`  
 > **针对基线**：Sovereign V10 (多模态输入 + HGNetv2 + Mamba-CCFM + P2-CSRG + DETR Decoder + SNR-FDR)  
 > **终极攻坚目标**：攻克 `sign` 标牌立柱断层与 `boat` 水波纹微弱船只，全链路赋能冲击 **58.5% ~ 60%+ mAP** 历史巅峰
 

@@ -29,10 +29,10 @@
 - **文档真相源**：项目所有架构设计、技术决策与协作规范以此文档 (`AIC_MASTER_COLLABORATION_REGISTRY.md`) 与 `docs/` 各大类文档为准；所有模型最终验证分数统一收敛至 `MODEL_RECORDS.md`，严禁在各处分散建立私有 md 碎片。
 - **当前权威基座与最佳权重（Sovereign 谱系）**：
   - **当前全域终极旗舰（Sovereign V23 零畸变 2048 物理流形超高清合流）👑👑👑**：
-    - **配置文件**：[`vendor/DEIMv2/configs/deimv2/sovereign_v23_zero_distort_2048_fast32.yml`](file:///home/constant/CodeBuddy/Dev/AIC/vendor/DEIMv2/configs/deimv2/sovereign_v23_zero_distort_2048_fast32.yml)
+    - **配置文件**：[`vendor/DEIMv2/configs/deimv2/sovereign_v23_zero_distort_2048_fast32.yml`](../../vendor/DEIMv2/configs/deimv2/sovereign_v23_zero_distort_2048_fast32.yml)
     - **物理尺度与算力释放**：$1152 \times 2048$ 零插值重映射，物理 Batch 8 满载（85.6 GB / 96 GB 显存占用，吞吐 1.38s/步）；本配置为 Stage A「补标口径」72 轮排程预训练，交付权重另经 Stage B「官方旧标注口径」TADL 精调 **21 轮**。
     - **官方复赛实战战绩**：2026-10-03 官方复赛以 Compact 7,169 框实测斩获 **53.555 分锁定官方前三甲/第四名**！V23 全速向 58 ~ 60+ 巅峰冲刺！
-    - **核心技术规范**：参见 [`SOVEREIGN_V23_DETAILED_TECHNICAL_SPEC.md`](file:///home/constant/CodeBuddy/Dev/AIC/SOVEREIGN_V23_DETAILED_TECHNICAL_SPEC.md) 与 [`SOVEREIGN_V23_CORE_SPEC.md`](file:///home/constant/CodeBuddy/Dev/AIC/SOVEREIGN_V23_CORE_SPEC.md)。
+    - **核心技术规范**：参见 [`SOVEREIGN_V23_DETAILED_TECHNICAL_SPEC.md`](../03_architecture_designs/SOVEREIGN_V23_DETAILED_TECHNICAL_SPEC.md) 与 [`SOVEREIGN_V23_CORE_SPEC.md`](../03_architecture_designs/SOVEREIGN_V23_CORE_SPEC.md)。
   - **全物理要素流形里程碑（Sovereign V20）**：
     - 官方 AP75 冲至 **0.6577** 创全域绝对历史纪录，微小目标 $AP_s$ 达 **0.3127**，0.5 硬过滤 mAP 达 **0.5296**，地表虚警完全消除至 6.75。
   - **顶会合流里程碑（Sovereign V12）**：58.29% 验证集 mAP，AP50 达到 86.60%。
@@ -86,8 +86,8 @@
 ---
 
 ### 2.2 红外像素级三阶对齐流水线 (IR Registration)
-- **核心脚本**：[`scripts/prep/align_ir_pixel_pipeline.py`](file:///home/constant/CodeBuddy/Dev/AIC/scripts/prep/align_ir_pixel_pipeline.py)
-- **技术文档**：[`docs/ir_alignment_quality_audit.md`](file:///home/constant/CodeBuddy/Dev/AIC/docs/ir_alignment_quality_audit.md)
+- **核心脚本**：[`scripts/prep/align_ir_pixel_pipeline.py`](../../scripts/prep/align_ir_pixel_pipeline.py)
+- **技术文档**：[`docs/04_audits_and_ablations/ir_alignment_quality_audit.md`](../04_audits_and_ablations/ir_alignment_quality_audit.md)
 - **技术突破与闭环设计**：
   1. **阶一：全局几何仿射校正 (Global Affine Alignment)**
      - 采用互信息与相位相关（Phase Correlation），消除相机的固有视场倾角与安装位移（平均平移 $dx \approx -0.72\text{px}, dy \approx -1.97\text{px}, \theta \approx +0.44^\circ$）。
@@ -106,7 +106,7 @@
 ---
 
 ### 2.3 红外特征提取与物理自参考局部背景抑制 (LBG)
-- **核心脚本**：[`scripts/prep/prep_ir_localbg.py`](file:///home/constant/CodeBuddy/Dev/AIC/scripts/prep/prep_ir_localbg.py)
+- **核心脚本**：[`scripts/prep/prep_ir_localbg.py`](../../scripts/prep/prep_ir_localbg.py)
 - **数学原理**：
   $$LBG = \text{clip}\Big(IR - \text{median}(IR, 31\times 31), 0, 255\Big)$$
 - **对比度实测指标**（基于 60 张训练样本框内/框外能量比）：
@@ -122,13 +122,13 @@
 ---
 
 ### 2.4 深度图优化与三维几何特征提取中台 (Depth Optimization)
-- **设计规范**：[`docs/cnn_vit_dual_stream_multimodal_design.md`](file:///home/constant/CodeBuddy/Dev/AIC/docs/cnn_vit_dual_stream_multimodal_design.md)
+- **设计规范**：[`docs/03_architecture_designs/02_cnn_vit_dual_stream_multimodal_design.md`](../03_architecture_designs/02_cnn_vit_dual_stream_multimodal_design.md)
 - **关键脚本**：
   - 联合双边滤波：[`scripts/prep/depth_refine_jbf.py`](file:///home/constant/CodeBuddy/Dev/AIC/scripts/prep/depth_refine_jbf.py)
   - 语义引导补全：[`scripts/prep/depth_refine_da_guided.py`](file:///home/constant/CodeBuddy/Dev/AIC/scripts/prep/depth_refine_da_guided.py)
   - 深度降噪滤波：[`scripts/prep/depth_refine_da_denoise.py`](file:///home/constant/CodeBuddy/Dev/AIC/scripts/prep/depth_refine_da_denoise.py)
   - DAv2 ViT Token 离线抽取：[`scripts/prep/prep_dav2_vit_tokens.py`](file:///home/constant/CodeBuddy/Dev/AIC/scripts/prep/prep_dav2_vit_tokens.py)
-  - 数据集内联升维：`_depth_to_geo` in [`vendor/DEIMv2/engine/data/dataset/coco_dataset_mm.py`](file:///home/constant/CodeBuddy/Dev/AIC/vendor/DEIMv2/engine/data/dataset/coco_dataset_mm.py)
+  - 数据集内联升维：`_depth_to_geo` in [`vendor/DEIMv2/engine/data/dataset/coco_dataset_mm.py`](../../vendor/DEIMv2/engine/data/dataset/coco_dataset_mm.py)
 
 #### 四大核心技术闭环：
 1. **P0 级数学修复：1/Z 视差空间拟合 (Disparity Fitting)**：
@@ -175,7 +175,7 @@ graph TD
 
 ### 3.4 谱系四：CNN + ViT 异构双流旗舰系列 (生产落地)
 - **配置文件**：[`vendor/DEIMv2/configs/deimv2/deim_hgnetv2_vit_dualstream_aic.yml`](file:///home/constant/CodeBuddy/Dev/AIC/vendor/DEIMv2/configs/deimv2/deim_hgnetv2_vit_dualstream_aic.yml)
-- **主干实现**：[`vendor/DEIMv2/engine/backbone/hgnetv2_vit_dualstream.py`](file:///home/constant/CodeBuddy/Dev/AIC/vendor/DEIMv2/engine/backbone/hgnetv2_vit_dualstream.py)
+- **主干实现**：[`vendor/DEIMv2/engine/backbone/hgnetv2_vit_dualstream.py`](../../vendor/DEIMv2/engine/backbone/hgnetv2_vit_dualstream.py)
 - **核心双流分工**：
   - **流一（CNN 光热局部流）**：HGNetv2-B5，输入 5 通道（RGB 3ch + Raw IR 1ch + LBG 1ch），加载官方 `dfine_x_obj2coco.pth`；
   - **流二（ViT 空间几何流）**：DAv2 ViT-Small，输入 3 通道表面法向量或预计算 384 维 Token，加载官方 `depth_anything_v2_vits.pth`；
@@ -272,5 +272,5 @@ graph TD
 
 ### 6.3 结项评估与入册
 - 训练完成后，由负责人运行标准评测命令并在验证集上完成指标提取。
-- 指标统一且唯一录入 [`MODEL_RECORDS.md`](file:///home/constant/CodeBuddy/Dev/AIC/MODEL_RECORDS.md) 表 A，并标注训练轮次、mAP、AP50、权重绝对路径。
+- 指标统一且唯一录入 [`MODEL_RECORDS.md`](../MODEL_RECORDS.md) 表 A，并标注训练轮次、mAP、AP50、权重绝对路径。
 - 归档后立即执行显存释放，严禁在显存中保留驻留进程。

@@ -1,5 +1,0 @@
-__include__: [
-  'deim_hgnetv2_vit_dualstream_aic.yml',
-]
-
-output_dir: ./outputs/deim_hgnetv2_vit_dualstream_val_val_orig

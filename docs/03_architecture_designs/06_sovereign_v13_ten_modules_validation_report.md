@@ -3,7 +3,7 @@
 
 > **报告时间**：2026-10-01 18:58:00  
 > **归档位置**：`docs/03_architecture_designs/06_sovereign_v13_ten_modules_validation_report.md`  
-> **核心模块源码**：[`vendor/DEIMv2/engine/deim/sovereign_v13_modules.py`](file:///home/constant/CodeBuddy/Dev/AIC/vendor/DEIMv2/engine/deim/sovereign_v13_modules.py)  
+> **核心模块源码**：[`vendor/DEIMv2/engine/deim/sovereign_v13_modules.py`](../../vendor/DEIMv2/engine/deim/sovereign_v13_modules.py)  
 > **单测与探针脚本**：
 > - 单元测试：[`scripts/eval/verify_v13_modules.py`](file:///home/constant/CodeBuddy/Dev/AIC/scripts/eval/verify_v13_modules.py)
 > - 真实数据探针：[`scripts/analysis/probe_v13_modules_on_real_data.py`](file:///home/constant/CodeBuddy/Dev/AIC/scripts/analysis/probe_v13_modules_on_real_data.py)  

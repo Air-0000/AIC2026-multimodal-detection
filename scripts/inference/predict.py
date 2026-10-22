@@ -15,8 +15,8 @@ and registration in the visualization workstation (AGENTS.md rule 11) unless --n
 Example (test set, 6-channel model):
   python scripts/inference/predict.py --config vendor/DEIMv2/configs/deimv2/aic_clean_baseline_v1.yml \
     --checkpoint CKPT --images dataset/test/AIC2026_PHASE_2_1000/visible \
-    --rgb-dir dataset/test/AIC2026_PHASE_2_1000/visible --ir-dir work_dir/test_aligned_ir \
-    --lbg-dir work_dir/test_lbg_ir --depth-dir dataset/test/AIC2026_PHASE_2_1000/depth \
+    --rgb-dir dataset/test/AIC2026_PHASE_2_1000/visible --ir-dir work_dir/test_ir_like_train/infrared_aligned \
+    --lbg-dir work_dir/test_ir_like_train/lbg_ir --depth-dir dataset/test/AIC2026_PHASE_2_1000/depth \
     --score-thr 0.45 --out-dir work_dir/submissions/x/txt --zip work_dir/submissions/x/submission.zip
 """
 import argparse

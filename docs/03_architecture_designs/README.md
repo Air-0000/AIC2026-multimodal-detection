@@ -18,9 +18,9 @@
 | 第 6 部 · 十模块验证 | [06_sovereign_v13_ten_modules_validation_report.md](./06_sovereign_v13_ten_modules_validation_report.md) | V13 | 十模块解耦先锋验证 / LFP 低频引导净化 / PBD 峰值背景解耦 / MixStyle |
 | 第 7 部 · 异构解耦 | [07_sovereign_v14_heterogeneous_paradigm_validation_report.md](./07_sovereign_v14_heterogeneous_paradigm_validation_report.md) | V14 | StarConv 乘法星操作 / Spatial-PBD 水空门控 / Point-Preserving LFP |
 | 第 8 部 · 连续流形 | [08_sovereign_v20_master_architecture_spec.md](./08_sovereign_v20_master_architecture_spec.md) | V20 | FCSPM 频域锁相 / 3D-PPR 局部突出度 / 保边深度修复 / 52:48 参数流形汤 |
-| 第 9 部 · 零畸变合流 | [09_sovereign_v23_master_architecture_spec.md](./09_sovereign_v23_master_architecture_spec.md) 👑 | V23~V28 | 1152×2048 零插值畸变 / TADL 任务对齐解耦 / NWD-QFL 连续损失 / **两段式训练**（补标 72 轮预训练 → 旧标注 TADL 精调 21 轮） |
+| 第 9 部 · 零畸变合流 | [SOVEREIGN_V23_DETAILED_TECHNICAL_SPEC.md](SOVEREIGN_V23_DETAILED_TECHNICAL_SPEC.md) 👑 | V23~V28 | 1152×2048 零插值畸变 / TADL 任务对齐解耦 / NWD-QFL 连续损失 / **两段式训练**（补标 72 轮预训练 → 旧标注 TADL 精调 21 轮） |
 
-> `09_sovereign_v23_master_architecture_spec.md` 为软链，正文唯一权威版本是 [`../SOVEREIGN_V23_DETAILED_TECHNICAL_SPEC.md`](../SOVEREIGN_V23_DETAILED_TECHNICAL_SPEC.md)。
+> 第 9 部原有一个编号软链 `09_sovereign_v23_master_architecture_spec.md`，2026-10-22 已删除；正文唯一版本是本目录的 [`SOVEREIGN_V23_DETAILED_TECHNICAL_SPEC.md`](SOVEREIGN_V23_DETAILED_TECHNICAL_SPEC.md)（核心简报 [`SOVEREIGN_V23_CORE_SPEC.md`](SOVEREIGN_V23_CORE_SPEC.md)）。V20 的简报与白皮书 [`SOVEREIGN_V20_CORE_SPEC.md`](SOVEREIGN_V20_CORE_SPEC.md)、[`SOVEREIGN_V20_DETAILED_TECHNICAL_SPEC.md`](SOVEREIGN_V20_DETAILED_TECHNICAL_SPEC.md) 也在本目录，与第 8 部配套。
 
 ---
 
@@ -106,7 +106,7 @@
   - **RGB 引导保边深度修复**：废除 Telea/NS 假斜坡，保边扩展修复传感器反光空洞；
   - **Pure-LMM 52:48 连续流形融合**：权重超平面鞍点融合，零 Hook 纯原生前传。
 
-### 8. [09_sovereign_v23_master_architecture_spec.md](./09_sovereign_v23_master_architecture_spec.md) 👑👑👑
+### 8. [SOVEREIGN_V23_DETAILED_TECHNICAL_SPEC.md](SOVEREIGN_V23_DETAILED_TECHNICAL_SPEC.md) 👑👑👑
 - **主题**：Sovereign V23 零插值畸变超高清 2048 物理流形与全链路终极白皮书
 - **全链路革新与官方实战成果**：
   - **零插值畸变空间对齐（Zero Distortion $1152 \times 2048$）**：废除一切破坏微小物体物理边缘的多次插值缩放，单次双线性重映射严格对准相机传感器。

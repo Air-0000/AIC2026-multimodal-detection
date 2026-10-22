@@ -1,1 +1,0 @@
-02_collaboration_and_specs/AIC_FULL_CONVERSATION_CHRONICLE.md

@@ -1,1 +1,0 @@
-03_architecture_designs/07_sovereign_v14_heterogeneous_paradigm_validation_report.md
