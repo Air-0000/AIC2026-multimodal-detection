@@ -1,8 +1,8 @@
 # RGB-only control for aic_clean_baseline_v1.yml; no experimental switches and no inherited includes.
 # Same split, resolution, epochs, schedule, optimizer, encoder/decoder, DINOv3 teacher, Co-ATSS and
 # evaluation. Removed: IR/depth inputs, the HGNetv2MultiModal wrapper (IR stem, CSSA, DCDA, 3D-Lift,
-# DOG) and the post-tuning IR-stem copy. The RGB trunk mirrors HGNetv2MultiModal.rgb_net. Without a
-# depth channel the P2 refinement's depth-based sky/water masks stay inactive.
+# DOG) and the post-tuning IR-stem copy. The RGB trunk mirrors HGNetv2MultiModal.rgb_net. The P2
+# refinement (p2_version v10) never reads depth, so it behaves the same as in v1.
 # Effective batch=2; accum_steps=2 splits a loader batch, it does not multiply it.
 task: detection
 evaluator:

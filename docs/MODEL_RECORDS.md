@@ -2124,3 +2124,18 @@ D2每query平均翻转80.35/1024，两边均激活220.00；D3为93.64与230.04�
 - **处置**：新增 `scripts/prep/gen_ir_like_train.py`（文件 SHA256 `9411d747639047c6ff2f3867c8b446c7fde7c19b333418784eab51931e05348f`），对任意可见光/红外目录按训练同法生成配准 IR 与 LBG 并写清单。已在工作站生成 `work_dir/test_ir_like_train/{infrared_aligned,lbg_ir}`（1000 张，0 失败；117 张 JPG 配准、883 张 PNG 原样；`manifest.json` SHA256 `4abf204948ec63dbd836eff1561bb9d5a9dd2724e93866bc76eb58f4e7ce84f1`）。最终测试推理应使用 `--ir-dir work_dir/test_ir_like_train/infrared_aligned`（与 `dataset/test/.../infrared_aligned` 相同）与 `--lbg-dir work_dir/test_ir_like_train/lbg_ir`。旧目录未改动。
 - **证据**：全量重生成清单 `work_dir/audits/ir_generator_check_20261023/manifest.json`（SHA256 `3507459c68ff53f3a2c158aae2a3013636a1a30889d67d25e559cada3ed81a26`，含 2000 个文件的 SHA；重生成的图像本身与训练文件逐字节相同，已删除以节省 4.3G）。
 
+
+## 四十、2026-10-23 纯净基准 v1 训练中断：ailab40 GPU1 显存硬件错误（诊断）
+
+- **中断事实**：§三十五的 v1（ailab40 GPU1，PID 18924）于 2026-10-23 约 00:30（北京时间）在第 6 轮第 165 步停止，严格守卫报 `FloatingPointError: epoch=6 iter=165 micro=0 forward: nonfinite tensors ['loss_co_cls']`。第 0–5 轮验证 mAP 依次为 0.002、0.073、0.178、0.227、0.282、0.321；`last.pth`（第 5 轮末）、`best.pth`、`checkpoint0004.pth` 在盘。日志自第 1 轮起几乎每轮都有 `[DEIM TRACE] encoder output 1 has NaN/Inf`，另有 `backbone output 2 has NaN: 0, Inf: 0` 这类“检测到非有限值、复数却为 0”的自相矛盾打印。
+- **精确重放（只诊断）**：工具 `scripts/diagnostics/replay_v1_nan.py`，在独立目录 `/home/ailab40/hejianzhong/AIC_V1_NAN_DIAG_20261023/` 按 train.py 方式重建 solver，从 `last.pth` 严格恢复模型、EMA、优化器与 Python/NumPy/torch/CUDA 随机状态，调用原生 `train_one_epoch` 跑第 6 轮前 175 步（优化器更新只在内存中，未保存任何权重，未写 v1 目录），并对 encoder 全部模块及 backbone/decoder/co_aux_head/蒸馏投影头挂 479 个前向钩子。结果：
+  - 第 0 步（任何更新之前）总 loss 原始 35.3856、重放 35.4964，重放从第一步起即非逐位一致；第 165 步未复现崩溃，跑满 175 步无非有限输出。
+  - 钩子在模块返回时检查 backbone/encoder 输出均为有限值（0 条事件），而紧接其后、中间没有任何计算的模型内置检查仍三次打印 NaN/Inf（第 0 步 `backbone output 2 has NaN: 1, Inf: 1` 等）。同一显存两次读取结果不同，正常执行中不可能发生。
+- **硬件检测**：
+  - `nvidia-smi -q -d ECC,PAGE_RETIREMENT`：两张 V100 **ECC 均为关闭**；退役页记录 GPU1 双比特错误 6 页、GPU0 1 页。
+  - GPU1 自洽测试：写入 22 GiB 固定种子数据，以 int64 精确求和（与求和顺序无关）对每个 1 GiB 块重复校验 30 遍，**660 次中 84 次校验和不一致**；8192³ 矩阵乘 300 次全部一致；关闭 cuDNN 的大卷积 60 次重复全部与首次不同。
+  - 对照（本地 RTX 5060 Ti，同样测试缩小到 10 GiB）：校验和 0/300 不一致，卷积 0/60 不同。
+- **结论**：v1 中断由 ailab40 GPU1 显存在 ECC 关闭状态下的静默错误引起，不是模型或纯净基准代码的数值缺陷；严格守卫按设计在错误首次传到损失时停止了训练。静默错误也可能产生**有限但错误**的数值，因此 v1 第 0–5 轮的权重以及此前在该卡上完成的训练与评测（例如 V36 50 轮生产训练、A02 四条短跑及其重载评测）都可能受到未知程度的影响；A02 Control42 重载比训练日志低 0.73pp 的未解释分差是否与此有关**未验证**。在本地工作站完成的评测（如 §二十五、§三十八）不受影响。
+- **修复建议**：(1) 由服务器管理员为两张 V100 开启 ECC（`nvidia-smi -i <id> -e 1`，需 root，并在 GPU 空闲时重启或重置后生效），开启后重跑同一自洽测试；若仍出现不可纠正错误应停用该卡或报修。(2) 修复前不在 ailab40 GPU1 上训练；GPU0 同样 ECC 关闭且有退役记录，使用前须先通过同一测试。(3) v1 建议在健康硬件上从头重训（仅损失约 7 小时），而不是从 `last.pth` 续训。纯净基准的模型与代码无需修改。
+- **产物**：重放日志 `/home/ailab40/hejianzhong/AIC_V1_NAN_DIAG_20261023/run1.log`、`run1/events.json`（0 条钩子事件）、`run1/encoder_absmax.json`；v1 原始日志与权重未改动。
+
