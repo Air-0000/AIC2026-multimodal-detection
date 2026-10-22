@@ -129,6 +129,9 @@ class MSDeformableAttention(nn.Module):
 
         sampling_offsets: torch.Tensor = self.sampling_offsets(query)
         sampling_offsets = sampling_offsets.reshape(bs, Len_q, self.num_heads, sum(self.num_points_list), 2)
+        if getattr(self, 'use_offset_clamp', False):
+            clamp_scale = getattr(self, 'offset_clamp_scale', 2.0)
+            sampling_offsets = torch.tanh(sampling_offsets / clamp_scale) * clamp_scale
         if self.use_diam and self.diam is not None:
             sampling_offsets = self.diam(query, reference_points, sampling_offsets)
 
@@ -319,7 +322,7 @@ class LQE(nn.Module):
 
     def forward(self, scores, pred_corners):
         B, L, _ = pred_corners.size()
-        prob = F.softmax(pred_corners.reshape(B, L, 4, self.reg_max+1), dim=-1)
+        prob = F.softmax(pred_corners.detach().reshape(B, L, 4, self.reg_max+1), dim=-1)
         prob_topk, _ = prob.topk(self.k, dim=-1)
         stat = torch.cat([prob_topk, prob_topk.mean(dim=-1, keepdim=True)], dim=-1)
         quality_score = self.reg_conf(stat.reshape(B, L, -1))
@@ -336,7 +339,17 @@ class TransformerDecoder(nn.Module):
     """
 
     def __init__(self, hidden_dim, decoder_layer, decoder_layer_wide, num_layers, num_head, reg_max, reg_scale, up,
-                 eval_idx=-1, layer_scale=2, act='relu'):
+                 eval_idx=-1, layer_scale=2, act='relu',
+                 use_spatial_attn_bias=False,
+                 spatial_bias_gamma=4.0,
+                 spatial_bias_sigma=0.25,
+                 spatial_bias_start_layer=0,
+                 spatial_bias_learnable=False,
+                 use_layer_ensemble=False,
+                 layer_ensemble_weights=None,
+                 use_offset_clamp=False,
+                 offset_clamp_scale=2.0,
+                 offset_clamp_layers=None):
         super(TransformerDecoder, self).__init__()
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
@@ -344,8 +357,33 @@ class TransformerDecoder(nn.Module):
         self.num_head = num_head
         self.eval_idx = eval_idx if eval_idx >= 0 else num_layers + eval_idx
         self.up, self.reg_scale, self.reg_max = up, reg_scale, reg_max
+        self.use_spatial_attn_bias = use_spatial_attn_bias
+        self.spatial_bias_gamma = float(spatial_bias_gamma)
+        self.spatial_bias_sigma = float(spatial_bias_sigma)
+        self.spatial_bias_start_layer = int(spatial_bias_start_layer)
+        self.spatial_bias_learnable = spatial_bias_learnable
+        if self.use_spatial_attn_bias and spatial_bias_learnable:
+            self.spatial_bias_gamma_param = nn.Parameter(torch.zeros(num_layers, self.num_head, 1, 1))
+            print(f"[TransformerDecoder] Spatial Relative Distance Bias: LEARNABLE (zero-init gamma, sigma={self.spatial_bias_sigma}, start_layer={self.spatial_bias_start_layer})")
+        else:
+            self.spatial_bias_gamma_param = None
+            if self.use_spatial_attn_bias:
+                print(f"[TransformerDecoder] Spatial Relative Distance Bias: ON (gamma={self.spatial_bias_gamma}, sigma={self.spatial_bias_sigma}, start_layer={self.spatial_bias_start_layer})")
+        self.use_layer_ensemble = use_layer_ensemble
+        self.layer_ensemble_weights = layer_ensemble_weights or [0.15, 0.25, 0.60]
+        if self.use_layer_ensemble:
+            print(f"[TransformerDecoder] Layer-wise Logit Ensemble: ON (weights={self.layer_ensemble_weights})")
         self.layers = nn.ModuleList([copy.deepcopy(decoder_layer) for _ in range(self.eval_idx + 1)] \
                     + [copy.deepcopy(decoder_layer_wide) for _ in range(num_layers - self.eval_idx - 1)])
+        self.use_offset_clamp = use_offset_clamp
+        self.offset_clamp_scale = float(offset_clamp_scale)
+        self.offset_clamp_layers = offset_clamp_layers or [0, 1]
+        if self.use_offset_clamp:
+            for l_idx in self.offset_clamp_layers:
+                if l_idx < len(self.layers):
+                    self.layers[l_idx].cross_attn.use_offset_clamp = True
+                    self.layers[l_idx].cross_attn.offset_clamp_scale = self.offset_clamp_scale
+            print(f"[TransformerDecoder] Sampling Offset Clamping: ON (layers={self.offset_clamp_layers}, scale={self.offset_clamp_scale})")
         self.lqe_layers = nn.ModuleList([copy.deepcopy(LQE(4, 64, 2, reg_max, act=act)) for _ in range(num_layers)])
 
     def value_op(self, memory, value_proj, value_scale, memory_mask, memory_spatial_shapes):
@@ -405,7 +443,29 @@ class TransformerDecoder(nn.Module):
                 output = F.interpolate(output, size=query_pos_embed.shape[-1])
                 output_detach = output.detach()
 
-            output = layer(output, ref_points_input, value, spatial_shapes, attn_mask, query_pos_embed)
+            layer_attn_mask = attn_mask
+            if getattr(self, 'use_spatial_attn_bias', False) and i >= getattr(self, 'spatial_bias_start_layer', 0):
+                centers = ref_points_detach[..., :2]
+                diff = centers.unsqueeze(2) - centers.unsqueeze(1)
+                dist_sq = (diff ** 2).sum(dim=-1)
+                sigma = getattr(self, 'spatial_bias_sigma', 0.25)
+                if getattr(self, 'spatial_bias_learnable', False) and getattr(self, 'spatial_bias_gamma_param', None) is not None:
+                    gamma = F.relu(self.spatial_bias_gamma_param[i])
+                    spatial_bias_heads = -gamma * (dist_sq.unsqueeze(1) / (2.0 * (sigma ** 2)))
+                    spatial_bias_heads = spatial_bias_heads.flatten(0, 1)
+                else:
+                    gamma = getattr(self, 'spatial_bias_gamma', 4.0)
+                    spatial_bias = -gamma * dist_sq / (2.0 * (sigma ** 2))
+                    spatial_bias_heads = spatial_bias.unsqueeze(1).repeat(1, self.num_head, 1, 1).flatten(0, 1)
+                if layer_attn_mask is not None:
+                    if layer_attn_mask.dtype == torch.bool:
+                        layer_attn_mask = spatial_bias_heads.masked_fill(layer_attn_mask, float('-inf'))
+                    else:
+                        layer_attn_mask = layer_attn_mask + spatial_bias_heads
+                else:
+                    layer_attn_mask = spatial_bias_heads
+
+            output = layer(output, ref_points_input, value, spatial_shapes, layer_attn_mask, query_pos_embed)
 
             if i == 0 :
                 # Initial bounding box predictions with inverse sigmoid refinement
@@ -417,16 +477,36 @@ class TransformerDecoder(nn.Module):
             pred_corners = bbox_head[i](output + output_detach) + pred_corners_undetach
             inter_ref_bbox = distance2bbox(ref_points_initial, integral(pred_corners, project, output + output_detach), reg_scale)
 
-            if self.training or i == self.eval_idx:
+            if self.training:
                 scores = score_head[i](output)
-                # Lqe does not affect the performance here.
                 scores = self.lqe_layers[i](scores, pred_corners)
                 dec_out_logits.append(scores)
                 dec_out_bboxes.append(inter_ref_bbox)
                 dec_out_pred_corners.append(pred_corners)
                 dec_out_refs.append(ref_points_initial)
+            else:
+                if getattr(self, 'use_layer_ensemble', False) and i in (3, 4, 5):
+                    s = self.lqe_layers[i](score_head[i](output), pred_corners)
+                    if not hasattr(self, '_cached_eval_scores'):
+                        self._cached_eval_scores = {}
+                    self._cached_eval_scores[i] = s
 
-                if not self.training:
+                if i == self.eval_idx:
+                    scores = score_head[i](output)
+                    scores = self.lqe_layers[i](scores, pred_corners)
+
+                    if getattr(self, 'use_layer_ensemble', False) and hasattr(self, '_cached_eval_scores'):
+                        weights = getattr(self, 'layer_ensemble_weights', [0.15, 0.25, 0.60])
+                        s3 = self._cached_eval_scores.get(3, scores)
+                        s4 = self._cached_eval_scores.get(4, scores)
+                        s5 = scores
+                        scores = weights[0] * s3 + weights[1] * s4 + weights[2] * s5
+                        del self._cached_eval_scores
+
+                    dec_out_logits.append(scores)
+                    dec_out_bboxes.append(inter_ref_bbox)
+                    dec_out_pred_corners.append(pred_corners)
+                    dec_out_refs.append(ref_points_initial)
                     break
 
             pred_corners_undetach = pred_corners
@@ -474,13 +554,23 @@ class DFINETransformer(nn.Module):
                  use_diam=False,
                  use_sdqs=False,
                  use_distinct_queries=False,
-                 distinct_kernel_size=3,
+                 distinct_kernel_size=3,   # see the fail-closed guard in __init__
+                 use_spatial_attn_bias=False,
+                 spatial_bias_gamma=4.0,
+                 spatial_bias_sigma=0.25,
+                 spatial_bias_start_layer=0,
+                 spatial_bias_learnable=False,
+                 use_layer_ensemble=False,
+                 layer_ensemble_weights=None,
+                 use_anisotropic_routing=False,
+                 use_pure_topk=False,
+                 p3_quota_ratio=0.35,
+                 p4_quota_ratio=0.25,
+                 use_offset_clamp=False,
+                 offset_clamp_scale=2.0,
+                 offset_clamp_layers=None,
                  ):
         super().__init__()
-        self.use_sdqs = bool(use_sdqs or use_distinct_queries)
-        self.distinct_kernel_size = int(distinct_kernel_size)
-        if self.use_sdqs:
-            print(f"[DFINETransformer] Spatial Diversity Query Selection (SDQS / Distinct Query, kernel_size={self.distinct_kernel_size}): ON")
         assert len(feat_channels) <= num_levels
         assert len(feat_strides) == len(feat_channels)
 
@@ -518,8 +608,37 @@ class DFINETransformer(nn.Module):
             activation, num_levels, num_points, cross_attn_method=cross_attn_method, use_diam=use_diam)
         decoder_layer_wide = TransformerDecoderLayer(hidden_dim, nhead, dim_feedforward, dropout, \
             activation, num_levels, num_points, cross_attn_method=cross_attn_method, layer_scale=layer_scale, use_diam=use_diam)
-        self.decoder = TransformerDecoder(hidden_dim, decoder_layer, decoder_layer_wide, num_layers, nhead,
-                                          reg_max, self.reg_scale, self.up, eval_idx, layer_scale, act=activation)
+        self.decoder = TransformerDecoder(
+            hidden_dim, decoder_layer, decoder_layer_wide, num_layers, nhead,
+            reg_max, self.reg_scale, self.up, eval_idx, layer_scale, act=activation,
+            use_spatial_attn_bias=use_spatial_attn_bias,
+            spatial_bias_gamma=spatial_bias_gamma,
+            spatial_bias_sigma=spatial_bias_sigma,
+            spatial_bias_start_layer=spatial_bias_start_layer,
+            spatial_bias_learnable=spatial_bias_learnable,
+            use_layer_ensemble=use_layer_ensemble,
+            layer_ensemble_weights=layer_ensemble_weights,
+            use_offset_clamp=use_offset_clamp,
+            offset_clamp_scale=offset_clamp_scale,
+            offset_clamp_layers=offset_clamp_layers,
+        )
+        self.use_anisotropic_routing = use_anisotropic_routing
+        # Neither switch was ever implemented; fail closed so a config cannot
+        # silently believe it is active (V26/V35 set use_sdqs=True).
+        if use_sdqs or use_distinct_queries:
+            raise NotImplementedError(
+                'use_sdqs / use_distinct_queries are not implemented. Query selection is '
+                'stock top-k plus the P3 quota in _select_topk.')
+        self.use_pure_topk = bool(use_pure_topk)
+        self.p3_quota_ratio = float(p3_quota_ratio)
+        self.p4_quota_ratio = float(p4_quota_ratio)
+        if not (0 <= self.p3_quota_ratio <= 1 and 0 <= self.p4_quota_ratio <= 1
+                and self.p3_quota_ratio + self.p4_quota_ratio <= 1):
+            raise ValueError('P3/P4 quota ratios must be nonnegative and sum to at most 1')
+        if self.use_pure_topk and self.use_anisotropic_routing:
+            raise ValueError('Pure Top-K and stratified routing are mutually exclusive')
+        if use_anisotropic_routing:
+            print(f"[DFINETransformer] Anisotropic Feature Routing: ON (P3={self.p3_quota_ratio*100:.0f}%, P4={self.p4_quota_ratio*100:.0f}%, Global={(1.0 - self.p3_quota_ratio - self.p4_quota_ratio)*100:.0f}%)")
       # denoising
         self.num_denoising = num_denoising
         self.label_noise_ratio = label_noise_ratio
@@ -741,36 +860,34 @@ class DFINETransformer(nn.Module):
         with torch.no_grad():
             outputs_logits_clean = torch.nan_to_num(outputs_logits.detach(), nan=-10.0, posinf=10.0, neginf=-10.0)
             if self.query_select_method == 'default':
-                if spatial_shapes is not None and len(spatial_shapes) >= 2:
+                if getattr(self, 'use_pure_topk', False):
+                    _, topk_ind = torch.topk(outputs_logits_clean.max(-1).values, topk, dim=-1)
+                elif spatial_shapes is not None and len(spatial_shapes) >= 2:
                     scores = outputs_logits_clean.max(-1).values
                     p3_len = spatial_shapes[0][0] * spatial_shapes[0][1]
-                    p3_k = min(int(topk * 0.35), p3_len)
-                    global_k = topk - p3_k
+                    if getattr(self, 'use_anisotropic_routing', False) and len(spatial_shapes) >= 3:
+                        p4_len = spatial_shapes[1][0] * spatial_shapes[1][1]
+                        p3_k = min(int(topk * getattr(self, 'p3_quota_ratio', 0.35)), p3_len)
+                        p4_k = min(int(topk * getattr(self, 'p4_quota_ratio', 0.25)), p4_len)
+                        global_k = topk - p3_k - p4_k
 
-                    if getattr(self, 'use_sdqs', False):
-                        # Spatial Diversity Query Selection (SDQS / Distinct Query Selection):
-                        # Suppress spatial neighbors of local peaks across ALL pyramid levels
-                        k_sz = getattr(self, 'distinct_kernel_size', 3)
-                        pad = k_sz // 2
-                        scores_filtered = scores.clone()
-                        cur_offset = 0
-                        for lvl in range(len(spatial_shapes)):
-                            H_lvl, W_lvl = spatial_shapes[lvl]
-                            lvl_len = H_lvl * W_lvl
-                            scores_lvl_2d = scores[:, cur_offset:cur_offset + lvl_len].view(-1, 1, H_lvl, W_lvl)
-                            lvl_max = F.max_pool2d(scores_lvl_2d, kernel_size=k_sz, stride=1, padding=pad)
-                            lvl_peaks = (scores_lvl_2d >= (lvl_max - 1e-4))
-                            scores_lvl_filtered = torch.where(lvl_peaks, scores_lvl_2d, scores_lvl_2d - 1000.0).view(-1, lvl_len)
-                            scores_filtered[:, cur_offset:cur_offset + lvl_len] = scores_lvl_filtered
-                            cur_offset += lvl_len
-
-                        _, p3_topk_ind = torch.topk(scores_filtered[:, :p3_len], p3_k, dim=-1)
+                        _, p3_topk_ind = torch.topk(scores[:, :p3_len], p3_k, dim=-1)
                         p3_topk_ind = p3_topk_ind.clamp(0, p3_len - 1)
+                        scores_masked = scores.clone()
+                        scores_masked.scatter_(1, p3_topk_ind, -1e4)
 
-                        scores_filtered.scatter_(1, p3_topk_ind, -1e4)
-                        _, global_topk_ind = torch.topk(scores_filtered, global_k, dim=-1)
+                        _, p4_sub_ind = torch.topk(scores_masked[:, p3_len:p3_len+p4_len], p4_k, dim=-1)
+                        p4_topk_ind = (p4_sub_ind + p3_len).clamp(p3_len, p3_len + p4_len - 1)
+                        scores_masked.scatter_(1, p4_topk_ind, -1e4)
+
+                        _, global_topk_ind = torch.topk(scores_masked, global_k, dim=-1)
                         global_topk_ind = global_topk_ind.clamp(0, total_len - 1)
+                        topk_ind = torch.cat([p3_topk_ind, p4_topk_ind, global_topk_ind], dim=-1)
                     else:
+                        # was hardcoded 0.35 while p3_quota_ratio sat unused in configs
+                        p3_k = min(int(topk * self.p3_quota_ratio), p3_len)
+                        global_k = topk - p3_k
+
                         _, p3_topk_ind = torch.topk(scores[:, :p3_len], p3_k, dim=-1)
                         p3_topk_ind = p3_topk_ind.clamp(0, p3_len - 1)
                         scores_masked = scores.clone()
@@ -778,7 +895,7 @@ class DFINETransformer(nn.Module):
                         _, global_topk_ind = torch.topk(scores_masked, global_k, dim=-1)
                         global_topk_ind = global_topk_ind.clamp(0, total_len - 1)
 
-                    topk_ind = torch.cat([p3_topk_ind, global_topk_ind], dim=-1)
+                        topk_ind = torch.cat([p3_topk_ind, global_topk_ind], dim=-1)
                 else:
                     _, topk_ind = torch.topk(outputs_logits_clean.max(-1).values, topk, dim=-1)
 

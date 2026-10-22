@@ -49,8 +49,6 @@ if debug:
 def main(args, ) -> None:
     """main
     """
-    dist_utils.setup_distributed(args.print_rank, args.print_method, seed=args.seed)
-
     assert not all([args.tuning, args.resume]), \
         'Only support from_scrach or resume or tuning at one time'
 
@@ -60,8 +58,20 @@ def main(args, ) -> None:
         if k not in ['update', ] and v is not None})
 
     cfg = YAMLConfig(args.config, **update_dict)
+    # Resolve the YAML seed before seeding; an omitted CLI flag must not erase it.
+    if cfg.seed is None:
+        cfg.seed = 0
+    cfg.yaml_cfg['seed'] = cfg.seed
+    dist_utils.setup_distributed(args.print_rank, args.print_method, seed=cfg.seed, strict=cfg.clean_baseline)
+    if cfg.clean_baseline:
+        torch.backends.cuda.matmul.allow_tf32 = False
+        torch.backends.cudnn.allow_tf32 = False
+        if cfg.use_amp:
+            raise ValueError('Clean baseline requires FP32 (use_amp=False)')
+        if cfg.tuning and cfg.resume:
+            raise ValueError('Select tuning or resume, not both')
 
-    if args.resume or args.tuning:
+    if cfg.resume or cfg.tuning:
         for bb_name in ['HGNetv2', 'HGNetv2MultiModal', 'HGNetv2ViTDualStream']:
             if bb_name in cfg.yaml_cfg:
                 cfg.yaml_cfg[bb_name]['pretrained'] = False
@@ -87,8 +97,8 @@ if __name__ == '__main__':
     parser.add_argument('-r', '--resume', type=str, help='resume from checkpoint')
     parser.add_argument('-t', '--tuning', type=str, help='tuning from checkpoint')
     parser.add_argument('-d', '--device', type=str, help='device',)
-    parser.add_argument('--seed', type=int, default=0, help='exp reproducibility')
-    parser.add_argument('--use-amp', action='store_true', help='auto mixed precision training')
+    parser.add_argument('--seed', type=int, default=None, help='Override YAML seed; otherwise use YAML or 0')
+    parser.add_argument('--use-amp', action='store_true', default=None, help='auto mixed precision training')
     parser.add_argument('--output-dir', type=str, help='output directoy')
     parser.add_argument('--summary-dir', type=str, help='tensorboard summry')
     parser.add_argument('--test-only', action='store_true', default=False,)

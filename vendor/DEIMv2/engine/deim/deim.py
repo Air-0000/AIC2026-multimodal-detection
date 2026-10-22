@@ -387,6 +387,8 @@ class DEIM(nn.Module):
         distill_cos_weight: float = 1.0,
         distill_gram_weight: float = 0.5,
         distill_downsample_scale: float = 1.0,
+        require_teacher_weights: bool = False,
+        teacher_weights_sha256: str = None,
         use_co_aux: bool = False,
         co_aux_loss_weight_cls: float = 1.0,
         co_aux_loss_weight_reg: float = 2.0,
@@ -420,6 +422,8 @@ class DEIM(nn.Module):
                 loss_cos_weight=distill_cos_weight,
                 loss_gram_weight=distill_gram_weight,
                 downsample_scale=distill_downsample_scale,
+                require_pretrained=require_teacher_weights,
+                pretrained_sha256=teacher_weights_sha256,
             )
             print(f"[DEIM] DINOv3-ViT-Large Online Semantic Distillation: ON (scale={distill_downsample_scale}, cos={distill_cos_weight}, gram={distill_gram_weight})")
         else:
@@ -504,11 +508,20 @@ class DEIM(nn.Module):
 
         depth = x[:, 5:6] if (x.shape[1] >= 6) else None
         feats = self.backbone(x)
+        for i, f in enumerate(feats):
+            if torch.isnan(f).any() or torch.isinf(f).any():
+                print(f'[DEIM TRACE] backbone output {i} has NaN: {torch.isnan(f).sum().item()}, Inf: {torch.isinf(f).sum().item()}')
         if self.use_p2_wavelet_sr and self.p2_wavelet_sr is not None and len(feats) >= 1:
             feats[0] = self.p2_wavelet_sr(feats[0])
         p2_feat = feats[0] if (len(feats) == 4 and self.use_p2_cascade_zoom) else None
         feats = self.encoder(feats, depth=depth)
+        for i, f in enumerate(feats):
+            if torch.isnan(f).any() or torch.isinf(f).any():
+                print(f'[DEIM TRACE] encoder output {i} has NaN: {torch.isnan(f).sum().item()}, Inf: {torch.isinf(f).sum().item()}')
         out = self.decoder(feats, targets)
+        for k in ('pred_boxes', 'pred_logits'):
+            if k in out and (torch.isnan(out[k]).any() or torch.isinf(out[k]).any()):
+                print(f'[DEIM TRACE] decoder output {k} has NaN: {torch.isnan(out[k]).sum().item()}')
 
         if self.use_scene_gate and self.scene_gate is not None and depth is not None:
             gate = self.scene_gate(depth)  # [B, num_classes]

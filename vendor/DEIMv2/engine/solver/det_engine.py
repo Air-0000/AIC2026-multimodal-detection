@@ -19,6 +19,7 @@ from torch.cuda.amp.grad_scaler import GradScaler
 from ..optim import ModelEMA, Warmup
 from ..data import CocoEvaluator
 from ..misc import MetricLogger, SmoothedValue, dist_utils
+from ..misc.numerical_contract import require_finite
 
 
 def train_one_epoch(self_lr_scheduler, lr_scheduler, model: torch.nn.Module, criterion: torch.nn.Module,
@@ -49,6 +50,7 @@ def train_one_epoch(self_lr_scheduler, lr_scheduler, model: torch.nn.Module, cri
     lr_warmup_scheduler :Warmup = kwargs.get('lr_warmup_scheduler', None)
 
     accum_steps = max(1, int(kwargs.get('accum_steps', 1)))
+    strict = bool(kwargs.get('stop_on_nonfinite', False))
     cur_iters = epoch * len(data_loader)
 
     for i, (samples, targets) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
@@ -67,50 +69,79 @@ def train_one_epoch(self_lr_scheduler, lr_scheduler, model: torch.nn.Module, cri
         loss_accum = 0.0
         n_valid = 0
         last_loss_dict = None
-        if scaler is None:
-            optimizer.zero_grad()
+        optimizer.zero_grad()
+        if strict and self_lr_scheduler:
+            # Apply the intended LR to this update, rather than the next one.
+            optimizer = lr_scheduler.step(cur_iters + i + 1, optimizer)
 
         for a in range(n_micro):
             s_micro = samples[a*micro_bs:(a+1)*micro_bs].to(device, non_blocking=True)
             t_micro = [{k: v.to(device, non_blocking=True) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets[a*micro_bs:(a+1)*micro_bs]]
+            micro_weight = s_micro.shape[0] / B if strict else 1.0 / n_micro
+            if strict:
+                require_finite([('samples', s_micro)], f'epoch={epoch} iter={i} micro={a} input')
 
             if scaler is not None:
                 amp_dtype = torch.float16 if (torch.cuda.is_available() and torch.cuda.get_device_capability()[0] < 8) else torch.bfloat16
                 with torch.autocast(device_type=str(device), dtype=amp_dtype, cache_enabled=True):
                     outputs = model(s_micro, targets=t_micro)
+                if strict:
+                    require_finite(outputs.items(), f'epoch={epoch} iter={i} micro={a} forward')
                 has_invalid = False
                 for k in ('pred_boxes', 'pred_logits'):
                     if k in outputs and (torch.isnan(outputs[k]).any() or torch.isinf(outputs[k]).any()):
                         has_invalid = True
                         break
                 if has_invalid:
-                    print(f'[NaN-guard] iter {global_step} micro {a}: pred NaN/Inf -> skip micro backward')
+                    print(f'[NaN-guard] iter {global_step} micro {a}: pred NaN/Inf -> clean buffers and skip micro backward')
+                    for b in model.buffers():
+                        if torch.isnan(b).any() or torch.isinf(b).any():
+                            b.nan_to_num_(nan=0.0, posinf=1.0, neginf=-1.0)
                     del outputs, s_micro, t_micro
                     continue
                 with torch.autocast(device_type=str(device), enabled=False):
                     loss_dict = criterion(outputs, t_micro, **metas)
                 loss = sum(loss_dict.values())
+                if strict:
+                    require_finite([*loss_dict.items(), ('total_loss', loss)], f'epoch={epoch} iter={i} micro={a} loss')
                 if torch.isnan(loss).any() or torch.isinf(loss).any():
-                    print(f'[NaN-guard] iter {global_step} micro {a}: loss NaN/Inf -> skip micro backward')
+                    print(f'[NaN-guard] iter {global_step} micro {a}: loss NaN/Inf -> clean buffers and skip micro backward')
+                    for b in model.buffers():
+                        if torch.isnan(b).any() or torch.isinf(b).any():
+                            b.nan_to_num_(nan=0.0, posinf=1.0, neginf=-1.0)
                     del outputs, loss_dict, loss, s_micro, t_micro
                     continue
-                scaler.scale(loss / n_micro).backward()
+                scaler.scale(loss * micro_weight).backward()
             else:
                 outputs = model(s_micro, targets=t_micro)
+                if strict:
+                    require_finite(outputs.items(), f'epoch={epoch} iter={i} micro={a} forward')
                 has_invalid = False
                 for k in ('pred_boxes', 'pred_logits'):
                     if k in outputs and (torch.isnan(outputs[k]).any() or torch.isinf(outputs[k]).any()):
                         has_invalid = True
-                        break
+                        nan_c = torch.isnan(outputs[k]).sum().item()
+                        inf_c = torch.isinf(outputs[k]).sum().item()
+                        print(f'[NaN-guard FP32 DETECTED] iter {global_step} micro {a} key={k}: nan={nan_c}, inf={inf_c}')
                 if has_invalid:
+                    print(f'[NaN-guard FP32] iter {global_step} micro {a}: pred NaN/Inf -> clean buffers and skip micro backward')
+                    for b in model.buffers():
+                        if torch.isnan(b).any() or torch.isinf(b).any():
+                            b.nan_to_num_(nan=0.0, posinf=1.0, neginf=-1.0)
                     del outputs, s_micro, t_micro
                     continue
                 loss_dict = criterion(outputs, t_micro, **metas)
                 loss = sum(loss_dict.values())
+                if strict:
+                    require_finite([*loss_dict.items(), ('total_loss', loss)], f'epoch={epoch} iter={i} micro={a} loss')
                 if torch.isnan(loss).any() or torch.isinf(loss).any():
+                    print(f'[NaN-guard FP32] iter {global_step} micro {a}: loss NaN/Inf -> clean buffers and skip micro backward')
+                    for b in model.buffers():
+                        if torch.isnan(b).any() or torch.isinf(b).any():
+                            b.nan_to_num_(nan=0.0, posinf=1.0, neginf=-1.0)
                     del outputs, loss_dict, loss, s_micro, t_micro
                     continue
-                (loss / n_micro).backward()
+                (loss * micro_weight).backward()
 
             loss_accum += float(loss.item())
             n_valid += 1
@@ -120,14 +151,32 @@ def train_one_epoch(self_lr_scheduler, lr_scheduler, model: torch.nn.Module, cri
                 torch.cuda.empty_cache()
 
         if n_valid == 0:
-            # every micro-batch was NaN -> nothing to optimize this iter
+            print(f'[NaN-guard] iter {global_step}: ALL micro-batches invalid, skipping step')
+            optimizer.zero_grad()
+            continue
+
+        # Diagnose grad before step and guard against corrupted weight updates
+        if strict:
+            if scaler is not None:
+                scaler.unscale_(optimizer)
+            require_finite(((name, p.grad) for name, p in model.named_parameters() if p.grad is not None),
+                           f'epoch={epoch} iter={i} gradient')
+            require_finite(model.named_buffers(), f'epoch={epoch} iter={i} buffers', allow_anchor_infinity=True)
+        has_invalid_grad = False
+        for name, p in (() if strict else model.named_parameters()):
+            if p.grad is not None and (torch.isnan(p.grad).any() or torch.isinf(p.grad).any()):
+                print(f'[PRE-STEP GRAD ALERT] {name}: grad has NaN/Inf! Skipping step to preserve weights.')
+                has_invalid_grad = True
+                break
+
+        if has_invalid_grad:
             optimizer.zero_grad()
             continue
 
         if max_norm > 0:
-            if scaler is not None:
+            if scaler is not None and not strict:
                 scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm, error_if_nonfinite=strict)
 
         if scaler is not None:
             scaler.step(optimizer)
@@ -135,13 +184,26 @@ def train_one_epoch(self_lr_scheduler, lr_scheduler, model: torch.nn.Module, cri
         else:
             optimizer.step()
         optimizer.zero_grad()
+        if strict:
+            require_finite(model.named_parameters(), f'epoch={epoch} iter={i} post-step parameter')
+            require_finite(model.named_buffers(), f'epoch={epoch} iter={i} post-step buffer', allow_anchor_infinity=True)
+
+        # Diagnose params after step
+        for name, p in (() if strict else model.named_parameters()):
+            if torch.isnan(p).any() or torch.isinf(p).any():
+                print(f'[POST-STEP PARAM ALERT] {name}: parameter became NaN/Inf!')
+        for name, b in (() if strict else model.named_buffers()):
+            if 'decoder.anchors' not in name and (torch.isnan(b).any() or torch.isinf(b).any()):
+                print(f'[POST-STEP BUFFER ALERT] {name}: buffer became NaN/Inf -> sanitized to 0.0')
+                b.nan_to_num_(nan=0.0, posinf=1.0, neginf=-1.0)
 
         # ema
         if ema is not None:
             ema.update(model)
 
         if self_lr_scheduler:
-            optimizer = lr_scheduler.step(cur_iters + i, optimizer)
+            if not strict:
+                optimizer = lr_scheduler.step(cur_iters + i, optimizer)
         else:
             if lr_warmup_scheduler is not None:
                 lr_warmup_scheduler.step()
@@ -171,7 +233,7 @@ def train_one_epoch(self_lr_scheduler, lr_scheduler, model: torch.nn.Module, cri
 
 
 @torch.no_grad()
-def evaluate(model: torch.nn.Module, criterion: torch.nn.Module, postprocessor, data_loader, coco_evaluator: CocoEvaluator, device):
+def evaluate(model: torch.nn.Module, criterion: torch.nn.Module, postprocessor, data_loader, coco_evaluator: CocoEvaluator, device, stop_on_nonfinite=False):
     model.eval()
     criterion.eval()
     coco_evaluator.cleanup()
@@ -190,12 +252,17 @@ def evaluate(model: torch.nn.Module, criterion: torch.nn.Module, postprocessor, 
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
         outputs = model(samples)
+        if stop_on_nonfinite:
+            require_finite(outputs.items(), 'validation forward')
 
         orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
 
         results = postprocessor(outputs, orig_target_sizes, samples)
+        if stop_on_nonfinite:
+            for result in results:
+                require_finite(result.items(), 'validation postprocessor')
 
-        for r in results:
+        for r in (() if stop_on_nonfinite else results):
             if 'scores' in r and isinstance(r['scores'], torch.Tensor):
                 r['scores'] = torch.nan_to_num(r['scores'], nan=0.0, posinf=1.0, neginf=0.0)
             if 'boxes' in r and isinstance(r['boxes'], torch.Tensor):

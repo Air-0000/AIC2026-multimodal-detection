@@ -5,6 +5,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict
 import atexit
+import random
+import numpy as np
+import inspect
+import hashlib
 
 from ..misc import dist_utils
 from ..core import BaseConfig
@@ -80,8 +84,15 @@ class BaseSolver(object):
     def train(self):
         self._setup()
         self.optimizer = self.cfg.optimizer
-        self.lr_scheduler = self.cfg.lr_scheduler
-        self.lr_warmup_scheduler = self.cfg.lr_warmup_scheduler
+        if self.cfg.clean_baseline:
+            # Clean lifecycle owns one absolute-iteration FlatCosine schedule.
+            # Do not construct a second scheduler/warmup that mutates LR here.
+            for group in self.optimizer.param_groups:
+                group.setdefault('initial_lr', group['lr'])
+            self.lr_scheduler = self.lr_warmup_scheduler = None
+        else:
+            self.lr_scheduler = self.cfg.lr_scheduler
+            self.lr_warmup_scheduler = self.cfg.lr_warmup_scheduler
 
         self.train_dataloader = dist_utils.warp_loader(
             self.cfg.train_dataloader, shuffle=self.cfg.train_dataloader.shuffle
@@ -96,6 +107,8 @@ class BaseSolver(object):
         if self.cfg.resume:
             print(f'Resume checkpoint from {self.cfg.resume}')
             self.load_resume_state(self.cfg.resume)
+        elif self.cfg.reset_rng_after_setup:
+            dist_utils.setup_seed(self.cfg.seed)
 
     def eval(self):
         self._setup()
@@ -109,9 +122,6 @@ class BaseSolver(object):
         if self.cfg.resume:
             print(f'Resume checkpoint from {self.cfg.resume}')
             self.load_resume_state(self.cfg.resume)
-        elif self.cfg.tuning:
-            print(f'Tuning checkpoint from {self.cfg.tuning}')
-            self.load_tuning_state(self.cfg.tuning)
 
     def to(self, module, device):
         return module.to(device) if hasattr(module, 'to') else module
@@ -123,6 +133,14 @@ class BaseSolver(object):
 
         # For resume
         state['last_epoch'] = self.last_epoch
+        if self.cfg.clean_baseline:
+            state['rng_state'] = dict(python=random.getstate(), numpy=np.random.get_state(),
+                                     torch=torch.get_rng_state(),
+                                     cuda=torch.cuda.get_rng_state_all() if torch.cuda.is_available() else [])
+            state['best_stat'] = getattr(self, 'best_stat', {})
+            state['effective_config'] = dict(self.cfg.yaml_cfg)
+            state['effective_seed'] = self.cfg.seed
+            state['initialization_report'] = getattr(self, 'tuning_load_report', {})
 
         for k, v in self.__dict__.items():
             if hasattr(v, 'state_dict'):
@@ -133,6 +151,19 @@ class BaseSolver(object):
 
     def load_state_dict(self, state):
         """Load state dict, train/eval"""
+        if self.cfg.strict_resume:
+            required = {'model', 'last_epoch'}
+            if self.ema is not None:
+                required.add('ema')
+            if hasattr(self, 'optimizer'):
+                required.update(('optimizer', 'rng_state'))
+                if self.cfg.clean_baseline:
+                    required.update(('effective_config', 'effective_seed'))
+            missing = required.difference(state)
+            if missing:
+                raise KeyError(f'Incomplete resume checkpoint: {sorted(missing)}')
+            if self.cfg.clean_baseline and 'effective_seed' in state and state['effective_seed'] != self.cfg.seed:
+                raise ValueError('Resume seed differs from the saved effective seed')
         if 'last_epoch' in state:
             self.last_epoch = state['last_epoch']
             print('Load last_epoch')
@@ -141,8 +172,15 @@ class BaseSolver(object):
             if hasattr(v, 'load_state_dict') and k in state:
                 v = dist_utils.de_parallel(v)
                 try:
-                    v.load_state_dict(state[k], strict=True)
+                    if 'strict' in inspect.signature(v.load_state_dict).parameters:
+                        v.load_state_dict(state[k], strict=True)
+                    else:
+                        # Optimizer, LR scheduler and GradScaler have no strict
+                        # keyword. Passing it used to silently skip their state.
+                        v.load_state_dict(state[k])
                 except Exception as e:
+                    if self.cfg.strict_resume:
+                        raise RuntimeError(f'Strict resume failed for {k}') from e
                     try:
                         res = v.load_state_dict(state[k], strict=False)
                         if res is not None and hasattr(res, 'missing_keys'):
@@ -163,23 +201,40 @@ class BaseSolver(object):
                         print(f'Load {k}.state_dict from model.state_dict')
                 else:
                     print(f'Not load {k}.state_dict')
+        if self.cfg.clean_baseline:
+            self.best_stat = state.get('best_stat', {})
 
     def load_resume_state(self, path: str):
         """Load resume"""
         if path.startswith('http'):
             state = torch.hub.load_state_dict_from_url(path, map_location='cpu')
         else:
-            state = torch.load(path, map_location='cpu')
+            state = torch.load(path, map_location='cpu', weights_only=False)
 
         # state['model'] = remove_module_prefix(state['model'])
         self.load_state_dict(state)
+        if self.cfg.clean_baseline and hasattr(self, 'optimizer'):
+            rng = state['rng_state']
+            random.setstate(rng['python'])
+            np.random.set_state(rng['numpy'])
+            torch.set_rng_state(rng['torch'])
+            if torch.cuda.is_available() and rng['cuda']:
+                torch.cuda.set_rng_state_all(rng['cuda'])
 
     def load_tuning_state(self, path: str):
         """Load model for tuning and adjust mismatched head parameters"""
+        expected_sha = getattr(self.cfg, 'required_tuning_sha256', None)
+        if expected_sha:
+            digest = hashlib.sha256()
+            with open(path, 'rb') as stream:
+                for block in iter(lambda: stream.read(8 * 1024 * 1024), b''):
+                    digest.update(block)
+            if digest.hexdigest() != expected_sha:
+                raise ValueError('Tuning checkpoint differs from the pinned starting weights')
         if path.startswith('http'):
             state = torch.hub.load_state_dict_from_url(path, map_location='cpu')
         else:
-            state = torch.load(path, map_location='cpu')
+            state = torch.load(path, map_location='cpu', weights_only=False)
 
         module = dist_utils.de_parallel(self.model)
 
@@ -198,7 +253,30 @@ class BaseSolver(object):
         except Exception:
             stat, infos = self._matched_state(module.state_dict(), pretrain_state_dict)
 
-        module.load_state_dict(stat, strict=False)
+        if getattr(self.cfg, 'clean_baseline', False):
+            allowed_new = ('backbone.ir_', 'backbone.occlusion_gate.', 'backbone.coord_lift.',
+                           'encoder.p2_refinement.', 'dinov3_distiller.', 'co_aux_head.',
+                           'decoder.denoising_class_embed.')
+            bad_missing = [k for k in infos['missed'] if not k.startswith(allowed_new)]
+            allowed_shape = ('decoder.anchors', 'decoder.valid_mask')
+            bad_shapes = [k for k in infos['unmatched']
+                          if k not in allowed_shape and not (k.startswith('decoder.') and 'score_head' in k)]
+            if bad_missing or bad_shapes:
+                raise ValueError(f'Unexpected shared-weight initialization gaps: {bad_missing}, {bad_shapes}')
+        result = module.load_state_dict(stat, strict=False)
+        self.tuning_load_report = dict(infos, missing_keys=list(result.missing_keys),
+                                       unexpected_keys=list(result.unexpected_keys))
+        self.tuning_load_report['matched_keys'] = len(stat)
+        if getattr(self.cfg, 'init_ir_stem_after_tuning', False):
+            if any(k.startswith(('backbone.ir_stem.', 'backbone.ir_proj.')) for k in pretrain_state_dict):
+                raise ValueError('Refusing to overwrite a trained multimodal IR stem; this option is COCO initialization only')
+            required = 'backbone.rgb_net.stem.stem1.conv.weight'
+            if required not in stat:
+                raise ValueError('Cannot initialize IR stem: pretrained RGB stem was not loaded')
+            from ..backbone.dynamic_multimodal_modules import transfer_pretrained_stem_weights
+            bb = module.backbone
+            transfer_pretrained_stem_weights(bb.rgb_net.stem, bb.ir_stem, in_chans=bb.ir_in_chans)
+            self.tuning_load_report['ir_stem_copied_after_rgb_load'] = True
         print(f'Load model.state_dict, {infos}')
 
     @staticmethod
@@ -226,8 +304,9 @@ class BaseSolver(object):
     def _adjust_head_parameters(self, cur_state_dict, pretrain_state_dict):
         """Adjust head parameters between datasets."""
         # List of parameters to adjust
-        if pretrain_state_dict['decoder.denoising_class_embed.weight'].size() != \
-                cur_state_dict['decoder.denoising_class_embed.weight'].size():
+        pretrain_state_dict = dict(pretrain_state_dict)
+        embed = 'decoder.denoising_class_embed.weight'
+        if embed in pretrain_state_dict and embed in cur_state_dict and pretrain_state_dict[embed].size() != cur_state_dict[embed].size():
             del pretrain_state_dict['decoder.denoising_class_embed.weight']
 
         head_param_names = [
@@ -257,6 +336,15 @@ class BaseSolver(object):
         """Map class weights from pretrain model to current model based on class IDs."""
         if pretrain_tensor.size() == cur_tensor.size():
             return pretrain_tensor
+
+        # The Objects365/COCO mapping is not a mapping for the 12 AIC classes.
+        # Leave unrelated class heads initialized explicitly instead of indexing
+        # 80 rows into a 12-row tensor and silently swallowing IndexError.
+        max_index = max(self.obj365_ids) + 1
+        forward = cur_tensor.shape[0] == len(self.obj365_ids) and pretrain_tensor.shape[0] > max_index
+        backward = pretrain_tensor.shape[0] == len(self.obj365_ids) and cur_tensor.shape[0] > max_index
+        if not (forward or backward):
+            return None
 
         adjusted_tensor = cur_tensor.clone()
         adjusted_tensor.requires_grad = False

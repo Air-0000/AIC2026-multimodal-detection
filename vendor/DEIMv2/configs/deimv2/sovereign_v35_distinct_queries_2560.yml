@@ -5,7 +5,7 @@
 # 核心原则:
 #   1. 纯血开源底模: ckpts/dfine_x_obj2coco.pth (零参赛历史污染)
 #   2. 选项 B 架构破局: 保留 Co-ATSS (保证 96.1% 高召回率与小样本从头训练极速收敛)
-#   3. 入口空间排斥: DFINETransformer.use_sdqs=True (3x3 空间局部极值过滤，从根源斩断同目标多框产生)
+#   3. [未实现] SDQS 从未接线；本配置仅保留历史记录，选点实为 P3 配额 + 全局补齐
 #   4. 知识蒸馏: Meta 官方 DINOv3-ViT-Large (300M, 1024 维) 在线特征空间微创蒸馏 (帮助 RGB 快速学习大模型视觉表征)
 #   5. 极简骨干: 纯 HGNetv2-X + DCDA 视差补偿 + DOG 深度门控 (切除冗余分支)
 #   6. 纯净标注: 100% 官方原始老标注 (instances_train.json 1800 张 / instances_val.json 200 张)
@@ -19,6 +19,7 @@ __include__: [
 
 task: detection
 remap_mscoco_category: False
+num_classes: 12
 eval_spatial_size: [1440, 2560]
 output_dir: ./outputs/sovereign_v35_distinct_queries_2560
 
@@ -68,10 +69,14 @@ HybridEncoder:
   csp_type: csp
 
 DFINETransformer:
+  num_classes: 12
   feat_channels: [384, 384, 384]
   reg_scale: 8
-  use_sdqs: True                # ★ 核心激活：空间排斥独占查询选择 (Distinct Query Selection)
-  distinct_kernel_size: 3       # 3x3 空间局部极值提取，严密阻断紧邻冗余锚点进入解码器
+
+PostProcessor:
+  num_classes: 12
+  use_nms: True                 # ★ 标准单模型 NMS 去重
+  nms_iou_thr: 0.60             # IoU 0.60 类内极大值抑制，彻底消解实例多框
 
 DEIMCriterion:
   weight_dict:

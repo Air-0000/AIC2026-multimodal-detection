@@ -73,7 +73,7 @@ DFINETransformer:
   use_snr_sharpen: True
   snr_sharpen_alpha: 0.5
   use_diam: True
-  use_sdqs: True          # SDQS 空间解耦选点机制
+  use_sdqs: False         # 从未实现（历史配置曾误以为生效）；置 True 现在会直接报错
 
 DEIMCriterion:
   weight_dict:

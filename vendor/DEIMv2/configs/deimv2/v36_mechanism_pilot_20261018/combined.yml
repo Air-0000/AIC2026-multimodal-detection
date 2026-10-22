@@ -1,0 +1,349 @@
+task: detection
+evaluator:
+  type: CocoEvaluator
+  iou_types:
+  - bbox
+num_classes: 12
+remap_mscoco_category: false
+train_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/visible
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/train/annotations/instances_train.json
+    return_masks: false
+    transforms:
+      type: Compose
+      ops:
+      - type: RandomHorizontalFlip
+      - type: Resize
+        size:
+        - 720
+        - 1280
+      - type: SanitizeBoundingBoxes
+        min_size: 1
+      - type: Normalize
+        mean:
+        - 0.485
+        - 0.456
+        - 0.406
+        - 0.5
+        - 0.5
+        - 0.5
+        std:
+        - 0.229
+        - 0.224
+        - 0.225
+        - 0.5
+        - 0.5
+        - 0.5
+      - type: ConvertBoxes
+        fmt: cxcywh
+        normalize: true
+      policy:
+        name: stop_epoch
+        epoch: 72
+        ops:
+        - Mosaic
+        - RandomPhotometricDistort
+        - RandomZoomOut
+        - RandomIoUCrop
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/infrared_aligned
+    raw_ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/audits/v36_mechanism_20261018/train_lbg_ir
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    depth_read: raw16
+    destripe_ir: true
+    n_channels: 6
+    remap_mscoco_category: false
+  shuffle: true
+  num_workers: 0
+  drop_last: true
+  collate_fn:
+    type: BatchImageCollateFunction
+    base_size: 1280
+    base_size_repeat: null
+    stop_epoch: 2
+    ema_restart_decay: 0.9998
+  total_batch_size: 2
+  pin_memory: true
+val_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/visible
+    ann_file: /home/constant/CodeBuddy/Dev/AIC/work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    return_masks: false
+    transforms:
+      type: Compose
+      ops:
+      - type: Resize
+        size:
+        - 1440
+        - 2560
+      - type: Normalize
+        mean:
+        - 0.485
+        - 0.456
+        - 0.406
+        - 0.5
+        - 0.5
+        - 0.5
+        std:
+        - 0.229
+        - 0.224
+        - 0.225
+        - 0.5
+        - 0.5
+        - 0.5
+      - type: ConvertBoxes
+        fmt: cxcywh
+        normalize: true
+    ir_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/infrared_aligned
+    raw_ir_folder: /home/constant/CodeBuddy/Dev/AIC/work_dir/audits/v36_mechanism_20261018/train_lbg_ir
+    depth_folder: /home/constant/CodeBuddy/Dev/AIC/dataset/train/depth
+    depth_read: raw16
+    destripe_ir: true
+    n_channels: 6
+    remap_mscoco_category: false
+  shuffle: false
+  num_workers: 0
+  drop_last: false
+  collate_fn:
+    type: BatchImageCollateFunction
+    stop_epoch: 2
+  total_batch_size: 2
+print_freq: 20
+output_dir: /home/constant/CodeBuddy/Dev/AIC/work_dir/audits/v36_mechanism_pilot_20261018/training/combined
+checkpoint_freq: 1
+sync_bn: false
+find_unused_parameters: true
+use_amp: true
+scaler:
+  type: GradScaler
+  enabled: true
+use_ema: true
+ema:
+  type: ModelEMA
+  decay: 0.9999
+  warmups: 1000
+  start: 0
+epoches: 2
+clip_max_norm: 0.1
+optimizer:
+  type: AdamW
+  params:
+  - params: ^(?=.*dinov3_distiller).*$
+    lr: 1.25e-05
+  - params: ^(?=.*ir_align).*$
+    lr: 1.25e-05
+  - params: ^(?=.*co_aux_head).*$
+    lr: 1.25e-05
+  - params: ^(?=.*(?:ir_stem|ir_proj|occlusion_gate|coord_lift|p2_refinement|s0_to_p3_trunk))(?!.*(?:norm|bn)).*$
+    lr: 1.25e-05
+  - params: ^(?=.*(?:score_head|class_embed)).*$
+    lr: 3.125e-05
+  - params: ^(?=.*backbone)(?!.*norm|.*ir_stem|.*ir_proj|.*ir_align|.*occlusion_gate|.*coord_lift|.*dinov3_distiller|.*s0_to_p3_trunk).*$
+    lr: 6.25e-07
+  - params: ^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$
+    weight_decay: 0.0
+  lr: 1.0e-05
+  betas:
+  - 0.9
+  - 0.999
+  weight_decay: 0.000125
+lr_scheduler:
+  type: MultiStepLR
+  milestones:
+  - 500
+  gamma: 0.1
+lr_warmup_scheduler:
+  type: LinearWarmup
+  warmup_duration: 500
+model: DEIM
+criterion: DEIMCriterion
+postprocessor: PostProcessor
+use_focal_loss: true
+eval_spatial_size:
+- 1440
+- 2560
+DEIM:
+  backbone: HGNetv2MultiModal
+  encoder: HybridEncoder
+  decoder: DFINETransformer
+  use_scene_gate: false
+  use_internal_sahi: false
+  use_internal_tta: false
+  use_p2_cascade_zoom: false
+  use_planar_rigidity_gate: false
+  num_classes: 12
+  num_queries: 300
+  use_dinov3_distill: true
+  dinov3_teacher_path: ckpts/dinov3/dinov3_vitl16_pretrain_lvd1689m-8aa4cbdd.pth
+  distill_cos_weight: 1.0
+  distill_gram_weight: 0.5
+  distill_downsample_scale: 0.5
+  use_co_aux: true
+  co_aux_loss_weight_cls: 1.0
+  co_aux_loss_weight_reg: 2.0
+lrsheduler: flatcosine
+lr_gamma: 0.5
+warmup_iter: 20
+flat_epoch: 1
+no_aug_epoch: 0
+HGNetv2:
+  pretrained: true
+  local_model_dir: ../RT-DETR-main/D-FINE/weight/hgnetv2/
+  name: B5
+  return_idx:
+  - 1
+  - 2
+  - 3
+  freeze_stem_only: true
+  freeze_at: 0
+  freeze_norm: true
+HybridEncoder:
+  in_channels:
+  - 512
+  - 1024
+  - 2048
+  feat_strides:
+  - 8
+  - 16
+  - 32
+  hidden_dim: 384
+  use_encoder_idx:
+  - 2
+  num_encoder_layers: 1
+  nhead: 8
+  dim_feedforward: 2048
+  dropout: 0.0
+  enc_act: gelu
+  expansion: 1.0
+  depth_mult: 1
+  act: silu
+  csp_type: csp
+  use_p2_guidance: true
+  p2_version: v10
+  p2_dim: 128
+DFINETransformer:
+  feat_channels:
+  - 384
+  - 384
+  - 384
+  feat_strides:
+  - 8
+  - 16
+  - 32
+  hidden_dim: 256
+  num_levels: 3
+  num_layers: 6
+  eval_idx: -1
+  num_queries: 300
+  num_denoising: 0
+  label_noise_ratio: 0.5
+  box_noise_scale: 1.0
+  reg_max: 32
+  reg_scale: 8
+  layer_scale: 1
+  num_points:
+  - 3
+  - 6
+  - 3
+  cross_attn_method: default
+  query_select_method: default
+  num_classes: 12
+  use_pure_topk: false
+  use_anisotropic_routing: true
+  p3_quota_ratio: 0.3
+  p4_quota_ratio: 0.3
+  use_offset_clamp: false
+  use_spatial_attn_bias: false
+  use_layer_ensemble: false
+PostProcessor:
+  num_top_queries: 300
+  num_classes: 12
+  use_nms: true
+  nms_iou_thr: 0.6
+DEIMCriterion:
+  weight_dict:
+    loss_vfl: 1
+    loss_bbox: 5.0
+    loss_giou: 3.5
+    loss_fgl: 0.25
+    loss_ddf: 1.5
+    loss_distill: 1.0
+    loss_co_cls: 1.0
+    loss_co_reg: 2.0
+    loss_cmal: 0.5
+    loss_tadl: 2.0
+  losses:
+  - tadl
+  - boxes
+  - local
+  alpha: 0.75
+  gamma: 1.5
+  reg_max: 32
+  matcher:
+    type: HungarianMatcher
+    weight_dict:
+      cost_class: 2.0
+      cost_bbox: 5.0
+      cost_giou: 3.5
+    alpha: 0.25
+    gamma: 2.0
+  tadl_beta: 0.5
+  tadl_min_iou: 0.35
+  use_ndsl: false
+  cls_neg_scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  use_discounted_aux_loss: true
+  aux_loss_discount_steps:
+  - 0.4
+  - 0.5
+  - 0.6
+  - 0.8
+  - 0.9
+  aux_loss_discount_losses:
+  - tadl
+HGNetv2MultiModal:
+  name: B5
+  ir_in_chans: 2
+  inject_stages:
+  - 2
+  - 3
+  fusion: cssa
+  use_midboost: false
+  use_dcda: true
+  use_3d_lift: true
+  use_dog: true
+  use_bilateral_pool: false
+  use_shallow_edge_fuse: false
+  use_rfgm_edge: false
+  use_frontend_rfgm: false
+  use_trunk_bridge: false
+  use_mixstyle: false
+  pretrained_ir_stem: true
+  return_idx:
+  - 0
+  - 1
+  - 2
+  - 3
+  stem_base: 64
+  ir_drop_prob: 0.05
+  freeze_at: 0
+  freeze_norm: true
+  local_model_dir: weight/hgnetv2/
+  pretrained: false
+  disable_fallback: false
+accum_steps: 4

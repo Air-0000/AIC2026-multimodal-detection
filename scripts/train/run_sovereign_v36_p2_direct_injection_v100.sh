@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
-# Sovereign V36: P2 (Stride=4) High-Resolution Direct Injection & Guidance
-# 硬件平台: 实验室科研服务器 ailab40 (Tesla V100 32GB, 稳定健康的 GPU 0)
+# Sovereign V36: P2 (Stride=4) High-Resolution Direct Injection & Guidance (50 Ep)
+# 硬件平台: 实验室科研服务器 ailab40 (Tesla V100 32GB, 稳定健康的 GPU 1)
 # 架构范式: 方案 C (P2 Stride=4 释放 + P2-CSRG+ 小波高频保峰 + 空间排斥独占查询 + Co-ATSS + DINOv3)
 # 机制:
 #   1. 纯血开源底模: ckpts/dfine_x_obj2coco.pth (零参赛历史污染)
@@ -23,27 +23,29 @@ PY="/home/ailab/ssd/bigdata/hejianzhong/_infra/envs/aic2026/bin/python"
 export PYTHONPATH="${DEIM_DIR}:${BASE_DIR}/scripts/lib:${PYTHONPATH:-}"
 export PYTHONUNBUFFERED=1
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-# 锁定使用空闲的 GPU 0 (Tesla V100 32GB)
-export CUDA_VISIBLE_DEVICES=0
+
+# ★ 关键：锁定使用稳定健康的 GPU 1 (Tesla V100 32GB)，避开有硬件寄存器缺陷的 GPU 0
+export CUDA_VISIBLE_DEVICES=1
 
 cd "$DEIM_DIR"
 
-START_CKPT="$DEIM_DIR/ckpts/dfine_x_obj2coco.pth"
-OUT_DIR="outputs/sovereign_v36_p2_direct_injection_2560"
+OUT_DIR="outputs/sovereign_v36_p2_direct_injection_50ep_fp32_v100"
+START_CKPT="$DEIM_DIR/$OUT_DIR/checkpoint0003.pth"
+CONFIG_FILE="configs/deimv2/sovereign_v36_p2_direct_injection_50ep_v100.yml"
 mkdir -p "$OUT_DIR"
 
 echo "=========================================================================="
-echo "=== Launching Sovereign V36 P2 Direct-Injection 50-Epoch Training (GPU 0) ==="
+echo "=== Resuming Sovereign V36 P2 Direct-Injection Training (Epoch 3 Clean Resume, Pure FP32, GPU 1) ==="
 echo "=========================================================================="
 echo "Start Time:        $(date)"
-echo "Target GPU:        Tesla V100 32GB (GPU 0)"
-echo "Base Checkpoint:   $START_CKPT (Pure Open COCO Base, NO competition inheritance)"
-echo "Config:            configs/deimv2/sovereign_v36_p2_direct_injection_2560.yml"
+echo "Target GPU:        Tesla V100 32GB (GPU 1 - Healthy Volta SM_70)"
+echo "Resume Checkpoint: $START_CKPT (Clean Epoch 3, mAP 0.2124 peak preserved, 0 NaNs)"
+echo "Config:            $CONFIG_FILE"
 echo "Output Directory:  $OUT_DIR"
 echo "Resolution:        1440 x 2560 (Native 2.5K)"
-echo "Paradigm:          Option C (P2 Stride=4 Direct Injection + Co-ATSS + SDQS)"
+echo "Precision:         Pure FP32 (Full IEEE-754 Single Precision + Grad-guard)"
+echo "Batch Size:        2 (Physical) x 4 (Accumulation) = 8 (Effective)"
 echo "P2 Module:         P2-CSRG+ (MWHL Haar Wavelet + LMM 3x7+7x3 + CSR Spatial Gate)"
-echo "Trunk Bridge:      Stage 0 (Stride 4) -> Stage 1 P3 (Stride 8) Direct Residual"
 echo "Knowledge Distill: Meta DINOv3-ViT-Large 300M (Online Feature Distillation)"
 echo "Dense Aux Head:    Co-ATSS One-to-Many Auxiliary Supervision"
 echo "Distinct Filter:   DFINETransformer SDQS (3x3 Local-Max Spatial Filter)"
@@ -53,10 +55,9 @@ echo "Epochs:            50 (Full Production Clean Slate)"
 echo "Schedule:          flatcosine (flat_epoch=30, lr_gamma=0.5, no_aug_epoch=4)"
 echo "=========================================================================="
 
-# 关键：GPU 0 采用纯 FP32 训练，规避 Volta GPC 5 硬件寄存器缺陷 (峰值显存 17.9GB < 32GB)
 $PY -u train.py \
-  -c configs/deimv2/sovereign_v36_p2_direct_injection_2560.yml \
-  -t "$START_CKPT" \
+  -c "$CONFIG_FILE" \
+  -r "$START_CKPT" \
   --seed 42 \
   --output-dir "$OUT_DIR" \
   2>&1 | tee -a "$OUT_DIR/train_console.log"

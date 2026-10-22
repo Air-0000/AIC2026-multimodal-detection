@@ -79,7 +79,7 @@ class CoATSSAuxHead(nn.Module):
         gamma: float = 1.5,
         alpha: float = 0.25,
         loss_weight_cls: float = 1.0,
-        loss_weight_reg: float = 2.0,
+        loss_weight_reg: float = 1.0,
     ):
         super().__init__()
         self.num_classes = num_classes
@@ -284,31 +284,35 @@ class CoATSSAuxHead(nn.Module):
                     best_cand = cand_ious[m].argmax()
                     is_pos[m, best_cand] = True
 
-            # Assign targets
+            # Assign targets with conflict resolution
             target_onehot = torch.zeros_like(logits_b)
-            pos_anchor_indices = []
-            pos_gt_boxes = []
+            anchor_to_gt = torch.full((N_total,), -1, dtype=torch.long, device=device)
+            anchor_to_iou = torch.full((N_total,), -1.0, dtype=torch.float32, device=device)
 
             for m in range(M):
                 pos_cand_mask = is_pos[m]
                 selected_anchor_idx = cand_idx[m][pos_cand_mask].clamp(0, N_total - 1)
-                lbl = gt_labels[m].item()
-                target_onehot[selected_anchor_idx, lbl] = 1.0
+                selected_ious = cand_ious[m][pos_cand_mask]
+                # Resolve anchor conflict: GT with highest IoU claims this anchor for regression
+                better_mask = selected_ious > anchor_to_iou[selected_anchor_idx]
+                win_anchors = selected_anchor_idx[better_mask]
+                anchor_to_gt[win_anchors] = m
+                anchor_to_iou[win_anchors] = selected_ious[better_mask]
 
-                pos_anchor_indices.append(selected_anchor_idx)
-                pos_gt_boxes.append(gt_xyxy[m:m+1].expand(len(selected_anchor_idx), -1))
-
-            if len(pos_anchor_indices) > 0:
-                pos_anchor_idx_cat = torch.cat(pos_anchor_indices, dim=0).clamp(0, N_total - 1)
-                pos_gt_boxes_cat = torch.cat(pos_gt_boxes, dim=0)
+            pos_mask = anchor_to_gt >= 0
+            if pos_mask.any():
+                pos_anchor_idx = torch.nonzero(pos_mask, as_tuple=True)[0]
+                assigned_gts = anchor_to_gt[pos_anchor_idx]
+                # Classification and regression must describe the same owner.
+                target_onehot[pos_anchor_idx, gt_labels[assigned_gts]] = 1.0
+                pos_gt_boxes_cat = gt_xyxy[assigned_gts]
 
                 # Regression Loss on Positive Anchors (GIoU Loss via torchvision native kernel)
-                pred_boxes_pos = pred_boxes_b[pos_anchor_idx_cat]
+                pred_boxes_pos = pred_boxes_b[pos_anchor_idx]
                 loss_reg_b = torchvision.ops.generalized_box_iou_loss(
                     pred_boxes_pos.float(), pos_gt_boxes_cat.float(), reduction='sum'
                 )
-                num_pos_b = len(pos_anchor_idx_cat)
-
+                num_pos_b = len(pos_anchor_idx)
             else:
                 loss_reg_b = torch.tensor(0.0, device=device)
                 num_pos_b = 0
@@ -323,8 +327,9 @@ class CoATSSAuxHead(nn.Module):
             total_num_pos += num_pos_b
 
         num_pos_norm = max(float(total_num_pos), 4.0)
-        norm_loss_cls = (total_loss_cls / num_pos_norm) * self.loss_weight_cls
-        norm_loss_reg = (total_loss_reg / num_pos_norm) * self.loss_weight_reg
+        # Raw normalized losses; weighting is uniformly governed by Criterion's weight_dict
+        norm_loss_cls = total_loss_cls / num_pos_norm
+        norm_loss_reg = total_loss_reg / num_pos_norm
 
         return {
             'loss_co_cls': norm_loss_cls,

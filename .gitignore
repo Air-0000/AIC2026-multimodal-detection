@@ -39,6 +39,7 @@ vendor/cv-model-improvement-master/
 work/
 
 # ===== 日志 / 临时文件 / 探针产物 =====
+logs/
 *.log
 *.pkl
 *.out

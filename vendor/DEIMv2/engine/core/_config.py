@@ -70,6 +70,13 @@ class BaseConfig(object):
         self.sync_bn :bool = False
         self.freeze_bn :bool = False
         self.accum_steps :int = 1
+        # Explicit clean-baseline contracts; historical configurations keep their behavior.
+        self.clean_baseline :bool = False
+        self.stop_on_nonfinite :bool = False
+        self.strict_resume :bool = False
+        self.init_ir_stem_after_tuning :bool = False
+        self.reset_rng_after_setup :bool = False
+        self.required_tuning_sha256 :str = None
         self.clip_max_norm : float = 0.
         self.find_unused_parameters :bool = None
 

@@ -257,3 +257,8 @@ $PY scripts/collect_model_records.py
 | 显存不足但 `nvidia-smi` 显示空闲 | 桌面合成器占用 ~12 GiB | 关合成器或调 `accum_steps` |
 | 旧 `predict_*.py` 集体报错 | 依赖已废弃的 `rfdetr` 环境 | 改用 `predict_mm_tta.py` 与 `scripts/inference/` |
 
+
+
+## 10. 当前修正基准（2026-10-21）
+
+用户指定先收敛正确性修复，再统一整理未确定改进项。唯一配置为 `vendor/DEIMv2/configs/deimv2/aic_clean_baseline_v1.yml`；定义、修复清单、验收边界和候选统一见 [CLEAN_BASELINE.md](CLEAN_BASELINE.md)。代码与功能契约通过不等于已经训练或有新mAP。旧章节中的effective batch乘法、按测试集总框数定优劣等历史叙述不能作为该基准的契约。

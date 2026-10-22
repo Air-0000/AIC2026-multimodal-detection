@@ -21,6 +21,8 @@ All aux submodules are prefixed `ir_` so optimizer param-group regexes can
 select the whole from-scratch stream (backbone\\.ir_ -> head lr).
 """
 
+import warnings
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -178,8 +180,11 @@ class DepthOcclusionGating(nn.Module):
     background RGB representations.
     Zero-initialized to guarantee exact identity at Step 0.
     """
-    def __init__(self, cnn_dim, hidden_dim=32):
+    def __init__(self, cnn_dim, hidden_dim=32, disable_fallback=True):
         super().__init__()
+        # Keep historical checkpoints on the original DOG equation unless the
+        # experiment explicitly opts into the depth-confidence fallback.
+        self.disable_fallback = bool(disable_fallback)
         sobel_x = torch.tensor([[-1., 0., 1.],
                                 [-2., 0., 2.],
                                 [-1., 0., 1.]]).view(1, 1, 3, 3) / 8.0
@@ -215,7 +220,17 @@ class DepthOcclusionGating(nn.Module):
         
         edge_feat = torch.cat([grad_norm, z_norm], dim=1).contiguous()
         gate = torch.tanh(self.gate_net(edge_feat))
-        return ir_feat * (1.0 + gate)
+
+        if getattr(self, 'disable_fallback', False):
+            return ir_feat * (1.0 + gate)
+
+        # Smooth Depth Fallback Mask:
+        # Experimental confidence interval, not a calibrated sensor guarantee.
+        # Sigmoids approach zero outside it; finite depths are not exact identity.
+        lower_weight = torch.sigmoid((Z - 0.5) / 0.15)
+        upper_weight = torch.sigmoid((18.0 - Z) / 0.4)
+        valid_depth_mask = lower_weight * upper_weight
+        return ir_feat * (1.0 + valid_depth_mask * gate)
 
 
 @register()
@@ -245,6 +260,7 @@ class HGNetv2MultiModal(nn.Module):
                  use_dcda=False,
                  use_3d_lift=False,
                  use_dog=False,
+                 disable_fallback=True,
                  use_bilateral_pool=False,
                  use_shallow_edge_fuse=False,
                  use_rfgm_edge=False,
@@ -315,7 +331,7 @@ class HGNetv2MultiModal(nn.Module):
         self.use_dog = use_dog
         if use_dog:
             self.occlusion_gate = nn.ModuleList([
-                DepthOcclusionGating(_chans[i])
+                DepthOcclusionGating(_chans[i], disable_fallback=disable_fallback)
                 for i in self.inject_stages])
         else:
             self.occlusion_gate = None
@@ -422,6 +438,14 @@ class HGNetv2MultiModal(nn.Module):
         ir = x[:, 3:3 + self.ir_in_chans].contiguous() if x.shape[1] >= 3 + self.ir_in_chans else None
         depth = x[:, 3 + self.ir_in_chans: 4 + self.ir_in_chans].contiguous() if x.shape[1] >= 4 + self.ir_in_chans else None
         if depth is not None:
+            # Inverse of the aux-channel Normalize(mean=std=0.5); four call sites
+            # hardcode 0.5, so assert the contract instead of trusting it.
+            if depth.numel() and (float(depth.min()) < -1.1 or float(depth.max()) > 1.1):
+                # Warn rather than raise: synthetic contract tests feed randn.
+                warnings.warn(
+                    'depth channel outside the expected [-1,1] normalisation '
+                    f'(min={float(depth.min()):.3f} max={float(depth.max()):.3f}); '
+                    'check the aux-channel Normalize(mean=std=0.5)', RuntimeWarning, stacklevel=2)
             depth = torch.clamp(depth * 0.5 + 0.5, 0.0, 1.0).contiguous()
 
         g_aux = 1.0
@@ -470,14 +494,7 @@ class HGNetv2MultiModal(nn.Module):
                 if self.use_cssp and self.cssp_shallow is not None and ir is not None:
                     y, cssp_mask = self.cssp_shallow(y, c2)
 
-            # Stage 1 (stride 8, 80x80): Prepare high-resolution geometric edge prompt for Neck P3
-            # NOTE: Do NOT inject p3_prompt into trunk y! Trunk y continues uncorrupted into Stage 2/3.
             if idx == 1:
-                p3_out = y
-                if p3_prompt is not None:
-                    p3_out = F.relu(p3_out + p3_prompt)
-                if s0_trunk_p3 is not None:
-                    p3_out = p3_out + s0_trunk_p3
                 if self.use_mixstyle and self.mixstyle is not None and self.training:
                     y = self.mixstyle(y)
 
@@ -521,6 +538,15 @@ class HGNetv2MultiModal(nn.Module):
 
                 residual = self.ir_res[k](self.ir_fuse[k](y_in, f_in)).contiguous()
                 y = y + (g_aux * residual if (self.use_midboost and not self.training) else residual)
+
+            # Capture P3 after DCN and IR injection so its output includes them.
+            # Prompts remain output-only and never enter the deeper trunk y.
+            if idx == 1:
+                p3_out = y
+                if p3_prompt is not None:
+                    p3_out = F.relu(p3_out + p3_prompt)
+                if s0_trunk_p3 is not None:
+                    p3_out = p3_out + s0_trunk_p3
             if idx in self.return_idx:
                 if idx == 1 and p3_out is not None:
                     outs.append(p3_out.clone().contiguous())
@@ -567,6 +593,11 @@ class HGNetv2MultiModal(nn.Module):
             loss_stage = l_edge + 0.1 * l_far + 0.05 * l_tv
             total_loss = loss_stage if total_loss is None else total_loss + loss_stage
             n_layers += 1
+
+        # Drop the cached graphs so a later step that skips DCDA cannot reuse them.
+        for align_mod in self.ir_align:
+            align_mod.cache_z_rgb = align_mod.cache_warped_z = None
+            align_mod.cache_off = align_mod.cache_inv_d = None
 
         if total_loss is None or n_layers == 0:
             return torch.tensor(0.0, device=next(self.parameters()).device)

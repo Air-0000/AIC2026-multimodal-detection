@@ -80,7 +80,7 @@ DFINETransformer:
   use_snr_sharpen: True       # 暗区信噪比感知分布锐化头
   snr_sharpen_alpha: 0.5
   use_diam: True              # DIAM 可变形交互注意力
-  use_sdqs: True              # SDQS 空间解耦选点机制 (消除同实体 Query 扎堆)
+  use_sdqs: False             # 从未实现（历史配置曾误以为生效）；置 True 现在会直接报错
 
 DEIMCriterion:
   weight_dict:

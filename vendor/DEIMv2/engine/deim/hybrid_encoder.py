@@ -257,15 +257,20 @@ class ConvNormLayer(nn.Module):
 
 
 # self.cv1 = Conv(c1, c2, 1, 1)
-# self.cv2 = Conv(c2, c2, k=k, s=s, g=c2, act=False)
 class SCDown(nn.Module):
-    def __init__(self, c1, c2, k, s, act=None):
+    def __init__(self, c1, c2, k, s, act=None, use_anti_alias=False, anti_alias_alpha=0.0):
         super().__init__()
         self.cv1 = ConvNormLayer_fuse(c1, c2, 1, 1)
         self.cv2 = ConvNormLayer_fuse(c2, c2, k, s, c2)
+        self.use_anti_alias = use_anti_alias
+        if use_anti_alias:
+            from .anti_aliasing import AntiAliasedDownsample
+            self.anti_alias = AntiAliasedDownsample(c2, initial_alpha=anti_alias_alpha, learnable=True)
+        else:
+            self.anti_alias = nn.Identity()
 
     def forward(self, x):
-        return self.cv2(self.cv1(x))
+        return self.anti_alias(self.cv2(self.cv1(x)))
 
 
 class VGGBlock(nn.Module):
@@ -554,6 +559,8 @@ class HybridEncoder(nn.Module):
                  use_lfp=False,
                  use_pbd=False,
                  use_starconv=False,
+                 use_anti_alias=False,
+                 anti_alias_alpha=0.0,
                  ):
         super().__init__()
         self.in_channels = in_channels
@@ -566,6 +573,10 @@ class HybridEncoder(nn.Module):
         self.out_channels = [hidden_dim for _ in range(len(in_channels))]
         self.out_strides = feat_strides
         self.fuse_op = fuse_op
+        self.use_anti_alias = use_anti_alias
+        self.anti_alias_alpha = anti_alias_alpha
+        if use_anti_alias:
+            print(f"[HybridEncoder] Anti-Aliasing BlurPool Downsampling: ON (initial_alpha={anti_alias_alpha})")
         bottletype = PKIVGGBlock if pki_bottleneck else VGGBlock
         if pki_bottleneck:
             print("[HybridEncoder] PKIBlock bottleneck: ON (zero-init PKI branch)")
@@ -656,7 +667,7 @@ class HybridEncoder(nn.Module):
         input_dim = hidden_dim if self.fuse_op == 'sum' else hidden_dim * 2   # deim use sum instead of cat
 
         Lateral_Conv = ConvNormLayer_fuse(hidden_dim, hidden_dim, 1, 1)
-        SCDown_Conv = nn.Sequential(SCDown(hidden_dim, hidden_dim, 3, 2))
+        SCDown_Conv = nn.Sequential(SCDown(hidden_dim, hidden_dim, 3, 2, use_anti_alias=use_anti_alias, anti_alias_alpha=anti_alias_alpha))
 
         c1, c2, c3, c4, num_blocks = input_dim, hidden_dim, hidden_dim*2, round(expansion * hidden_dim // 2), round(3 * depth_mult)
         if version == 'dfine':
@@ -719,6 +730,12 @@ class HybridEncoder(nn.Module):
             feats = feats[1:]
         else:
             p2_feat = None
+            if self.use_p2_guidance:
+                # return_idx no longer yields the extra P2 level: the guidance
+                # branch would otherwise do nothing without a word.
+                raise ValueError(
+                    f'use_p2_guidance is on but the backbone returned {len(feats)} levels '
+                    f'while the encoder expects {len(self.in_channels)}+1; check return_idx.')
 
         assert len(feats) == len(self.in_channels)
         proj_feats = [self.input_proj[i](feat) for i, feat in enumerate(feats)]

@@ -8,7 +8,7 @@
 > 3. 或直接在文件末尾手动追加一行, 保持表格格式。
 > 任何结果只进本文件, 不要另建分散的记录。
 
-_生成自 14 个训练模型 + 517 个 night 评测 log。_
+_生成自 14 个训练模型 + 521 个 night 评测 log。_
 
 <!-- AUTO_GENERATED_TABLES_START -->
 
@@ -68,10 +68,11 @@ _生成自 14 个训练模型 + 517 个 night 评测 log。_
 | `pureir3ch_na_bs8.log` | ? | 0.0000 | 0.0000 |
 | `pureir_raw1ch.log` | ? | 0.0000 | 0.0000 |
 
-### AIC / RGB+IR  （n=43）
+### AIC / RGB+IR  （n=47）
 
 | 评测 log | 档位 | AP | AP50 |
 |---|---|---|---|
+| `v36_ablation_smoke_20261018.log` | smoke | 0.7500 | 1.0000 |
 | `dfine_x_puremal_eval_orig.log` | orig | 0.5670 | 0.8500 |
 | `dfine_x_puremal_refine_giou35_eval_orig.log` | orig | 0.5650 | 0.8500 |
 | `dog_ablation_eval.log` | ? | 0.5630 | 0.8430 |
@@ -81,6 +82,9 @@ _生成自 14 个训练模型 + 517 个 night 评测 log。_
 | `3dlift_ablation_eval.log` | ? | 0.5580 | 0.8390 |
 | `dfine_x_cpoff_eval_orig.log` | orig | 0.5500 | 0.8090 |
 | `pair_cpoff_orig.log` | orig | 0.5500 | 0.8090 |
+| `v36_aligned_eval_20261019_final.log` | ? | 0.5200 | 0.7960 |
+| `v36_aligned_eval_20261019_verified.log` | ? | 0.5200 | 0.7960 |
+| `v36_ablation_zeroshot_20261018.log` | ? | 0.5190 | 0.7960 |
 | `rgb_base_orig_eval.log` | orig | 0.5150 | 0.7890 |
 | `deepir_eval_orig.log` | orig | 0.5120 | 0.7980 |
 | `C.attempt1.crash.log` | ? | 0.5050 | 0.7880 |
@@ -1228,8 +1232,10 @@ _生成自 14 个训练模型 + 517 个 night 评测 log。_
 | **V33** | CmDRM 跨模态差分实验探索 (已清退) | 小样本遗忘 (mAP 暴跌至 0.267) | *已执行物理清退删除* | *已清退* |
 | **V34** | Clean-Slate 从零纯血训练 50 轮 | 2.5K 原生 + DINOv3 + Co-ATSS | `outputs/sovereign_v34_clean_from_scratch_2560/best_stg2.pth` | 远端科研服务器 `ailab40` |
 | **V34 Dedup** | V34 单模型空间独占去重提交包 | 7,175 框 / 0 冗余框对 / 均置信 0.800 | `work_dir/submissions/sovereign_v34_clean_from_scratch/submission_sovereign_v34_distinct_dedup.zip` | 本地工作站 + 网页工作台 (port 8088) |
+| **V34 Thr30** | V34 极限高召回提交包 ($\tau=0.30$) | **9,557 框** (NMS 0.60 去重) / 均置信 0.695 | `work_dir/submissions/sovereign_v34_clean_from_scratch/submission_sovereign_v34_thr30.zip` | 本地工作站 + 网页工作台 (port 8088) |
+| **V34 Thr10** | V34 超低阈值全域探针 ($\tau=0.10$) | **23,533 框** (NMS 0.60 去重) / 30,948 框 (原生) | `work_dir/submissions/sovereign_v34_clean_from_scratch/submission_sovereign_v34_thr10.zip` | 本地工作站 + 网页工作台 (port 8088) |
 | **V35** | 选项 B 架构破局：Co-ATSS + 入口空间排斥独占查询 | 50 轮从头生产训练 (进行中) | `outputs/sovereign_v35_distinct_queries_2560/best_stg2.pth` | 远端科研服务器 `ailab40` (GPU 1) |
-| **V36** | 选项 C 核心突破：P2 (Stride 4, 360x640) 释放 + P2-CSRG 跨尺度保峰引导 + SDQS 空间排斥独占查询 + Co-ATSS + DINOv3 | 50 轮从头生产训练 (进行中) | `outputs/sovereign_v36_p2_direct_injection_2560/best_stg2.pth` | 远端科研服务器 `ailab40` (GPU 0) |
+| **V36** | 选项 C 核心突破：P2 (Stride 4, 360x640) 释放 + P2-CSRG 跨尺度保峰引导 + Class-wise NMS + Co-ATSS + DINOv3 | **50 轮从头纯血完赛** (mAP 53.98% / **AP50 83.69% 历史最高**) / 7,260 框 (均置信 0.827) | `outputs/sovereign_v36_p2_direct_injection_50ep_fp32_v100/best_stg1.pth` | 远端 `ailab40` (GPU 1) + 本地工作台 (port 8088) |
 | **COCO底模** | 开源纯净 D-FINE 底模 | 零参赛数据污染 | `vendor/DEIMv2/ckpts/dfine_x_obj2coco.pth` | 本地与 `ailab40` 共享依赖 |
 | **Meta DINOv3** | ViT-Large 300M 教师权重 | 视觉大模型语义表征 | `vendor/DEIMv2/ckpts/dinov3/dinov3_vitl16_pretrain_lvd1689m-8aa4cbdd.pth` | 本地与 `ailab40` 共享依赖 |
 
@@ -1294,3 +1300,742 @@ _生成自 14 个训练模型 + 517 个 night 评测 log。_
   - 开源 COCO 底模 (`dfine_x_obj2coco.pth`) 纯血初始化，50 轮完整生产排程；
   - 纯 FP32 数值计算，单步 0.95s/iter，峰值显存 17.25GB / 32GB；
   - 与 GPU 1 上的 Sovereign V35 (PID 22975) 互不干扰、双轨并进。
+
+### 4. 2026-10-16 远端 3 卡 Blackwell (seeta8) 18 轮全满血实测总账
+- **算力节点**: `seeta8` (3 × NVIDIA RTX PRO 6000 Blackwell 96GB, 600W 满血, PyTorch DDP)；
+- **训练耗时**: 05:12 ~ 06:33，累计耗时 **1 小时 20 分 30 秒** (单步 ~3.05s, 单轮 ~3.8 分钟)；
+- **核心修复**:
+  1. 关停 SyncBatchNorm 避免 NCCL 双流死锁，单步耗时从 41s 骤降至 3.05s；
+  2. 修正 Co-ATSS 辅助回归损失在 `co_aux_head.py` 与 `deim_criterion.py` 中的双重乘权 Bug；
+  3. 彻底移除 SDQS 粗暴选点截断，原生后处理采用 `batched_nms(iou_thr=0.60)` 保证全集召回；
+- **验证集指标里程碑**:
+  - **峰值检查点**: **Epoch 16** (`outputs/sovereign_v36_p2_direct_injection_2560/best_stg2.pth`)；
+  - **$mAP (0.50:0.95)$**: **0.4557 (45.57%)** (从零冷启，单调大幅爬坡)；
+  - **$AP_{50}$**: **0.7043 (70.43%)** (大破 70% 标志性大关)；
+  - **$AP_{75}$**: **0.5002 (50.02%)** (严苛几何回归精度跨越 50% 门槛)；
+  - **微小目标精度 ($AP_{small}$)**: **0.3106 (31.06%)**，微小目标召回 **0.3853**；
+  - **全集极限召回 ($AR_{100}@0.50$)**: **0.8500 (85.00%)**；
+- **Phase 2 全量 1000 张测试集原生推断战报**:
+  - **推断耗时**: 100.8 秒 (100.8 ms/图, 9.92 FPS)；
+  - **提交包落地**: `work_dir/submissions/sovereign_v36/submission_sovereign_v36_native.zip` (6,280 框，均值置信度 0.686)；
+  - **官方合规校验**: `python3 scripts/eval/check_submission.py` 严格校验 **RESULT: PASS** (1000 图, 100% CRLF, 0 LF-only, 单图最多 24 框 $\le 100$)；
+  - **可视化工作台**: 自动编译并挂载至本地 `http://localhost:8088/` (ID: `v36_p2_direct`)，随时进行全量对比查验。
+
+### 5. 2026-10-17~18 实验室科研服务器 ailab40 (V100 32GB) 纯 FP32 50 轮全量生产重塑训练
+- **2026-10-19 生效配置与深度源裁定（仅限本节 ailab40 50 轮运行及 epoch 32 冻结件）**：生效配置为 `vendor/DEIMv2/configs/deimv2/sovereign_v36_p2_direct_injection_50ep_v100.yml`，SHA256 `3682c924e553b8cad4f2651d0777ae5552e40acd9f1b7142401363970e457a42` 与冻结审计源配置记录一致；训练/验证均使用 `dataset/train/depth`，`depth_read=raw16`、`depth_mode=raw`（默认）。远端共 2000 张：1851 张 I;16 PNG 按 `/19999` 读取，149 张 RGB JPEG 经通道均值后按 `/255` 读取；验证集分别为 184/16 张。接受此混合格式作为该权重的复现输入，性能影响未知。`..._2560.yml` 是另一历史配置，其 `depth_p0` 路径不代表本节运行；该副本已加针对本节复现的 deprecated 注记，不能据此改写独立的 seeta8 历史运行。
+- **内容核验范围**：远端 2000 张均有路径/模式/唯一值/零值比例/饱和比例统计；内容 SHA 核验覆盖验证集 200 张深度图（200/200 与本地一致），不宣称全体 2000 张已完成内容哈希对照。原始证据见 `work_dir/audits/v36_depth_provenance_20261019/remote_depth_audit.json`、`remote_depth_health.csv`、`remote_summary.json`。RGB JPEG 不能统一称为二值掩码，文件格式也不等于已验证公制标定。
+- **算力节点**: 实验室科研服务器 `ailab40` (Tesla V100 32GB, 稳定健康的 GPU 1, PID `44551`)；
+- **历史归因审计**: 前期 AMP 训练在 Volta SM_70 硬件下被迫启用 FP16，受限于 65,504 上限导致 P2 引导高频特征溢出，50 轮中有 41,801 步（92.9%）被 NaN-guard 跳过，导致置信度被压制在 0.213 以下；
+- **纯 FP32 决断与加固**: 彻底移除 `--use-amp`，全程启用 IEEE-754 标准单精度纯 FP32 计算，并在 `det_engine.py` 部署 `Grad-guard FP32` 梯度熔断保护，杜绝奇异反向梯度污染模型参数；
+- **实测指标单调持续攀升里程碑（截至 10-19 09:58，Epoch 44 战报）**:
+  - **综合指标**: **$mAP = 0.5398$ (53.98%)**（Epoch 39 刷新全线峰值，逼近 54% 关口！），**$AP_{50} = 0.8363$ (83.63%)**（Epoch 38 冲破 83.6% 高位），**$AP_{75} = 0.5933$ (59.33%)**（逼近 60% 严苛回归大关）；
+  - **核心类别 $AP_{50}$ 全面跨越 80%~100% 极值（几何吸附持续深化）**:
+    - `uav`（微小无人机）: **99.70% ~ 100.00%**（$\text{AP} = 0.6142$ 突破 61%！）微小目标捕获力彻底登顶；
+    - `ball`（球体）: **92.08%**（$\text{AP} = 0.6011$ 突破 60%！）
+    - `car`（汽车）: **91.58%**（$\text{AP} = 0.5422$）
+    - `garbage can`（垃圾桶）: **90.16%**（$\text{AP} = 0.6210$ 突破 62%！）
+    - `person`（行人）: **86.90%**（$\text{AP} = 0.5449$）
+    - `light`（交通灯）: **85.92%**（$\text{AP} = 0.4667$）
+    - `animal`（动物）: **85.03%**（$\text{AP} = 0.5625$）
+    - `tricycle`（三轮车）: **83.50%**（$\text{AP} = 0.5205$ 突破 52%！）
+    - `bicycle`（自行车）: **79.85%**（$\text{AP} = 0.5270$ 逼近 80%）
+    - `seat`（座椅）: **77.32%**（$\text{AP} = 0.5798$）
+    - `boat`（船只）: **67.33%**（$\text{AP} = 0.5243$ 从 62% 再次大幅拉升）
+    - `sign`（标识）: **56.67% ~ 60.56%**（$\text{AP} = 0.3544$）
+  - **全集极限召回率**: **$AR_{100}@0.50 = 0.9240$ (92.40%)**，极限召回创全项目新高；
+  - **大目标与微小目标精度**: 大目标 $AP_{large} = 0.6984$（逼近 70%）；微小目标在 Epoch 43 刷新峰值至 **$AP_{small} = 0.3198$ (31.98%)**；
+  - **训练总 Loss**: 从平原期 18.89 持续单调暴跌至 **14.76**（全项目从零训练历史最低点）；
+- **关键配置与运行状态**:
+  - 配置文件: `configs/deimv2/sovereign_v36_p2_direct_injection_50ep_v100.yml`；
+  - 启动脚本: `scripts/train/run_sovereign_v36_p2_direct_injection_v100.sh`；
+  - 巅峰检查点: `outputs/sovereign_v36_p2_direct_injection_50ep_fp32_v100/best_stg1.pth` (3.5GB，Epoch 39 峰值 mAP 53.98% / AP50 83.61% / AP75 59.33% / AR@100@0.50 92.70%)；
+  - 收官检查点: `outputs/sovereign_v36_p2_direct_injection_50ep_fp32_v100/last.pth` (Epoch 49 收官 mAP 53.87% / **AP50 83.69% 创全项目从头训练最高历史纪录**)；
+  - 训练全流程完赛状态: **50 轮全量纯血从零冷启动圆满收官**，累计耗时 **1 天 23 小时 23 分 52 秒**，全程 0 崩溃、0 NaN、0 坏权重，纯 FP32 稳态长跑 100% 验证成功；
+  - 守护机制: `Grad-guard FP32` 全周期精准拦截两次奇异梯度（Epoch 34 与 45），零污染；
+- **Phase 2 全量 1000 张测试集原生 2.5K 推理与官方合规核验战报**:
+  - **原生推理耗时**: 141.4 秒 (141.4 ms/图，7.07 FPS，物理分辨率 1440×2560 6 通道原生输入)；
+  - **原始检出真值**: 保存于 `work_dir/submissions/sovereign_v36/raw_detections_v36.pt` (8.3MB)；
+  - **提交包落地**:
+    - `work_dir/submissions/sovereign_v36/submission_sovereign_v36_native.zip` (7,260 框，均值置信度 0.827，精准呼应 F5 7,201 框与 7,086 目标先验)；
+    - `submission_sovereign_v36_balanced.zip` (7,499 框，均值置信度 0.816)；
+    - `submission_sovereign_v36_high_recall.zip` (7,905 框，均值置信度 0.795)；
+  - **官方合规校验**: `python3 scripts/eval/check_submission.py` 严格校验 **RESULT: PASS** (1000 图对应 1000 预测文件，23 张空文件，977 张 CRLF，0 LF-only，单图最大 29 框 $\le 100$)；
+  - **可视化工作台**: 自动编译并注册挂载至本地 `http://localhost:8088/` (ID: `v36_p2_native`，名称: `Sovereign V36 (P2-Direct 50Ep Native)`)，支持全量 1000 张图超分核验。
+
+
+
+## 二十二、2026-10-16 V34 连续帧特征与 token 诊断
+
+- **性质**：固定 EMA 权重的双帧推理探针与融合残差敏感性诊断；未训练、未修改生产模型或生成提交包。测试集无标签，不计算 AP、召回，不判定目标官方类别。
+- **输入**：`000008_002_00000406`、`000008_002_00000541`，原生产 6 通道预处理，1440×2560，FP16；ailab40 GPU 0。
+- **权重**：V34 `best_stg2.pth`，SHA-256 `d67501826c58d85e65fefb5be37e2a88e531a59ec3974c8333837f471cad4a43`；全部推理参数匹配，仅省略 eval 不调用的教师/Co-ATSS 训练辅助模块。
+- **复现**：同位置 light 候选精确复现缓存分数 `0.6675812006 / 0.2163424790`；查询索引 118/112 均来自 P5，未在查询入口丢失。
+- **实测定位**：编码器分数 `0.5038 / 0.3012` 已有差异；Decoder 5 读数分化到 `0.7273 / 0.2180`。该层 self-attention 残差与归一化后的跨帧 token 相似度从输入约 0.9477 降到 0.7188。最终差距主要来自分类线性头，LQE 差异贡献约 0.023 logit。
+- **融合诊断**：两处辅助融合残差减半得到 `0.6518 / 0.2117`，归零得到 `0.6332 / 0.1988`，未恢复低分帧。本例不支持辅助融合造成低分的猜测；这不是纯 IR 独立因果实验，不能泛化为全数据集结论。
+- **证据附件**：`outputs/analysis/v34_pair_feature_probe_20261016/`（实际特征/token/注意力采样、JSON、CSV、图）；解读见 `outputs/reports/v34_pair_token_audit_20261016.md`；日志 `logs/v34_pair_feature_probe_20261016.log`。
+
+
+
+## 二十三、2026-10-18 V36 四项机制无训练零样本验证集消融审计
+
+- **性质**：基于 `ailab40` 冻结的 V36 第 32 轮 `best_stg1.pth`（EMA 模块提取，原始权重 SHA256: `336af0f71c57fe0258646629dc6becb8ea9b72bd45f04d9439e45b642c66c663`，冻结副本 `outputs/checkpoints/v36_mechanism_20261018/v36_frozen.pth` SHA256: `a165b75843a01a135e5b320d5c23318201de7f44bd9aca2c77bf6f6cd2af2d48`），在 200 张有标签验证集（`instances_val.json`）上执行无训练、FP32、框架标准 `CocoDetectionMultiModal` / `CocoEvaluator` 评测。
+- **输入一致性保障**：四路共 800 个验证集输入文件（visible, infrared_aligned, train_lbg_ir, depth）SHA256 与 `ailab40` 远端逐一核对 100% 一致（见 `work_dir/audits/v36_mechanism_20261018/input_comparison.json` 与 `val_inputs.json`），评测严格启用 `destripe_ir: True`、`raw16` 深度读取及标准 Compose 变换。
+- **评测对照与实测数据**（来源 `work_dir/audits/v36_mechanism_20261018/zeroshot_scores.json`，运行耗时约 95~97s/200图）：
+  | 组别 | 机制配置 | mAP (0.50:0.95) | $AP_{50}$ | $AP_{75}$ | $AP_s$ | $AP_m$ | $AP_l$ |
+  |---|---|---|---|---|---|---|---|
+  | **Baseline** | 原生配置（保留历史 P3 35%+全局 65% 路由；原版 DOG；等权 Aux） | **0.51936** | 0.79614 | 0.54342 | **0.30968** | 0.44295 | 0.66983 |
+  | **Routing** | 仅开非对称分层路由（P3/P4 设定配额，未微调） | 0.51736 | 0.80125 | 0.53979 | 0.30787 | 0.44276 | 0.66954 |
+  | **Fallback** | 仅开平滑深度回退（原版 DOG 基础上启用 fallback 防御） | **0.52321** | 0.80813 | **0.54619** | 0.30546 | **0.44413** | **0.67682** |
+  | **Combined** | Fallback + Routing 组合（未微调） | 0.51918 | **0.81450** | 0.54351 | 0.30661 | 0.44300 | 0.67307 |
+- **客观审计结论**：
+  1. **Fallback 表现**：平滑深度回退在零微调下将 mAP 从 0.5194 提升至 0.5232（+0.385 pp），$AP_{50}$ 提升至 0.8081（+1.20 pp），大目标显著改善（$AP_l$ 从 0.6698 上升至 0.6768），但在小目标上略微回退（$AP_s$ 0.3097 降至 0.3055）；
+  2. **Routing 表现**：非对称路由在零训练下 mAP 略降至 0.5174（-0.20 pp），小目标微降至 0.3079，表明未经梯度微调直接改变候选分布存在流形不匹配；
+  3. **结论边界**：免训练零样本结果只能反映初始流形兼容性，不能直接作为微调后最终表现的定论，更不能替代带训练梯度的同起点微调消融。
+- **归档附件**：`work_dir/audits/v36_mechanism_20261018/{manifest.json, zeroshot_scores.json, val_inputs.json, input_comparison.json}`，日志 `logs/v36_ablation_zeroshot_20261018.log`。
+
+
+
+## 二十四、2026-10-19 ailab4 服务器端派生数据 5 组全量零样本复现与 5 组受控微调消融
+
+- **性质**：在实验室独立服务器 `ailab4`（Tesla P40 24GB，GPU 3，纯单卡无干扰环境）上，对 V36 四项核心机制（平滑深度回退 Fallback、非对称分层路由 Routing、衰减辅助分类损失 Aux、完整组合 Combined）执行全流程客观闭环验证：
+  1. 第一阶段：在 200 张有标签验证集（`instances_val.json`）上执行 5 组免训练零样本（Zero-Shot）严格评测；
+  2. 第二阶段：在同一冻结起始权重、同一 Seed 42、统一训练预算（2 轮，864×1536 训练分辨率，1440×2560 验证分辨率，accum_steps=4，effective batch=8）下，执行 5 组同起点受控微调消融。
+- **环境与数据严格一致性**：
+  - 远端全量派生数据：在 `ailab4` 服务器本地利用 16 核并发由原始训练图直接运行 `align_ir_pixel_pipeline_v3.py` 与 `prep_ir_localbg.py`，生成全部 2000 对 `infrared_aligned` (1.8GB) 与 `train_lbg_ir` (850MB)，经完整性审计 100% 对应无坏图；
+  - 权重真值：冻结权重 `v36_frozen.pth` (1.52GB) 远端实测 SHA256 为 `a165b75843a01a135e5b320d5c23318201de7f44bd9aca2c77bf6f6cd2af2d48`，与本地源哈希完全一致；
+  - 机制契约验证：`check_v36_ablation_contract.py` 自动化测试 100% 通过（PASS: remote DOG exact parity, fallback wiring/gradients, unique routing, classification-only loss gradients）。
+- **服务器端 5 组全量零样本实测数据**（来源 `work_dir/audits/v36_mechanism_pilot864_20261019/zeroshot_scores.json`，FP32，1440×2560）：
+  | 组别 | 机制配置 | mAP (0.50:0.95) | $AP_{50}$ | $AP_{75}$ | $AP_s$ | $AP_m$ | $AP_l$ | 评测耗时 |
+  |---|---|---|---|---|---|---|---|---|
+  | **Baseline** | 原版 DOG + 历史路由 (P3 35%+全局 65%) + 等权 Aux | 0.52003 | 0.79643 | 0.54402 | **0.30966** | 0.44332 | 0.66959 | 161.2s |
+  | **Routing** | 仅开非对称分层路由 (P3/P4 设定配额，未微调) | 0.51850 | 0.80247 | 0.54105 | 0.30665 | 0.44285 | 0.67118 | 131.3s |
+  | **Fallback** | 仅开平滑深度回退 (原版 DOG 上开启 fallback，未微调) | **0.52270** | 0.80778 | **0.54634** | 0.30572 | **0.44376** | **0.67583** | 110.2s |
+  | **Aux-Only** | 仅衰减辅助分类损失 (未微调推理阶段，数学等价于基线) | 0.52003 | 0.79643 | 0.54402 | 0.30966 | 0.44332 | 0.66959 | 110.0s |
+  | **Combined** | Fallback + Routing + Aux 完整组合 (未微调) | 0.51852 | **0.81600** | 0.54276 | 0.30642 | 0.44249 | 0.67357 | 108.8s |
+- **客观审计结论**：
+  1. **零样本不能代替训练**：Fallback 虽在 mAP（+0.27 pp）与 $AP_{50}$（+1.14 pp）上获得即时增益，但小目标精度均出现回退（$AP_s$ -0.39 pp）；Routing-Only 在未经微调时整体 mAP 略降（-0.15 pp），验证了未经训练适配直接强加分层配额会导致流形偏移；
+  2. **Combined 的高阈值特性**：Combined 在 $AP_{50}$ 上暴涨近 2 个百分点（从 0.7964 飙升至 0.8160），但 $AP_s$ 回退 0.32 pp，说明粗定位能力增强而精细尺度仍需自适应学习。
+- **5 组先导微调进展（同起点、同预算、同 Seed 42）**：
+  - 调度进程：主控 PID `37609`（Runner `37610`，训练子进程 `37762`）在 `ailab4` GPU 3 独占运行，各组配置自动隔离至 `work_dir/audits/v36_mechanism_pilot864_20261019/training/<variant>/`；
+  - 运行状态：Exp-0 (Baseline 继续微调对照) 率先开训，前反向计算与 AdamW 步进完全正常，步速平稳约 4.42s/it，显存占用稳定在 9.57 GiB (9566 MiB)，无 OOM、无 NaN、无跳步：
+    - Step 0: loss `21.9032` (tadl: 0.3514, bbox: 0.0523, giou: 0.2998, fgl: 1.8298, distill: 0.4095, co_cls: 0.3313, co_reg: 0.3840)
+    - Step 20: loss `25.0037` (avg 24.7529, lr: 1.3e-5, max mem: 9566 MiB)
+    - Step 40: loss `24.9263` (avg 24.8978, lr: 1.3e-5, eta: 1:04:54)
+    - 后续 4 组（Exp-1 Fallback、Exp-2 Routing、Exp-3 Aux-Only、Exp-4 Combined）将按依赖队列自动串行接续；
+  - 备用队列清理：`ailab40` 上原处于等待状态的队列脚本 PID `41010` 已核实身份并安全终止，`remote_queue_status.json` 状态更新为 `cancelled`，彻底杜绝双机重复微调风险；`ailab40` 主训练 PID `44551`（GPU 1）及其他卡任务完全未受干扰、持续运行中；
+  - 判定准则：后续评估将以 Exp-0 微调后最终检查点为真正基线，逐项比对各组在收敛损失、小目标 $AP_s$ 与综合 mAP 上的净增益，严谨检验机制自适应能力。
+- **归档附件**：`work_dir/audits/v36_mechanism_pilot864_20261019/{manifest.json, zeroshot_scores.json, val_inputs.json, *_predictions.json}`，训练日志落点 `ailab4:/home/adlab4/ssd3/addata/AIC_V36_ABLATION_20261018/logs/`。
+
+
+## 二十五、2026-10-19 V36 冻结 EMA 的统一口径检查点评测
+
+- **性质**：已有 epoch 32 冻结权重的无训练评测，不是新训练或机制收益。冻结文件 `outputs/checkpoints/v36_mechanism_20261018/v36_frozen.pth` SHA256 `a165b75843a01a135e5b320d5c23318201de7f44bd9aca2c77bf6f6cd2af2d48`，其 `model` 键是有溯源的 `ema.module` 导出；非训练头 strict=True 加载，蒸馏教师与 Co-ATSS 训练辅助头不参与推理。
+- **口径**：以 `v36_mechanism_20261018/baseline.yml` 为基准重新生成完整展开的 `outputs/reports/v27_v36_split_gate_eval_20261019_final/run_1.yml`；200 张官方老标验证图，1440×2560，FP32，关闭 matmul/cuDNN TF32、TTA 与内部 SAHI，统一框架 CocoEvaluator 和单模型类内 NMS（IoU 0.60，候选 300）。源配置、生成配置、checkpoint、engine 源文件与原始预测的 SHA 均记录在 alignment.json。
+- **双门职责**：训练/评测的 `(depth_folder, depth_read, depth_mode)` 不同则阻断；深度格式健康统计只告警。V36 两侧同为 `dataset/train/depth / raw16 / raw`，接受混合格式输入，因为训练配置即如此；性能影响未知。200 张验证深度图中 184 张 I;16、16 张 RGB JPEG，16 条高零值告警不阻断。800 个验证输入文件均通过既有 SHA 清单核验。远端 2000 张为格式统计覆盖范围，跨主机内容 SHA 对照仅覆盖 200 张验证深度图；remote CSV 的 200 个 SHA 非空字段不能外推为 2000 张全部对照。
+- **实测 COCO 指标**：mAP `0.5200238929`，AP50 `0.7964156836`，AP75 `0.5439925761`，AP_small `0.3096679406`，AP_medium `0.4433217506`，AP_large `0.6696189825`，AR100（IoU 0.50:0.95）`0.6350662200`，AR_s `0.3989499385`，AR_m `0.5589928479`，AR_l `0.7753751395`。该行可作为后续同口径消融的 before；与旧日志差值不解释为性能提升。
+- **执行与原始附件**：本地 RTX 5060 Ti，torch `2.13.0+cu130`；日志 `logs/v36_aligned_eval_20261019_final.log`；完整指标/警告/权重来源/运行信息 `outputs/reports/v27_v36_split_gate_eval_20261019_final/alignment.json`；原始预测 `run_1_predictions.json`（29379 条）；COCO 评测对象 `run_1_coco_eval.pth`；验证深度逐图统计 `depth_health.json` / `depth_health.csv`。前一轮已完成推理但报告因 NumPy 图像 ID 序列化失败，已修正并完整复跑，以本段 final 目录为准。
+- **当前完成度**：1/2 行完成。V27 在检查的本地目录及 59 个归档成员目录中未发现具名权重；文档记录位置为 `/root/autodl-tmp/AIC/vendor/DEIMv2/outputs/sovereign_v27_pure_unbiased_2048/best_stg2.pth`，本轮 seeta SSH 与此前 seeta8 SSH 均不可达，位置尚未现场证实。此外其配置的 `/dev/shm/aic_cache/depth_p0` 到统一输入源的对应关系未核实，不能仅按路径改名后宣称可比。检索范围与限制见 `outputs/reports/v27_checkpoint_search_20261019.json`。
+
+
+## 二十六、2026-10-19 V36 IR Stem 初始化顺序 CPU 契约诊断
+
+- **范围**：构造 `pretrained=False / pretrained_ir_stem=True` 的完整 V36 backbone，用仅含 backbone 的包装器调用真实 `BaseSolver.load_tuning_state()`；不运行 `_setup()`、不训练、不修改模型文件，`CUDA_VISIBLE_DEVICES=''` 且 `cuda_initialized=false`。COCO 底模为 `vendor/DEIMv2/ckpts/dfine_x_obj2coco.pth`，源键/权重哈希/加载日志/数值矩阵见报告。
+- **正确比较对象**：RGB 是 `rgb_net.stem.stem1.conv.weight`，形状 `[32,3,3,3]`；IR 是 `ir_stem.stem[0].weight`，形状 `[64,2,3,3]`。按迁移函数的 RGB 通道均值与 Laplacian 混合构造期望值，不能把两个原始张量直接比较。
+- **实测**：构造后 IR 与随机 RGB 的完整迁移结果逐元素相等（max/mean abs=0）；实际 `-t` 加载后 RGB 与 COCO 源对应权重逐元素相等，IR 前后逐元素不变，并仍与原随机 RGB 的迁移结果相等。IR 与加载后 RGB 的迁移结果不相等：max abs `0.6515729427`、mean abs `0.0877364352`。因此“IR 已迁移 COCO 预训练 RGB 滤波器”的表述不成立；尚无证据证明此初始化顺序造成 AP 损失，已训练 V36 权重也不由此被判无效。
+- **产物**：`scripts/diagnostics/check_v36_stem_initialization.py`；`outputs/reports/v36_stem_initialization_20261019/{initialization.json,stem_weights.pt,loader.log}`；主日志 `logs/v36_stem_initialization_20261019.log`。Step 1 诊断完成，未实施重新迁移或 P3 模型修复。
+- **后续对照口径**：本轮明确采用 V36 冻结 EMA 单边 before。V27 仅作历史参考，本口径下不参与对照，也不阻塞后续 V36 受控实验；原未完成行保留为可追溯状态。AR_s/m/l 已由既有 COCO 12 元数组补入报告，无需重评。
+- **解释边界**：一次跨设备重评差值只是观测差异，不能估计随机方差、建立固定噪声地板或直接宣称机制显著性；不能由 AP_s 与 AR_s 的差唯一识别定位、排序、分类或漏检来源。29379 条 / 200 图 = 146.895 候选框/图；与无标签测试提交 6.28 框/图比较跨数据集，且未证明提交与冻结件是同一权重，不能视作仅改变阈值的匹配对实验。提交召回仍无法从该比较直接得到。
+
+
+## 二十七、2026-10-19 V36 P3 捕获顺序修复与同权重前向回归
+
+- **改动**：仅调整 `vendor/DEIMv2/engine/backbone/hgnetv2_mm.py` 的 `HGNetv2MultiModal.forward`：将 P3 捕获及输出专用 prompt/trunk-bridge 叠加移至 DCN/IR 注入之后；prompt 不写回深层主干 `y`。配置、其余模型模块、stem 初始化与模型权重未改，不启动训练。AST 比较确认除该 forward 外无新增改动；修复前源码 SHA 与 baseline 的 source_sha256 一致。
+- **源码关联**：修复前 SHA `f4e9412c40ee42ac7cbbfeb8ca2616a2ee8f010960e6ad2e044de9f5c70b119b`，修复后 SHA `00f9a75f7691425e444059a29cea0629c6393a0896c8a1901db0c0db4b79dbb3`；原始源码快照、单项差异和 manifest 位于 `work_dir/audits/v36_p3_capture_fix_20261019/`。保留原 baseline 的历史源码指纹，不把修复后指纹回填成旧评测执行源码。
+- **9 项契约**：加载冻结 EMA 的 CPU FP32 合成输入回归：两种融合权重状态下 P2–P5 共 8 项逐元素相等；完整 DCDA/DOG/3D-Lift 的 stage-1 空间残差项通过，最大绝对误差 `1.49011611938e-08`，错误水平翻转负例被拒绝。测试比较固定的修复前 forward 与当前实际安装的修复后 forward，不是仅比较两个临时 candidate。
+- **真实 baseline 前向**：同一冻结权重、同一展开配置，验证图 ID `1`，输入 `[1, 6, 1440, 2560]`，FP32/TF32 关闭。四层 backbone 加最终 pred_logits/pred_boxes/pred_corners 共 7 项逐元素相等（所有 max_abs_diff=0），四路原始输入 SHA 均核验。其他 engine 源文件与 baseline 指纹逐一一致。范围仅一张真实图的整模型前向，不宣称重新评测 200 张 mAP。
+- **产物**：`scripts/diagnostics/check_v36_p3_capture_contract.py`；`outputs/reports/v36_p3_capture_installed_contract_20261019.json`；`logs/v36_p3_capture_installed_contract_20261019.log`。当前 V36 的 inject_stages=[2,3]、dcn_stages=[]、use_mixstyle=False 下回归通过，原 before 数值继续作为记录；不宣称启用 MixStyle 的训练路径也行为等价，捕获位置变更会使该路径的 P3 观察位置改变。
+- **诊断解释边界**：`diagnose_v36_error_sources.py` 的覆盖率是逐 GT、允许复用候选的 oracle 几何指标，不是 COCO 一对一匹配召回。其 rank 选择每 GT 最优 IoU 候选，然后在全图全部类别候选中排序，既不是同类别排名，也不是 AP 的跨图类内排序；靠前候选可能是其他 GT 的 TP。rank1 / rank<=3 / rank<=10 / rank>10 是互斥分桶（实际为 1 / 2–3 / 4–10 / >10），不能按累计比例读取。因此“近三成被更高分误检压住”尚未成立，7 个 oracle 混淆样本也不足以结项分类误差。small-tight +3pp 可作预设目标；一次通过或未通过不单独证明机制生效或失效，仍需匹配训练控制臂和重复。
+
+
+## 二十八、2026-10-19 Step 3 按 stage 迁移 CPU 预演与六臂实例冻结（未训练）
+
+- **当前状态**：`prepared_not_started`，未授权/未启动本计划的训练，未运行 GPU 前后向。完成三种拓扑 × seed 42/43 共 6 次完整模型 CPU 构造、迁移及导出，保留 DINOv3 蒸馏与 Co-ATSS 训练辅助头；全部未解析键为 0，CUDA 未初始化。它不是六次训练结果。
+- **工具**：`scripts/lib/injection_stage_migration.py` 的 `migrate_injection_stages()` / `load_migrated_state()`；单测 `scripts/diagnostics/check_injection_stage_migration.py`；准备/验证/显式运行入口 `scripts/diagnostics/prepare_v36_injection_stages.py`。按 stage 身份迁移全部索引模块：ir_proj、ir_align、occlusion_gate、coord_lift、ir_fuse、ir_res、bilateral_pool（本配置未启用最后一项），不按 ModuleList 下标盲拷贝。
+
+| 目标拓扑 | 保留已训练 stage | 全新 stage | 移除 stage | 未解析键 |
+|---|---|---|---|---|
+| [2,3] control | 2,3 | 无 | 无 | 0 |
+| [1,2] p3p4 | 2 | 1 | 3 | 0 |
+| [1,2,3] p3p4p5 | 2,3 | 1 | 无 | 0 |
+
+- **加载验收**：共有 stage 与所有非索引键的张量均逐元素保留；新 stage 1 的 55 个参数/缓冲键保留初值，ir_res 为零是合法状态。strict=False 的实际缺失键为新 stage 的 49 个键，另 6 个为 PyTorch 隐式补充的 BatchNorm 计数器；它们均按实际 BN 类型识别并逐张量核验未改写。意外键、形状/dtype 不符、来源索引越界、共有键缺失均拒绝。单测覆盖 3 拓扑、7 类模块及反例。两个失败的准备尝试仅为 BN 默认计数器核对问题，隔离在 `*_attempt1/2` 并标记 FAILED，不含训练结果，不作为有效冻结清单。
+- **初始化与 RNG**：同 seed 的两个新拓扑共用同一份新 stage-1 构造初值模板；共有参数均来自冻结 V36 EMA，保留 as-trained stem，不修复其历史初始化顺序。未来仅通过准备工具的显式 run 动作执行：完整导出初值 strict=True 加载后，重置 Python/NumPy/torch CPU/CUDA RNG，避免不同拓扑构造耗用随机数导致首轮数据顺序失配。禁止用直接 train.py 绕过此 RNG 重置入口。
+- **冻结预算**：8 轮 × 3 拓扑 × 2 seed（42/43）；训练和验证均 1440×2560。AdamW 默认 LR `1e-5`，各参数组 LR 原样冻结在 manifest 的 optimizer 中；flat_epoch=4、no_aug_epoch=2、warmup_iter=20、lr_gamma=0.5。训练 loader batch=8、accum_steps=8，为同一 loader batch 内 8 个 micro-batch=1，单进程有效 batch=8，不是 batch×accum。学生 AMP 关闭，冻结教师保持既有 FP16 autocast；验证 FP32、TF32/TTA 关闭。
+- **避免隐藏择优回滚**：dataset policy 在 epoch 6 关闭 RandomHorizontalFlip；collate.stop_epoch 统一设为 8，使 epoch 0–7 内不触发 DetSolver 自动 best_stg1 重载。主比较固定 final epoch 7 的 `checkpoint0007.pth` 内 EMA；逐轮曲线/最佳轮仅为次要描述，不事后挑主终点。此共同协议修订在训练前完成，未改初值张量。
+- **比较与解释**：每个新臂与同 seed、同预算微调后的 control 比较；报告两个 seed 的逐对差值、均值与样本标准差（ddof=1）。n=2 仅作筛选，不据此宣称显著性。small-tight +3pp 且 no_candidate 不上升为预设目标；未满足不等同机制未生效。结论只能是从 V36 warm-start 改拓扑后的适应收益，初始化历史也改变，不是纯拓扑消融。V27 仅历史参考、不阻塞。
+- **冻结清单**：`work_dir/audits/v36_injection_warmstart_20261019/manifest.json`，最终 SHA256 `6d17d9d7f31699033fe40ae2ba27fcf882e44d0f5321ca8c4403fe0b50e89e98`；6 份完整展开配置在 `vendor/DEIMv2/configs/deimv2/v36_injection_warmstart_20261019/`；6 份导出初值与逐次迁移报告在同名 audit bundle 内。统一原始 warm-start 为 `v36_frozen.pth`，SHA256 `a165b75843a01a135e5b320d5c23318201de7f44bd9aca2c77bf6f6cd2af2d48`。初值文件、stage1 模板、配置、源码/工具及训练/验证标注均记录 SHA；输入清单覆盖 1800 train + 200 val 共 8000 个四路文件，已全部核验，验证输入与已有 baseline 清单一致。
+- **范围限制与交接**：当前是本机路径的可审阅准备包；实际执行节点/路径迁移须在开跑前另行绑定并核验，不能只改路径后沿用旧 SHA。新拓扑目标 GPU 的显存、数值前后向与有限梯度尚未测试。使用同一 GPU 型号/软件栈执行六条。日志：`logs/v36_injection_migration_unit_20261019.log`、`logs/v36_injection_warmstart_prepare_20261019.log`、`logs/v36_injection_warmstart_verify_20261019.log`。
+- **诊断措辞**：`v36_precision_confusion_20261019` 的混淆表为验证集上的按 IoU 降序贪心匹配，非 COCO 的按分数匹配；868 个 unmatched FP 不可外推为无标签测试提交实际虚警率。当前类别内排名仍未输出 precision@rank，排名靠后本身也不足以证明被误检压分。
+
+
+## 二十九、2026-10-19 Step 3 GPU 前置门与节点核查（未训练）
+
+- **状态**：原六臂冻结 manifest SHA `6d17d9d7f31699033fe40ae2ba27fcf882e44d0f5321ca8c4403fe0b50e89e98` 未改；未启动六条训练，未执行 optimizer step，G1 GPU 前后向尚未执行，G3 最终环境尚未绑定。
+- **工具与 CPU 验收**：新增 `scripts/diagnostics/smoke_v36_injection_stages.py`，两个新拓扑各自通过冻结 manifest/engine/工具/配置/初值/标注与 8000 输入 SHA 核验、官方教师构造 strict=True、完整初值 strict=True。CPU 预检不是 GPU 冒烟；GPU 动作保留全部蒸馏与 Co-ATSS 分支，真实 1440×2560 micro-batch 前后向、有限梯度、峰值显存和环境信息检查，不做参数更新；拒绝向有其他计算进程的 GPU 添加负载。单图通过不保证全程训练或优化器状态的峰值。
+- **节点现场**：ailab40 两张 V100-SXM2-32GB 均有现有计算进程；ailab4 已通过认证，8 张 P40 均有计算进程、高利用率。本次未停止任何进程。seeta8 SSH 连接关闭。ailab4 已查 AIC2026_CLEAN/AIC2026_track1 内未发现本实验 DEIMv2 树或所需教师，已查 aic_dfine 环境无 torch；尚未部署/绑定该节点，不泛化为所有目录或环境均不可用。原始 GPU 快照存 logs，状态随时间变化。
+- **G2 节点实测**：ailab40 官方教师 SHA `8aa4cbddda325040fc78db2c272754af6ebe8ff2c55f6ec4f1964d8890f66035`，CPU 构造日志实际出现 Weights loaded successfully (strict=True)，CUDA 未初始化。torch 2.6.0+cu124、driver 530.41.03。该通过不能替代未来其他执行节点的检查。
+- **教师历史差异**：冻结 V36 EMA 包含教师权重，与官方文件存在微小逐元素差异，详细每键 max/mean 差写入最终 CPU 报告；不据此判为随机教师，也不擅自替换冻结初值。首轮额外 bitwise-equal 检查失败已保留，最终 G2 要求官方构造与完整 warm-start 均 strict=True；官方与 warm-start 的差异只记录，不阻断。差异产生原因未验证。
+- **比较边界补充**：参考是同 seed、同 8 轮预算训练后的 control，不是原 0.520024。两组对比不是严格正交因果效应：[2,3]→[1,2] 同时改变通道/参数规模与初始化历史；[1,2]→[1,2,3] 同时增加深层融合路径与参数。仍仅解释为对应 warm-start 拓扑适应收益。
+- **交接产物**：`outputs/reports/v36_smoke_gates_20261019/` 的 README.md、gates.json、两个 `*_cpu_final.json` 与执行源码快照；日志 `logs/v36_smoke_*_cpu_final_20261019.log`、`logs/v36_ailab40_teacher_strict_cpu_20261019.log`、`logs/v36_{ailab4,ailab40}_resources_20261019.log`。跨节点须独立部署、显式路径映射并核验内容 SHA，待可用 GPU 完成 G1/G2、绑定六条共同环境后再由用户决定开跑。
+
+## 三十、2026-10-19 Step 3 GPU 实测预算、micro-batch 杠杆否决与协议修订（未训练）
+
+- **性质**：单次 optimizer step 的实测，不是训练、不是收益评估。两臂各跑 8 次 micro-batch 前向+反向后执行一次 optimizer.step()，CUDA 同步计时，统计峰值显存与有限梯度。节点 ailab4 GPU3（Tesla P40 24GB，torch 2.1.0+cu121；其余 7 张卡均在其他计算中，未干扰）。
+- **实测（1440x2560，FP32 学生 + FP16 教师，micro 1 x accum 8）**：control [2,3] 步时 71.38 s、micro 均值 8.89 s、峰值 17.52 GiB、379.6 M 参数；p3p4 [1,2] 步时 69.91 s、micro 均值 8.71 s、峰值 18.66 GiB、375.0 M 参数。两臂非有限梯度均为 0。
+- **预算**：225 step/轮 x 约 70.6 s 约 4.41 h/轮，即 35.3 h/条；两条约 70.6 h，四条约 141.2 h，六条约 211.8 h。
+- **micro-batch 2 杠杆已否决**：[1,2] 臂在 micro 2 x accum 4 下 CUDA OOM（已分配 22.74 GiB 后仍差 338 MiB）。剩余显存不等于容得下翻倍激活，该假设被实测推翻，micro 保持 1。
+- **BN 冻结统计（实测）**：backbone 有 130 个 FrozenBatchNorm（freeze_norm 只作用于主干），另有 109 个普通 BatchNorm 在训练模式下更新统计，单步内 108~109 个的 running stats 变化。两臂一致，比较仍公平，但 BN 状态会从冻结检查点漂移。
+- **初值验证补齐**：不止 55 个 stage 键。两臂 carried stage 模块逐键 max_abs = 0.0（按 stage 身份映射）；[1,2] 的 55 个新 stage 键与 stage1_template_seed42.pth 逐键完全相等；其余 1864 个共有键 0 处差异。全模型实际初值已验证。
+- **表述边界（已修正）**：`[1,2]` 参数更少（375.0 M vs 379.6 M），但耗时只能表述为**接近、差异方向不稳定**，不能定为"更慢"。证据：第一轮 control 68.08 s vs p3p4 70.11 s（p3p4 更慢），第二轮 control 71.38 s vs p3p4 69.91 s（p3p4 更快），方向已反转；seed43 p3p4 76.03 s 属另一 seed 的单次读数，不构成同条件重复。stride 8 空间尺寸更大导致计算更重仍只是**未验证的解释**。n = 1 step/次，无验证集、无 AP。
+- **协议修订（已落盘）**：新建 work_dir/audits/v36_injection_warmstart_20261019/manifest_amendment_eval_final_epoch.json，记录父清单 SHA 6d17d9d7f31699033fe40ae2ba27fcf882e44d0f5321ca8c4403fe0b50e89e98；变更项为只验最终 epoch 7、取消逐轮验证，其余（8 轮 / flat 4 / no_aug 2 / stop_epoch 8 / 有效批 8 / 两 seed / 筛选判据）保持不变。旧清单保留未改。
+- **未做**：未启动任何长跑；seed43_p3p4 仍在传输；[1,2,3] 臂未做迁移初值核验。
+
+## 三十一、2026-10-19 四条短跑迁移至 ailab40 V100（已开跑）
+
+- **动机**：ailab4 P40 上实测完整 optimizer step 69.91 s，四条预计 145 h；ailab40 V100-SXM2-32GB 实测 **19.33 s**（3.6x），四条降至 **约 39 h**（单条 9.7 h，seed42 对跑完约 19.4 h 即可读第一组对比）。
+- **隔离方式**：不改 AIC_V29 共享树（GPU0 有他人任务）。另建 `AIC_V36_INJ_20261019`，用硬链接复制框架，再以 `rm` + 覆盖方式换入我们的 `engine/` 与 `train.py`；实测 `hgnetv2_mm.py 00f9a75f…`、`dfine_decoder.py 0aec7f81…` 与 P40 那套逐字节一致。AIC_V29 原树 `hgnetv2_mm.py` 仍为 `8d05a29a…`，未被改动。
+- **预热权重**：3 GB 传输实测仅 ~0.5 MB/s（需 100 分钟），改为在目标机用本地冻结权重 + 2.4 MB stage-1 模板**原地重建**；以 1974 张量的顺序无关规范摘要验证，seed42 `b8b735d1…`、seed43 `e61b9c47…` 与本地一致。
+- **一次事故**：重建后仍在写入的 rsync 覆盖了 `seed42_p3p4.pth`（摘要漂移到 `77b01896…`）；已停掉传输并重建，复验为 `b8b735d1…`，与认证值一致后方才使用。
+- **V100 预检**：完整 8x micro-batch 累积 + optimizer step 19.33 s、峰值 18.65/32 GiB、非有限梯度 0；carried stage 全 `0.0`、新 stage 55/55 等于模板、其余 1864 共有键 0 差异。
+- **数据变体边界**：两机 `visible` 与 `depth` 逐文件摘要相同，但 `infrared_aligned` 与 `train_lbg_ir` 不同；本轮四条在 ailab40 的 IR 数据上**内部一致**，其绝对指标**不可与 ailab4 上测得的 0.520024 直接对照**。ailab4 上已跑约 2.5 h 的第一条已停止，避免混用两种 IR 变体。
+- **状态**：V100 GPU1 已起跑，顺序 seed42_control → seed42_p3p4 → seed43_control → seed43_p3p4，`seed: 42` 已在运行时日志确认。
+
+
+## 三十二、2026-10-20 确认缺陷的代码修正与三处记录更正
+
+- **改动范围**：本地仓库 `vendor/DEIMv2`。**正在跑的四条短跑用的是 ailab40 上的隔离副本 `$NR/vendor_DEIMv2`，仍是修正前代码**；在四条跑完前不得把本次改动拷入该副本，否则 seed43 两臂会与 seed42 两臂代码不同。
+- **`dfine_decoder.py`**：`use_sdqs` / `use_distinct_queries` 改为 fail-closed（置 True 直接 `NotImplementedError`）。这两个开关从初始化到前向从未被读取，此前静默无效。`_select_topk` 的 else 分支原写死 `topk*0.35`，现改用配置里的 `p3_quota_ratio`。
+- **`hybrid_encoder.py`**：`use_p2_guidance` 为真但骨干返回层数不等于 `len(in_channels)+1` 时，原先只是 `p2_feat=None` 静默跳过，现改为抛 `ValueError`。
+- **`hgnetv2_mm.py`**：depth 通道加归一化契约检查（超出 `[-1,1]` 告警一次，指向前提 `Normalize(mean=std=0.5)`；用告警而非抛错，因为既有契约测试喂 `randn`）；`get_align_loss` 计算完清空 `cache_*`，避免跳过 DCDA 的步复用上一步计算图。
+- **配置注释与开关**：`sovereign_v36_p2_direct_injection_{2560,50ep_v100}.yml` 头部的 `use_sdqs=True` 与 `P2-CSRG+` 宣称改为如实描述（SDQS 未实现；P2 实为 v10 双池化）；`sovereign_v35_distinct_queries_2560.yml` 同样更正；`sovereign_v25/v26` 的 `use_sdqs: True` 改为 `False`（否则现在会直接报错）。
+- **回归**：骨干可构造与前向；三条守卫按预期触发；**既有 P3 捕获契约测试仍 PASS**（8 项逐层全等 + stage-1 空间残差契约）。
+- **历史含义（重要）**：V25/V26 配置曾以为 SDQS 生效，V27 又"废除 SDQS"。既然它从未接线，**V26→V27 在这一点上是空操作**，历史记录中相关因果表述需要据此重读。
+- **p3 配额的实测含义**：截至本次修正，所有运行（含冻结的 V36 与正在跑的四条）使用的一直是**硬编码 0.35**；配置里写的 `0.3` 从未生效。修正后配置值才会生效，因此今后用旧配置重跑会得到 30% 而非 35%。
+
+### 三处记录更正
+
+- **逐轮验证其实一直在跑**：此前协议修订写"只验最终 epoch、取消逐轮验证"，但框架每个 epoch 都调用 `evaluate`，实测 65 min 训练 + 约 3 min 验证。更正为：逐轮验证保留（副作用是白得 per-epoch AP 曲线），主比较仍取 epoch 7 的 EMA。每条因此多约 25 min。
+- **"四路 800 文件与 ailab40 一致"不成立**：实测 `dataset/train/visible` 与 `dataset/train/depth` 两机逐文件摘要相同、验证集也相同；但 `infrared_aligned` 与 `train_lbg_ir` 两机不同，且 ailab4 本地就存在两份互不相同的 aligned IR。结论：**跨节点绝对指标不可对照**，本轮四条只在 ailab40 内部可比。
+- **stem 初始化缺陷定性**：已实测确认（构造后 IR stem 拷的是加载前随机 RGB，加载后不再迁移；`ir vs 加载后RGB` max_abs 0.6516，两个"应相等"比对为 0）。处置按 Q2 决定：**不改代码，记为 V36-as-trained 属性**，修复版只作为独立消融臂排队，不混入当前对比。
+
+
+## 三十三、2026-10-21 V34/V35/V36 统一验证集 light 阈值与漏检诊断
+
+- **性质/协议**：只评测已有 EMA 检查点，不训练、不使用测试集标注、不修改生产阈值。ailab40 空闲 V100 GPU1，独立 `/home/ailab40/aic_light_val_20261021/framework_v3` 源码快照；200 张固定验证图（1523 GT，light 135 GT/48 图，其中 small 仅 6 GT）。共同 ailab40 四路输入、raw16/raw 深度、IR 去条纹、1440×2560、FP32、TF32/TTA 关闭。输入 800 文件 SHA 清单已保存；本地用于案例展示的 200 张 RGB 逐文件 SHA 与远端一致。只能同轮三版内部比较，不能直接与其他节点输入变体的旧绝对分数相减。
+- **加载/类别事实**：EMA 推理参数 strict=True，仅省略教师/Co-ATSS 训练辅助键。V34 `best_stg2.pth` SHA `d67501826c58d85e65fefb5be37e2a88e531a59ec3974c8333837f471cad4a43`；V35、V36 检查点完整 SHA 见 manifest。直接由检查点张量确认 Decoder 类数为 **80/80/12**，并按原尺寸加载，未切片或重置权重。历史 SDQS 无效开关显式设 False，P3 配额显式保留实际历史 0.35。这里不建立 SDQS 或 P2 的因果结论。
+- **候选/评测**：每版每图导出 PostProcessor 分数 Top-300 类别/查询对，合计每版 60000 条，未作分数截断；这不是 raw logits，也不是无限候选。离线比较 raw、统一 class-wise NMS 0.60、NMS+全图 cap100；COCO 标准 mAP 使用每类每图 maxDets=100。V34/V35 各有 4 条类别 ID>=12 的候选分数>=0.10，NMS+cap100 后阈值0.48各有1条。标准 COCO 忽略这些类别，另在 operational precision 分母计为超范围 FP，不掩盖其输出契约问题。
+
+| 模型 | mAP | AP50 | AP75 | AP_small | light AP |
+|---|---:|---:|---:|---:|---:|
+| V34 | 0.546725 | 0.821492 | 0.577320 | 0.344552 | 0.497702 |
+| V35 | 0.538448 | 0.822524 | 0.577519 | 0.346064 | 0.504950 |
+| V36 | 0.539828 | 0.836132 | 0.593275 | 0.314198 | 0.475457 |
+
+- **light 阈值收益/代价（IoU0.50、共同 NMS0.60）**：0.48→0.30：V34 TP116→120、FP20→57、F1 0.856089→0.769231；V35 TP113→119、FP26→57、F1 0.824818→0.765273；V36 TP114→118、FP24→50、F1 0.835165→0.778878。全图 cap100 不改变上述 light 工作点计数。完整扫描 0.10–0.60、步长0.01，附 IoU0.75 与全类别结果；不据同一验证集的最优工作点宣称独立泛化收益。
+- **V34 light 漏检分桶（0.48）**：135 GT 中116已匹配、15有低分同类 IoU>=0.5 合格候选、4定位偏移（最大同类IoU在[0.1,0.5)）；该阈值下无额外匹配/NMS损失桶，无同类候选缺失桶。降至0.30实际只救回其中4个，而非15个全部。检测状态使用COCO按分数一对一匹配；候选几何审查不能冒充一对一召回或机制因果解释。
+- **行动结论**：不全局降至0.30，不依据测试帧九灯高分宣称V36整体light领先。先确认80类输出到12类任务的推理契约，审阅低分与定位失败案例，再决定针对性训练对照；本轮未启动训练、未改标签或模型。
+- **审计/复跑**：`work_dir/audits/light_val_20261021/results_v3/{manifest.json,val_inputs.json,V*_predictions.json,V*.yml}` 保存输入、源码、配置、权重哈希与覆盖200图证据；原始计算脚本精确快照在 `source/analyze_light_val_thresholds.py`，与summary中script SHA一致。`outputs/reports/light_val_20261021/` 为派生报告、CSV、逐GT JSON、阈值曲线与失败案例；图表裁剪/选例的展示调整另记presentation_provenance，不改指标。日志 `logs/light_val_{export_formal,analysis,analysis_selftest}_20261021.log`。三项对抗校验通过：重复FP、单候选不能匹配双GT、crowd忽略。首次12类强制加载失败与缺少NUC依赖的试跑均保留排错记录，未进入正式结果。
+
+### 2026-10-21 补充更正：V35 已有加载时类别头适配
+
+- `scripts/inference/infer_test2_v35_distinct_queries.py:334` 已对80行score_head切到前12行，并对81行denoising_class_embed切到前13行。原始checkpoint保留80类并不代表该推理修复失效。
+- 本轮导出器未复用上述适配，而按原始80类结构strict加载。因此三十三节的V35指标限定为原始80类推理口径，不能直接代表工作台既有V35 Native管线；三版具有共同输入与后处理，但V35没有复现其生产加载适配。前述“先修80类输出契约”的笼统建议撤回为“核对并复用已有适配，然后重评V35”。
+- score head切到12类可能改变encoder选点，不能通过仅在最终预测中删除类别ID>=12等价实现。此补充未更改原始数值，也未启动重评。
+
+
+## 三十四、2026-10-21 对话对账：四条注入短跑完成与原机制任务边界
+
+- **本次性质**：只读对话/产物整理及远端日志核验，没有启动训练或重新推理。2026-10-21 08:54（Asia/Shanghai）现场读取 ailab40 `/home/ailab40/hejianzhong/AIC_V36_INJ_20261019/logs/runner_4runs.log` 及四条 `training/<run>/log.txt`；runner 于 07:11:49 输出 `ALL_FOUR_DONE`。四条各含 epoch 0–7，且 `checkpoint0007.pth`、`last.pth` 在盘。文件存在不替代独立重载验收。
+- **主比较**：训练内逐轮 EMA 验证的 final epoch 7；1440×2560、同节点隔离副本、8 轮 warm-start；不把 best epoch 换成主终点。原四条代码保留历史硬编码 P3 35% 配额；不能以今天本地已接线的 30% 配置冒充原运行。
+
+| Seed | 拓扑 | mAP | AP50 | AP75 | AP_small |
+|---|---|---:|---:|---:|---:|
+| 42 | [2,3] | 0.506883059 | 0.803710940 | 0.524964507 | 0.301452196 |
+| 42 | [1,2] | 0.498594855 | 0.808009722 | 0.530959336 | 0.301994951 |
+| 43 | [2,3] | 0.503937892 | 0.796478213 | 0.521150893 | 0.289810622 |
+| 43 | [1,2] | 0.509281185 | 0.799153243 | 0.543127784 | 0.300496173 |
+
+- **两 seed 平均配对差（[1,2]−[2,3]）**：mAP −0.1472pp、AP50 +0.3487pp、AP75 +1.3986pp、AP_small +0.5614pp。mAP 两 seed 方向相反，不能宣布整体改进。n=2、8轮、加载后 RNG 未按原计划重置、普通 BN 更新及初始化历史改变均限制结论；不是纯位置因果消融。
+- **尚未完成**：四条最终权重的独立重载评测、对应候选导出与 small-tight/no_candidate 配对分桶；`AP_small +0.56pp` 不能代替预设的 `small-tight +3pp` 指标。三拓扑×两seed是准备范围，实际仅两拓扑×两seed完成；[1,2,3]未完成执行节点初值验收或训练。
+- **原任务欠账**：DOG Fallback、查询分层配额 Routing、阶梯分类 Aux Loss 的原生分辨率同预算完整训练验证仍未闭环；本节四条是 backbone 融合注入位置，不能替代 decoder 查询配额实验。
+- **旧 pilot 收尾补记（历史工具输出，非本轮复跑）**：2026-10-19 Codex原始对话 `01a15149-4cda-79f3-aa37-73722d84d77a` 的工具输出源行1325/1396确认五组均有epoch1结果：baseline 0.469534603、routing 0.479725827、fallback 0.466236487、aux_only 0.470806711、combined 0.470121563。仅864×1536训练、两轮、单seed方向筛查；manifest明确 `effective_training_batch: 2`，`accum_steps` 是batch内拆分，不能把旧§二十四的“effective batch8”继续当执行事实。教师构造缺文件告警不能单独证明完整warm-start后仍为随机教师。
+- **可复核附件**：`outputs/reports/aic_conversation_review_20261021/remote_snapshot.json`（远端完整COCO数组、日志SHA、checkpoint大小、GPU/进程快照），`pilot_historical_tool_evidence.json`（历史工具原文与源行），`inventory.json`、`conversation_index.md`（按对话分类覆盖）。本轮未对大权重重新计算SHA或反序列化，不宣称独立复现。
+- **当前现场**：ailab40无匹配train.py/runner_4runs进程，GPU1显存5MiB/利用率0%；这是本次快照，不外推其他节点或所有Agent状态。
+
+
+### 2026-10-21 A02 独立重载与配对分桶验收（尚未全部收尾）
+
+- 四份固定 final epoch7 EMA 独立重载已完成，原历史硬配额35%源码、1440×2560 FP32、cuDNN/TF32/TTA关闭、Top300后NMS0.60无阈值。seed42 Control/P3P4 mAP分别0.499604295/0.498051111；seed43分别0.504056673/0.509814496。这是独立重载成绩，不覆盖上表训练内日志值。
+- 相对训练末轮日志 mAP 差分别为 -0.727876/-0.054374/+0.011878/+0.053331pp；关闭cuDNN未解释Control42主要分差，历史成绩精确复现仍未通过。Control42原生test-only实际复核尚待完成。
+- Codex独立核对本地同步标注和八份候选SHA、各200图和12类覆盖，复用既有分析器验算1523 GT（small178）。post-NMS主口径small-tight seed42为66→67（+0.561798pp），seed43为67→67（0pp）；small no_candidate分别16→16/17→16，总体分别36→39/39→38。small-tight差值均值+0.280899pp、样本标准差0.397251pp。两个seed及均值均未满足预设small-tight≥+3pp且no_candidate不升；不可用AP75或pre-NMS诊断替代。
+- 原始预测、配置、COCO缓存、完整日志、输入清单、权重及源码哈希见 `work_dir/audits/v36_injection_acceptance_20261021/attempt2/`；当前engine源码快照全部匹配评测manifest，但不自动证明训练历史未变化。配对转移表见 `outputs/reports/v36_injection_acceptance_20261021/codex_recomputed/`，验收与限制见同目录 `CODEX_REVIEW.md`。
+- Gemini headless命令权限自动拒绝，账户auto模式不可用，未跳过权限或改权限配置。原生复核因此待续接；暂不进入A01、V35或新训练。既有RNG、BN及warm-start局限继续保留。
+
+
+### 2026-10-21 A02 原生复核状态更正
+
+- 后续SSH现场发现原生Control42复核实际于今天11:00完成，之前遗漏独立目录而误写“尚待执行”；该状态撤回。已回收 invocation.json、native.log、eval.pth，确认原生-r加载final epoch7及EMA，未出现strict=False回退，200图完成，train.py SHA与保存源码一致。没有重复启动评测或训练。
+- 从原始precision缓存计算原生mAP=0.49960389938605687，仍比训练内日志低0.727915954pp；与独立导出器attempt2差约-0.00003958pp。两者recall数组完全相同，precision/scores有差异，不能称逐元素一致。原生复核支持该checkpoint重载约49.96%的结果，未解释历史50.69%分差；来源历史与分差原因仍保持未解决。
+- 证据：`work_dir/audits/v36_injection_acceptance_20261021/native_control42/`，数值核对见 `codex_cache_comparison.json`。Gemini权限故障不再阻塞已完成原生结果核验。small-tight预设不通过的结论不变。
+
+
+### 2026-10-21 A01 原三机制 pilot 最终对账（远端原始日志现场核验）
+
+五组退出码均为0；各有epoch0/1原始COCO数组，配置SHA均与旧manifest吻合。以下为训练内EMA评测，未独立重载pilot最终权重。固定末轮epoch1，不用各组最佳轮替换主比较。
+
+| 组 | 末轮mAP | AP_small | AP75 | 相对Control mAP差(pp) | AP_small差(pp) | AP75差(pp) | 最佳mAP(epoch) |
+|---|---:|---:|---:|---:|---:|---:|---|
+| baseline | 0.469534603 | 0.312849761 | 0.514123128 | +0.000000 | +0.000000 | +0.000000 | 0.472494818 (0) |
+| routing | 0.479725827 | 0.312066048 | 0.506529558 | +1.019122 | -0.078371 | -0.759357 | 0.483357885 (0) |
+| fallback | 0.466236487 | 0.309502464 | 0.473871027 | -0.329812 | -0.334730 | -4.025210 | 0.475267502 (0) |
+| aux_only | 0.470806711 | 0.306570833 | 0.498642957 | +0.127211 | -0.627893 | -1.548017 | 0.470806711 (1) |
+| combined | 0.470121563 | 0.321427134 | 0.460728850 | +0.058696 | +0.857737 | -5.339428 | 0.478247453 (0) |
+
+- 结论：Routing末轮mAP +1.019122pp，但AP_small -0.078371pp、AP75 -0.759357pp；Aux和Combined也有指标代价，不能判定三机制全面有效。五组中四组最佳mAP在epoch0，只有Aux在epoch1；两轮不支持收敛结论。
+- 口径：单seed42，864×1536训练/1440×2560验证，有效batch2，fresh optimizer/EMA，共同epoch32 EMA起点SHA a165b75843a01a135e5b320d5c23318201de7f44bd9aca2c77bf6f6cd2af2d48。旧“effective batch8”错误描述继续撤回，batch内micro拆分不扩大有效batch。
+- 机制身份：Control保留历史P3 35%+全局补齐；Routing为P3/P4配额，不是backbone注入位置；Fallback为DOG残差调制回退；Aux仅TADL辅助分类减权，非Co-ATSS整体减权。组合收益不可归因单机制。
+- 现场证据：`work_dir/audits/v36_mechanism_review_20261021/`保存五份训练log.txt、退出状态、配置和完整控制台日志，summary.json保留逐轮完整COCO数组及log SHA；训练源码未本轮重复封存、未重读大权重，不宣称完整历史复现。
+- 下一步协议已整理在 `outputs/reports/v36_mechanism_review_20261021_protocol.md`；只准备原生分辨率同预算对照，没有启动新训练，原三机制完整训练仍未完成。
+
+
+### 2026-10-21 A04 V35 既有加载适配补评完成
+
+- 使用原冻结light-val framework_v3、同一V35 best_stg2.pth的epoch17 EMA，权重SHA `341f79b07b60128f0683ec93cafb43d130a791e8b41474400c493aba7cdf5835`。只复用生产脚本已有score head 80→12和embedding81→13切片，共15个键；其余推理参数strict=True，24个教师/Co-ATSS训练键明确列出省略。不是新模型修复或训练。
+- 原始80类与适配12类在同一200图/800输入、FP32、TF32关闭、1440×2560、无TTA下配对推理。标注/输入/全部框架与预处理helper SHA与原light-val manifest匹配；原始80类预测SHA逐字节复现旧V35导出。后端保持原light-val cuDNN设置，不混入A02的cuDNN对照；仅复现生产加载适配，不声称完整生产测试管线等价。
+
+| 加载口径 | mAP | AP_small | AP75 | light AP |
+|---|---:|---:|---:|---:|
+| 原始80类 | 0.538447598 | 0.346064437 | 0.577519030 | 0.504950089 |
+| 既有12类适配 | 0.538395218 | 0.346067635 | 0.577517109 | 0.504997269 |
+| 80类推理后仅删超范围类 | 0.538447598 | 0.346064437 | 0.577519030 | 0.504950089 |
+
+- 上表统一NMS0.60、标准COCO maxDets100/类/图，非全图cap100；全图cap100另存。适配相对原始mAP差-0.005238pp，数值很接近但不严格相同，不能称为稳定收益或显著退化。
+- 选点直接记录_select_topk返回锚点logit：25/200图集合改变，总计替换69/60000个token；27/200图顺序改变。说明加载时切片与末端删类不等价，不依据最终检测框猜测encoder选点。
+- light阈值0.48均为TP113/FP26/FN22，0.30均为TP119/FP57/FN16；降低阈值只净增6 TP并增加31 FP，F1从0.824818降至0.765273。复用已有适配没有改变此次阈值诊断结论，不修改生产阈值，不把同一验证集阈值扫描当独立泛化。
+- 原始预测、查询选点、15键适配/严格加载记录、输入与源码哈希及重放源文件见 `work_dir/audits/v35_adapted_val_20261021/`。51档扫描、GT诊断及报告见 `outputs/reports/v35_adapted_val_20261021/`；日志 `logs/v35_adapted_pair_20261021.log`、`logs/v35_adapted_val_analysis_20261021.log`。既有三个COCO对抗匹配检查通过，未运行训练或optimizer步骤。
+
+### 2026-10-21 本地代码review与新改动排序
+
+- 已静态审查模型/训练相关WIP，封存99份相关源码/配置与tracked diff（不包含权重；工作台UI未做完整审查）。当前源码不能冒充历史执行源码，尤其非routing查询配额当前读取配置30%而历史硬编码35%。
+- 待处理：V37零初始化gamma经ReLU无梯度（CPU标量autograd验证）；训练器NaN/Inf后继续跳步/清buffer不符合异常即停协议；SECL实际为单前向score-IoU监督；抗混叠模块在stride2采样后模糊。均是代码事实/实现边界，不是新性能结果。报告 `outputs/reports/aic_code_review_and_next_change_20261021.md`，源码/哈希/结构化findings在 `work_dir/audits/aic_code_review_20261021/`。
+- 下一项新结构候选排序：先stem初始化时机，其次深度语义，V37组合后置。stem应从相同COCO起点做仅改复制时机的对照，不能覆盖已训练V36的IR stem冒充初始化消融。先满足fail-closed和来源门禁；A01完整训练仍欠账，本次没有启动训练或实施新模型改动。
+
+
+### 2026-10-21 用户纠正优先级：先固定通用修复后的纯净基准
+
+- 已创建完全展开的 `configs/deimv2/aic_clean_baseline_v1.yml`，保持既有V36家族骨架，12类/FP32/历史P3配额35%，未验证新增分支均关闭。修复stem加载顺序、教师模式/权重固定、YAML隔离、CLI seed覆盖、Co-ATSS分类/回归owner一致、异常即停、优化器与RNG严格恢复、单一LR调度及验证后原子保存final/last/best。旧模型权重和远端历史运行副本未改。
+- 验收：14/14 CPU功能检查（无真实模型训练或实际参数更新）；ailab40 GPU1独立副本核验1800train+200val共8000输入的内容SHA；官方COCO与教师SHA固定；1582推理状态键从磁盘strict重载，RGB JPEG深度image1与16位深度image17的logits/boxes前向最大差均0。
+- 性质严格限定为代码/配置/来源/功能验收，未开始新训练，不产生新mAP。未训练 `initial_inference_state.pth` 只是加载fixture，不能冒充已训练基准或用于完整训练resume。JPEG深度的公制语义仍未验证，本次保留输入并记录混合格式，不擅自换数据。
+- 唯一工程说明及未确定改进项清单：`docs/02_collaboration_and_specs/CLEAN_BASELINE.md`；原始验收、输入/源码/初值哈希、状态在 `work_dir/audits/aic_clean_baseline_v1_20261021/`，最终以 `acceptance_final/report.json` 为准。前版stage/pilot/补评成绩不迁移为新基准成绩；A02历史分差及A01完整训练欠账仍保留。
+
+
+### 2026-10-21 逐图独立检测约束下的12臂结构敏感性筛查
+
+已完成12组×200张固定验证图推理，无训练、无跨图状态、无测试集或提交。使用历史V36 epoch39 EMA作为诊断代理，**不是尚未训练的纯净基准v1的成绩**。同源输入/标注/框架/权重均绑定SHA，对照预测SHA精确复现既有结果。分类NMS0.60，标准COCO AP；逐目标TP以IoU0.50和既有阈值0.48匹配。
+
+## 主要发现
+
+1. **微小平移会触发实际置信度崩落。** 原图mAP53.983%，全通道右移1px并逆变换坐标后52.022%，AP75从59.327%降至54.917%。1368个远离边界的目标中，原TP1153，平移后1158，但原TP丢19、另恢复24；净TP增加掩盖了逐目标不稳定。17个目标仍有IoU≥0.5候选，但GT类最高分跌穿0.48；这项oracle计数不等于检测TP。
+2. **查询选点只能解释一部分。** 1px平移每图平均保留247.77/300个原选点；锁定原选点使mAP回升到52.723%，仍低于原图。原19个内部TP损失只救回2个，并新损7个；4px损失41个救回10个，另新损12个。不能据此断言topK是唯一原因，也不能部署锁定原图选点。
+3. **直接削弱交互不成立。** 第5层注意力输出减半mAP52.681%；仅保留query自身注意力39.996%。减半在0.48阈值light TP114→116，但FP24→27、AP降低；不能挑局部TP作为有效改进。
+4. **P3配额35%→50%在这批图没有改变覆盖。** 原本P3实际选入203–300/300个，quota是最低额而非固定比例。200张候选集合全部相同，65张顺序改变，AP仅浮点尾差；不支持继续盲调这两个下限。
+5. **直接减弱融合不成立。** ir_res残差减半mAP53.476%，归零52.036%，light AP亦降低。IR单独偏移4px时mAP53.831%、light AP47.904%，是小幅混合变化；不支持将本次单像素崩落简单归因于IR对齐，也不能推广为模态无价值。
+
+## 核验过的严重个例
+
+image191/GT1471（boat，内部目标）：原GT类最佳有效分0.946559→右移1px的0.021972；最大几何IoU0.977675→0.977278；固定选点仍仅0.019338，均未检测。image170/GT1296（garbage can）：0.928808→0.062626，最大几何IoU0.977798→0.979675。image2/GT9（light）：0.790299→0.014981，最大几何IoU0.537765→0.529970。已用原始PostProcessor预测独立核对这些GT类分数，不是仅依赖NPZ计算。最大IoU与最佳有效分类分数允许来自不同query。
+
+## 改进项排序与边界
+
+优先研究**采样/平移稳定性与分类logit稳定性**：先定位平移前后从backbone、encoder到decoder各层首次放大的位置，再决定是否做采样前抗混叠或仅训练期的平移一致性监督。后二者尚未实施、没有收益结论；一致性监督应防止“稳定地输出低分”，始终同时验AP/TP/FP、正负样本与原图表现。推理仍逐图独立，无时间记忆。
+
+本轮不把P3配额50%、减弱第5层注意力或减弱融合写进纯净基准；也不把诊断结果当作训练后的消融结论。深度语义、模态质量自适应与小目标细节仍是未确定项，需要各自同起点训练对照；本轮未启动训练。历史A02来源/复现欠账继续保留。
+
+
+完整12臂AP/AP75/AP-small/light TP/FP表如下（历史V36代理，不是纯净v1训练结果）：
+
+| Arm | mAP % | AP75 % | AP-small % | light AP % | light TP/FP @ .48 |
+|---|---:|---:|---:|---:|---|
+| BASELINE | 53.983 | 59.327 | 31.420 | 47.546 | 114/24 |
+| SHIFT_X1 | 52.022 | 54.917 | 30.731 | 46.359 | 114/22 |
+| SHIFT_X4 | 52.765 | 54.228 | 30.373 | 46.248 | 115/17 |
+| SHIFT_Y1 | 53.194 | 55.927 | 31.555 | 46.926 | 116/23 |
+| SHIFT_X1_LOCKED | 52.723 | 55.625 | 30.884 | 47.572 | 114/23 |
+| SHIFT_X4_LOCKED | 53.339 | 56.975 | 30.406 | 47.385 | 117/17 |
+| SA5_SELF_ONLY | 39.996 | 43.337 | 26.682 | 35.272 | 39/13 |
+| SA5_HALF | 52.681 | 57.310 | 31.463 | 47.008 | 116/27 |
+| P3_50 | 53.983 | 59.327 | 31.420 | 47.546 | 114/24 |
+| FUSION_HALF | 53.476 | 56.540 | 31.052 | 46.608 | 114/22 |
+| FUSION_ZERO | 52.036 | 55.186 | 30.384 | 44.971 | 111/20 |
+| IR_SHIFT_X4 | 53.831 | 58.909 | 31.490 | 47.904 | 115/24 |
+
+
+证据与重放：`outputs/reports/single_image_stability_20261021/README.md`，`work_dir/audits/single_image_stability_20261021/`；运行日志`logs/single_image_stability_{export,analysis}_20261021.log`。无新训练，纯净v1保持不变。
+
+
+### 2026-10-21 微小平移逐层定位：19个丢检目标与225个同图稳定目标
+
+**已完成：当前主要排查区域缩小到Decoder第2–3层的cross-attention/gateway与FFN路径；不能认定唯一故障层，也不能据此直接替换模块。** 无训练、无跨图状态，未改纯净基准v1源码/配置。
+
+## 数据与门禁
+
+从此前200图筛查中，预先固定右移1px后丢检的全部19个内部目标（各来自一张图），并保留同图225个两臂均检测到的内部目标作为描述性对照。这是按症状选出的样本，不是独立留出验证集，不能把其分布推广为全体验证集。历史V36 epoch39 EMA、同一冻结框架和输入；原图、右移1px、右移1px锁定原选点共57次前向。57/57最终logits、逆变换boxes和token IDs与上一轮NPZ逐值相等，hook没有改变最终预测；6层中间score/LQE重建也与最终层输出逐值一致。
+
+主干stem/stages、融合残差、backbone输出、encoder输出和enc_output按GT内7×7采样并补偿平移；decoder保留全部query的逐层分类原始logit、LQE修正、几何框，同时区分最佳目标候选路径与同token路径，避免简单按query排序比较。固定最终head的中间特征读数只是未校准诊断，不当作中间检测成绩。
+
+## 得到的定位
+
+- 上游有差异，尚无“在主干已经完全不认识”的证据：丢检组RGB stem对齐ROI余弦中位0.9927，输出阶段最低0.9814；encoder输出0.9892/0.9927/0.9969，enc_memory为0.9956/0.9944/0.9957。这些是特征相似性描述，不能证明采样无问题，也不能跨不同通道空间直接相减为因果贡献。
+- Decoder2出现明显放大：丢检组最终候选路径在该层self-attention+norm1后中位余弦0.994，cross-attention/gateway后0.934、FFN后0.812；同图稳定目标对应为0.998、0.981、0.968。锁定选点后丢检组同token路径仍为0.994→0.955→0.888，下一层FFN后0.916；未锁定且token仍存在的15例为0.996→0.968→0.936。路径变换不能全归于topK换位。
+- 各层GT类最佳有效分差（原图减平移，中位）为0.0315、0.1993、0.1468、0.2139、0.3168、0.3242；锁定选点后为0.0392、0.1942、0.1295、0.2241、0.2585、0.2854。19例中首次差≥0.20分别有2例在第1层、7例在第2层、后续3例、另7例未达此差；并非19例都同层起病。早层无合格IoU框时score记0，必须结合逐GT几何轨迹解读。
+- 最终层丢检组raw endpoint类logit差中位1.3008，LQE差中位0.0050；不是对所有个例做统一归因，但提示框质量修正不是本批主要放大项。
+
+## 严重个例核对
+
+- boat，image191/GT1471：原图各层GT类最佳有效分0.589/0.517/0.818/0.908/0.936/0.947；右移1px为0.505/0.178/0.106/0.026/0.053/0.022。第2层已分化，后续持续放大。最终原始分类logit约2.70对-3.97，差约6.67；LQE约0.176对0.172，差不足0.005。最终最佳候选的query序号不同，同token路径及locked臂单列，不能用序号变化替代原因。
+- garbage can，image170/GT1296：第2层最佳有效分0.561对0.508，尚接近；第3层变为0.700对0.021，故不能只研究第2层。locked臂第3层也仅0.031。
+- light，image2/GT9：第1层已为0.461对0.067，属于更早出现的个例；不能把统一“第2层故障”写成结论。该物体部分逐层IoU接近0.5，需保留定位门槛影响。
+
+## 对改进方向的影响
+
+下一项应优先做Decoder2/3内cross-attention采样、gateway和FFN的局部隔离，而不是直接削弱第5层self-attention。先查它们的哪一段使分类方向发生变化；本轮是观测定位，尚未做激活替换或重训，不能宣称因果已闭环。
+
+采样前抗混叠保留为候选：上游小变化可以被下游放大，现有高余弦并未排除混叠；但当前证据不足以直接把主干全部换掉。训练期单图平移一致性也保留，须约束已定位的分类/采样路径并检查原图AP和正负样本，防止只让低分更稳定。两者均未实现、未训练、没有有效性结论。推理始终逐图独立。
+
+
+原始来源/轨迹/精确前向检查：`work_dir/audits/layer_translation_trace_20261021/`；完整报告与重放：`outputs/reports/layer_translation_trace_20261021/README.md`。
+
+
+### 2026-10-21 Decoder2/3局部激活替换：从观测进入干预
+
+冻结V36权重，对先前19个症状图/325个非crowd GT运行18臂（3个对照+15个替换）；3个对照57次前向精确复现前轮。所有替换臂以SHIFT_X1_LOCKED为对照，在全部300个相同token上替换单一激活，不用GT选择query。它们依赖原图oracle内部激活，不能部署、不能作为单图推理或比赛成绩。无训练。
+
+| Arm | TP | FP | Original 19 losses rescued | 225 stable controls lost | TP gained/lost vs locked |
+|---|---:|---:|---:|---:|---|
+| BASELINE | 266 | 93 | 19 | 0 | 18/8 |
+| SHIFT_X1 | 255 | 96 | 0 | 0 | 2/3 |
+| SHIFT_X1_LOCKED | 256 | 94 | 2 | 0 | 0/0 |
+| D2_REF | 252 | 90 | 4 | 3 | 2/6 |
+| D2_OFFSETS | 256 | 93 | 3 | 0 | 1/1 |
+| D2_WEIGHTS | 257 | 92 | 2 | 0 | 1/0 |
+| D2_CROSS | 255 | 87 | 4 | 0 | 2/3 |
+| D2_GATE | 258 | 92 | 7 | 0 | 7/5 |
+| D2_FFN_DELTA | 259 | 91 | 7 | 0 | 7/4 |
+| D2_OUTPUT | 258 | 92 | 7 | 0 | 7/5 |
+| D3_REF | 253 | 94 | 1 | 2 | 1/4 |
+| D3_OFFSETS | 258 | 90 | 4 | 0 | 2/0 |
+| D3_WEIGHTS | 256 | 94 | 3 | 0 | 1/1 |
+| D3_CROSS | 256 | 97 | 5 | 2 | 5/5 |
+| D3_GATE | 257 | 97 | 9 | 2 | 7/6 |
+| D3_FFN_DELTA | 257 | 97 | 9 | 2 | 7/6 |
+| D3_OUTPUT | 257 | 97 | 9 | 2 | 7/6 |
+| D23_FFN_DELTA | 257 | 91 | 9 | 2 | 8/7 |
+
+REF: replace cross-attention box reference points with baseline +1px; OFFSETS: baseline raw learned offsets; WEIGHTS: baseline attention logits; CROSS: baseline cross-attention output; GATE: baseline gateway output; FFN_DELTA: baseline linear2 branch before residual/norm; OUTPUT: baseline whole decoder-block output. D23 patches both layers. All 300 corresponding queries are patched, with no annotation-directed selection. Direct baseline activation replacement is a diagnostic counterfactual and cannot become a production or competition inference protocol.
+
+锁定对照已救回2/19。Decoder2 FFN分支替换救回7/19，225稳定目标无新增丢失，整体TP256→259/FP94→91；同时存在其他GT损失（相对locked新增TP7、丢TP4）。Decoder3 FFN救回9/19但稳定目标丢2，整体TP257/FP97。只替换reference/offset/attention-weight救回较少。证据支持继续试局部FFN稳定性，但不是“FFN唯一根因”；完整表与原始数据见`outputs/reports/decoder_interventions_20261021/`和`work_dir/audits/decoder_interventions_20261021/`。随后预先固定仅D2或D3 FFN分支scale0.90，运行全200图原图/平移配对推理，不把激活替换当作生产方案。
+
+
+### 2026-10-21 局部干预后的FFN90全验证：未改善平移稳定性
+
+**结论：局部激活替换确认部分分类损失能在Decoder2/3内部被挽回，但直接把FFN分支减弱10%不能修复平移置信度崩落，本次两个可部署候选均不纳入纯净基准。** 不是发现症状后停止；本轮完成18臂局部替换和6臂全200图独立推理验证。没有训练，纯净v1源码/配置仍保持124文件哈希一致。
+
+## 已执行的局部替换
+
+19张症状图/325非crowd GT，18臂，57次对照前向精确复现。以固定选点的平移图为对照（已救回原19丢检中的2个）。替换Decoder2 FFN residual分支可救回7/19，225稳定目标没有丢失，TP256→259、FP94→91，但其他目标仍有损失；替换Decoder3 FFN分支救回9/19、稳定目标丢2，TP257/FP97。单换reference、offset、attention weights救回较少。依赖原图oracle激活，全部300对应token一起替换，仅为诊断，不是可部署方案，也未证明FFN是唯一根因。完整表在`outputs/reports/decoder_interventions_20261021/report.md`，原始数据`work_dir/audits/decoder_interventions_20261021/raw/`。
+
+## 已执行的独立单图候选
+
+事先固定仅Decoder2或Decoder3 linear2输出乘0.90（FFN residual分支，位于加残差和norm3之前）。保留所有训练权重、原生选点和其余算子；每个forward只使用自身输入，没有锁定选点、原图激活、TTA或时间状态。三种模型设置各评原图和+1px右移图，共6×200次前向。400次基线输出与旧NPZ逐值相等，原图预测JSON SHA精确复现旧评测。AP用NMS0.60/标准COCO；TP用IoU0.50、score0.48一对一匹配。该验证集也用于选择候选，结果为探索性而非留出集证据。
+
+| 设置 | 原图mAP% | +1px mAP% | 内部目标原图TP | 平移丢失/恢复 | 框仍在但分数跌穿0.48 |
+|---|---:|---:|---:|---|---:|
+| 原模型 | 53.983 | 52.022 | 1153 | 19/24 | 17 |
+| D2 FFN×0.90 | 54.023 | 52.009 | 1153 | 19/23 | 17 |
+| D3 FFN×0.90 | 53.990 | 52.020 | 1153 | 19/24 | 17 |
+
+内部目标共1368。三种设置light TP/FP在原图均114/24、平移均114/22；smallAP/AP75完整数值见report.md。不得将D2原图mAP+0.040个百分点包装为稳定性收益。boat GT1471平移后分数：原模型0.021972、D2×0.90为0.016462、D3×0.90为0.022018；均未检测。garbage-can/light严重个例也未救回。全部GT/分桶原始明细保留，配对TP计数恒等式通过；6臂输出shape/有限值通过，既有COCO对抗匹配3测试通过。
+
+## 当前决定与下一项的具体范围
+
+撤下“轻微减弱FFN就能稳定”的候选，不将其并入纯净基准，也不继续无依据扫衰减系数。局部替换给出的是特征方向/内容可以恢复的证据，简单缩小整个残差分支并未恢复所需分类方向。
+
+下一项保留为**训练期平移配对的分类一致性对照**，而非继续调推理系数：训练时原图/+1px配对、用GT类别和框匹配对应query而非按排序硬配；对齐坐标后约束正样本分类logit，并保留原检测监督及负样本约束，检查是否仅稳定低分。推理仍单图一次forward，不引入新推理分支。必须从修好后的纯净v1相同COCO初值/seed/预算分别训练Control与一致性臂，评价原图AP/AP75/APsmall、lightTP/FP和固定平移配对GT丢失数；历史V36权重不能冒充修好基准的训练结果。该训练尚未启动，遵守此前暂不开新训练的约束；本轮没有有效性结论。
+
+
+原始证据：`work_dir/audits/translation_ffn_damping_20261021/`；完整指标与重放：`outputs/reports/translation_ffn_damping_20261021/README.md`。
+
+
+### 2026-10-21 查询谱系与类别分数反证：正例置信度方向失稳
+
+2026-10-21。复用历史V36全候选/逐层数据，无新GPU训练、无时间状态、无基准修改。
+
+## 查询谱系复算
+
+19个内部平移丢检目标、同图225个稳定目标（按前轮症状选样，不是留出集）。NPZ/逐GT来源SHA校验通过。free/locked两臂均比较同来源token，并单列最终同类最佳IoU≥0.5候选，不能把换query比较冒充同一query。
+
+- free臂19个中原最佳token丢4个；保留的15个中11个token最终仍有IoU≥0.5框。其正确类encoder分数下降中位0.02989，最终下降中位0.29250。stable对照214个保留token：encoder下降中位0.00970、最终0.03387。同token比较有存活选择偏差；locked全19个的encoder下降0.03162、最终0.30978，为补充而非独立重复。
+- 19个中，最终最佳有效候选的argmax类别没有一个变为别类；但17个目标所有有效候选的全类别最高分都低于0.48。两个未覆盖该条件的丢检需保留几何/后处理解释，不能把19个都归为纯分类问题。
+- 原/平移各自最终最佳有效候选的12类logit共同偏移（12类差值中位）在丢检组中位-0.11438，GT类相对该共同偏移额外下降中位-1.39761；稳定组分别-0.01214、-0.00893。这是logit向量描述性分解，可能比较不同query，不是权重方向因果分解。
+- boat GT1471有49→43个IoU≥0.5框：正确类别仍boat，分数0.946559→0.021972。正确类logit2.8743→-3.7958，而最高错误类-3.1626→-4.5100。其共同偏移-1.0171，GT类额外-5.6529。并非“所有候选没框”或“认成别类”。garbage-can GT1296有效框36→40，GT分数0.928808→0.062626，类别仍正确；light GT9有效框29→13，仍light，0.790299→0.014981。
+
+## 已完成全200图评分反证
+
+离线把每query12类sigmoid替换为12类softmax，再从全300×12中重新取300并用同一NMS0.60/COCO匹配（坐标、logits、权重均未变）。只用于判断相对类别信息是否仍可用。softmax没有background通道，会迫使每query选择某类；不能当校准后的检测概率，0.48是同数值不同标度，不是等效precision比较。
+
+| 图像设置 | Sigmoid mAP% | Softmax mAP% | Sigmoid TP/FP@.48 | Softmax TP/FP@.48 | light AP sigmoid→softmax% |
+|---|---:|---:|---|---|---|
+| 原图 | 53.983 | 54.191 | 1280/367 | 1378/1464 | 47.546→46.588 |
+| 右移1px | 52.022 | 52.311 | 1287/365 | 1381/1519 | 46.359→45.470 |
+
+softmax救回19个原内部丢检中的14个（不是全部；boat/garbage-can/light严重个例仍未救回），但整体误检激增、light AP下降、固定阈值F1恶化。不能只汇报微小mAP变化或救回数；本轮不采用该评分修改，也没有调阈值。结果指向类别相对信息与绝对前景置信度需分别分析，而非全靠一个后处理替换。
+
+## 源码线索与下一步范围
+
+现场读取冻结framework_v3的DEIMCriterion.loss_labels_tadl：匹配query的GT类target=1，其余query/类别target=0；q只调正例权重，不给低IoU设低target上限；配置use_ndsl=False、cls_neg_scale全1。故不能将此次分差归因于MAL/VFL的IoU目标上限，也不能归因于NDSL额外抑制。另一方面，多个几何合格但未匹配query可受负类监督，是需要进一步验证的**正负匹配/去重与分类稳定性耦合**假设。当前推理框/分类并不证明当年的实际训练匹配，尚不能把该假设写成根因。
+
+下一项只读诊断可重放原生matcher，分别比较原图/平移在各decoder层的正例query身份、几何质量与分类代价，区分“正例候选换位”和“同一候选前景分数变弱”。若做未来训练一致性，应先保证正例对应（GT匹配+坐标补偿），不要把所有重叠低分query一律推高，否则可能破坏去重。尚未进行新训练，纯净v1无新增性能结论。
+
+## 文件
+
+`outputs/reports/translation_query_lineage_20261021/{summary.json,query_lineages.json}`；评分反证`outputs/reports/translation_class_margin_20261021/summary.json`。脚本`scripts/analysis/analyze_translation_query_lineage.py`、`scripts/analysis/probe_translation_class_margin.py`；日志`logs/translation_{query_lineage,class_margin}_20261021.log`。所有结果追溯至已封存的原始200图NPZ及19图逐层NPZ。
+
+
+### 2026-10-21 多项原因验证与light个例解释修正
+
+**结论：19例不是单一故障。4例明显受IoU0.5边界影响，13例即使IoU放宽至0.3仍缺乏高分同类框。匹配换位、采样坐标、LayerNorm数值异常均不足以统一解释；确定观测到Decoder2/3学到的通道缩放对特征差异的放大。** 未修改基准、未训练。以下全部使用冻结V36和19个症状选样图，不是独立留出或纯净v1训练结果。
+
+## 一、修正纯分类解释：扫描IoU门槛
+
+对19个内部丢检GT，扫描IoU0.1/0.3/0.4/0.45/0.48/0.49/0.5/0.51/0.55/0.75，检查全300个query全部12类logits，不受PostProcessor候选截断影响。
+
+- 4个GT（9、720、1100、1491）存在score≥0.48、IoU在0.45–0.50之间的同类框。
+- light/image2/GT9的高分同类框score0.801993、IoU0.488477。此前“IoU≥0.5候选最高分0.014981”数值正确，但用它讲成“模型对这个light整体不认识/纯分类分数崩落”不充分；该严重个例解释撤回，改为定位门槛近失配。不能用这一例证明纯分类崩落。
+- 13个GT即使IoU放宽至0.30，仍无正确类score≥0.48；其中10个放宽到0.10也没有。另2例需结合逐GT轨迹，不强行分入上述两组。
+- boat/image191/GT1471和garbage-can/image170/GT1296仍属于强分类低分例：后者即使IoU门槛0.10最高同类分仍0.062626，前者为0.037777（IoU≥0.30为0.021972），因此不能全归因于IoU0.5硬边界。
+
+## 二、重放原生匹配与损失梯度：不支持换位是统一根因
+
+直接调用冻结framework_v3的HungarianMatcher与DEIMCriterion.loss_labels_tadl，325GT×3图像变体×6层×3匹配成本设置=17550条匹配记录。原生成本、仅几何成本、仅分类成本均保留。梯度只对保存的CPU logits计算，没有加载可训练模型/优化器或更新权重，**不是历史训练匹配的重建**。
+
+- 最终层原生匹配token变化：丢检10/19，稳定103/225；锁定选点后9/19对101/225。匹配换位在稳定组也普遍，不能单凭出现换位证明丢检原因。
+- 真正低分13例中最终匹配token只变5个，即8个仍匹配同一来源token，进一步排除“全部都是正例query换位”。4个IoU近失配例均换位，需要与定位变化一起解释。
+- free臂原最佳token仍在的15例中，原生TADL对其GT类logit提高方向9例、抑制方向6例；locked为10/19提高、9/19抑制。稳定组也大量有负方向。部分已低分负例梯度仅约1e-8至1e-7，不能用微小的当前导数推断当年训练导致了严重崩分。
+- 配置TADL正例target1、q只调正例权重、NDSL关闭已现场核对。因此MAL/VFL的IoU目标上限与NDSL额外重复框抑制不是本配置的解释。训练分配与去重耦合仍是待验证假设，不升级成根因。
+
+## 三、注意力采样核11臂：单修坐标/权重/值不能闭环
+
+3个对照+Decoder2/3各4种核内替换，共11×19次前向。每臂锁定原选点以排除topK差异；对照57次精确复现。CORE_LOC替换最终采样坐标并补偿+1px；CORE_WEIGHTS替换softmax注意力权重；CORE_VALUE用原图memory值、采样坐标减去1px；CORE_ALL三项均换原图。全部依赖原图oracle激活，只能诊断，不能部署。CORE_ALL的全部19张最终logits/boxes与前轮CROSS输出替换逐值相等，正对照通过。
+
+| 臂 | TP | FP | 原19例救回 | 稳定225例丢失 |
+|---|---:|---:|---:|---:|
+| 固定选点平移对照 | 256 | 94 | 2 | 0 |
+| D2 坐标 | 255 | 92 | 4 | 2 |
+| D2 权重 | 257 | 92 | 2 | 0 |
+| D2 特征值 | 255 | 95 | 2 | 0 |
+| D2 全核 | 255 | 87 | 4 | 0 |
+| D3 坐标 | 255 | 94 | 2 | 2 |
+| D3 权重 | 256 | 94 | 3 | 0 |
+| D3 特征值 | 256 | 98 | 5 | 1 |
+| D3 全核 | 256 | 97 | 5 | 2 |
+
+不同目标受不同分支影响；换全核也未普遍恢复。不能据此把主要修复简化为“偏移太大”，也不能用局部救回数忽视整体TP/FP和副作用。完整逐GT救回/新增损失见sampling_core_interventions报告。
+
+## 四、FFN/归一化及仿射分解：确定一个放大环节，排除数值病因
+
+两次有效审计各57次前向与旧NPZ逐值一致，按原图最终最佳query来源token跟踪。free臂只比较仍在的15个丢检token，locked覆盖全部19。对比同图225个稳定目标。仿射分解用原生gamma/beta/eps计算，与原输出allclose核验，未改模型。
+
+- 无残差整体趋零：Decoder2/3残差范数占gateway与FFN分支范数之和的中位约0.984；不是两个大向量几乎完全抵消。
+- 无epsilon主导：所审计目标/三臂/六层的最小variance/eps超过52876；激活最大绝对值约1070，远低于65504截断。没有证据归因为方差接近0、溢出或clamp。
+- **Decoder2 locked丢检组**：标准化前（去均值）余弦中位0.9837→乘gamma后0.9216→加beta后0.8879；稳定对照0.9916→0.9600→0.9481。丢检组相对输入扰动中位0.1954、输出扰动0.4782；稳定组0.1425→0.3204。
+- **Decoder3 locked丢检组**：0.9871→0.9302→0.9159；稳定组0.9906→0.9514→0.9437。相对扰动丢检0.1605→0.4834、稳定0.1368→0.3445。
+- 表明学到的通道重加权参与了已观察到的方向差异放大；不是eps数值异常，也不证明gamma/beta错误。LayerNorm可正确执行并放大语义敏感方向。当前不是替换归一化/改gamma可提升AP的证明，且不能单靠不同层余弦比较下因果结论。
+
+## 当前证据支持的拆分和下一步
+
+至少分开定位近失配与真正低分两类；匹配swap、坐标漂移不作为统一根因。对强低分13例，继续聚焦Decoder2/3的通道方向/分类投影，而不是盲目调阈值、FFN幅度或LayerNorm epsilon。可以做通道/分类投影的局部干预与同数量控制通道比较，检查是否专门恢复GT分类方向，并在稳定GT上验副作用；训练期一致性仍需与独立Control比较，未授权启动新训练。没有宣称根因已全部闭环或模型已修复。
+
+## 源码与现场
+
+`work_dir/audits/translation_cause_tests_20261021/`含matcher、sampling、normalization、affine原始记录/来源SHA，协议、脚本快照与失败归一化attempt1现场。attempt1因变量名NameError停止，无有效结果；明确修复后新目录attempt2完成。后续affine是新增测量而非用重跑掩盖错误。所有实验使用GPU1或CPU，未占GPU0。
+
+`outputs/reports/translation_cause_validation_20261021/iou_boundary_{summary,gt}.json`为门槛复核；`outputs/reports/sampling_core_interventions_20261021/`为采样核评分。原生匹配与仿射统计summary.json在相应audit子目录。脚本`scripts/diagnostics/{replay_translation_matcher,intervene_translation_sampling_core,audit_translation_ffn_normalization,audit_translation_norm_affine}.py`，`scripts/analysis/audit_translation_iou_boundary.py`。所有结果属于固定历史V36的验证集诊断，不是纯净v1成绩。
+
+
+### 2026-10-21 平移低分后续：反事实与直接修改严格分开
+
+
+全部为冻结历史 V36（EMA epoch39）诊断，不是未训练的纯净v1成绩。固定200张有标注验证图、同一输入/后处理，独立逐图前向；反事实恢复使用原图激活，不能部署。阈值0.48，类内NMS0.60，实际TP按COCO IoU0.50一对一匹配；oracle分数另列。19症状选样图含325GT、225个原图/+1x均检出的稳定对照；13强低分与4近IoU边界分开。
+
+## 已否定的直接修改
+
+完整200图在RGB第一处stride2卷积前加3×3二项低通，原图mAP53.983→52.240，原图AP75 59.327→55.182；+1x mAP52.022→52.595不足以弥补原图损失。在1128个双方原图共同TP上，平移丢检11→20。RGB+IR低通原图mAP52.287，平移52.281，共同TP平移丢检11→18。虽然boat1471平移分数约0.022→0.940，不能据此称抗混叠有效，两个修改均不采用。
+
+第二层norm3绝对gamma最大的16/256通道仅将gamma减弱10%，原图mAP53.945，平移52.013，原19丢检/13强低分均无恢复；共同原图1150TP平移仍丢19。此修改不采用。此前FFN残差减弱10%也未改变原19丢检；所有修改均未进入基准。
+
+## 通道反事实不等于可用改法
+
+仅恢复第二层16通道：DELTA16或GAMMA16找回原19中的6例、强13中的5例，225稳定对照无损失；一次随机16通道为4/3，稳定损失3。第三层GAMMA16找回8/6但稳定损失7。随机仅一个种子，不构成显著性或gamma独有因果证明。上述使用原图激活，不能与10%gamma减弱混为同一干预。
+
+## 平移1–8像素扫描
+
+19图17臂，不改模型不锁query。boat1471向右0..8像素分数约0.947/0.022/0.029/0.947/0.945/0.943/0.947/0.944/0.948；向下始终约0.94–0.95。garbage1296向右也强烈非单调，向下1..8均检出。强13中向右1..8至少一次恢复11例，向下至少一次恢复13例。样本按+1x丢检选出，不能由此声称全体水平方向更差；也未证明固定步长周期。
+
+light GT9的IoU>=0.3分数始终高，但高分框IoU在0.486–0.506间跨阈值；继续按定位边界案例处理，不重新归入纯分类崩落。曲线：../translation_phases_20261021/phase_curves.png。
+
+## 编码器多尺度反事实
+
+固定原图300 token IDs，仅恢复原图编码器尺度：P3找回强13中的7例，P4为3，P5为5；稳定对照分别损失1/0/1。P3+P4找回10，P3+P5找回9，P4+P5找回7。全尺度不插值恢复原图logits与native boxes逐元素完全一致；后续统一逆映射1像素导致近IoU边界计数可不同，不能称其分类未恢复。
+
+为检查混合坐标影响，原图特征以grid_sample双线性右移1输入像素再替换：P3/P4/P5分别找回3/4/5强低分，ALL找回9，ALL稳定对照损失2。插值本身改变特征，对齐/不对齐的差异不能纯归因于坐标；只支持多尺度信号共同参与，尚不能宣称唯一根因或抗混叠/训练一致性有效。
+
+放宽IoU0.3另审计全部query正确类分数：不对齐P3有8例>=0.48但实际IoU0.5只找回7；其余干预的强13计数与实际匹配一致。oracle分数不是召回率。
+
+## 来源与检查
+
+各audit的raw/manifest.json绑定历史权重、103源码、helper、800输入文件、标注、loader和预测SHA；19图干预每次57条原图/+1x/锁token前向完全一致，17臂扫描38条一致，完整200图筛选每次400条一致。纯净v1的124个文件hash仍一致。GPU1执行，GPU0未用，无训练。
+
+原始audit：channel_interventions、stem_preblur、gamma16_screen、translation_phases、encoder_level_interventions、encoder_alignment_interventions（均后缀_20261021）；分析在同名outputs/reports目录，其中encoder_level结果为_attempt2。其评分attempt1只因paired_gt路径错误在读输入时退出，保留空目录与错误日志；attempt2使用相同未改动推理bundle，未重跑以掩盖结果。
+
+
+## 完整200图方向测试完成，及负方向/边界排除（10月22日补记）
+
+不改模型，原图/右1/右2/右3/下1/下2 mAP依次53.983/52.022/52.546/52.918/53.194/52.590；AP75依次59.327/54.917/54.981/54.548/55.927/54.661。内部GT原TP1153，右1丢19回24；右2丢34回27；右3丢36回24；下1丢19回15；下2丢24回24。mAP部分恢复不能代替实际丢检减少。右1与下1的19例仅重合7例，各有12例不同，不能将总体问题限定为水平敏感。各方向自身丢检在IoU0.3仍低分分别13/27/28/14/18，IoU0.45–0.50高分近失配分别4/6/7/3/6。完整逐GT来源见translation_directions_fullval报告。
+
+负方向扫描19图18臂：boat1471左移1..8均高分，但上移1像素仅0.013，上移2像素0.951；garbage1296上移2像素0.034，其余相邻位移多为高分。说明具体位置与方向共同影响，尚非步长周期证明。原强13在左1..8及上1..8中均各至少一次恢复13例，症状选样不能作为总体召回。
+
+边界8臂：右1改复制/反射/循环填充，原19及强13恢复均为0；仅原图左/右/双边1列置零（不移动）则原19仍检出17/16/15、强13仍检出11/10/10。新增零列不足解释原丢检，但边界本身会经模型影响部分内部目标，不能绝对排除全局上下文效应。不同填充方式都未消除船/垃圾桶等强低分现象。
+
+证据：work_dir/audits/translation_directions_fullval_20261021、translation_negative_phases_20261021、translation_padding_controls_20261021；outputs/reports同名目录。完整200图400条前向精确匹配；19图每组38条精确匹配。全部为冻结V36诊断，非纯净v1训练结果，无新训练。
+
+## 局部与全局空间恢复、五组同面积随机对照（10月22日）
+
+原19失稳图共325GT；固定原图300tokenIDs，恢复P3/P4/P5原图激活，仅在目标框外扩64输入像素的区域恢复（LOCAL64），平均只替换2.557%空间位置（范围0.726%–10.667%）。其原19找回12、强13找回9，TP/FP264/91，225稳定对照损失0。锁token本身强13已找回1，因此LOCAL64额外找回8，不能把9全称为新增。
+
+恢复该区域以外的补集（OUTSIDE64）原19找回4、强13找回3，TP/FP250/97，稳定损失0；补集面积更大，不是公平等面积比较，只是局部/外部信号充分性检验。放宽IoU0.3时OUTSIDE64强低分有4例高分，不能把这个oracle计数写成实际找回4例。
+
+等面积随机矩形5组（固定seed偏移0/1/2/3/4million）强13分别找回2/0/1/1/3，原19分别3/1/2/2/4，稳定损失2/0/0/0/0。LOCAL64在本队列高于每组随机，但不作统计显著性或独立留出结论。342条mask记录逐一核验等面积；原LOCAL64/RANDOM64/ALL与前实验57前向逐元素复现，另57条原始控制复现。所有随机组检出的强13均在至少一个尺度与局部窗口有重叠，其中部分原本锁token已检出，不能把随机恢复解读成纯远处背景作用。
+
+以上均用GT指导掩码和原图激活，是反事实诊断，不能用于提交、时序记忆或宣称新模型提升。局部窗还包含64像素邻近背景，不能直接归因于物体纹理；编码器特征具有大感受野，空间位置也不等同于纯语义前景。下一项BOX/RING64空间拆分用于进一步约束解释，不训练、不改基准。原始与评分见local_context_interventions_20261021、local_random_controls_20261021同名audit/report目录。
+
+## 框内空间位置与邻域环拆分（10月22日）
+
+BOX（GT框投影的floor/ceil特征格）平均恢复1.024%空间位置，强13实际找回8（锁token已找回1，故新增7），原19找回12，全325GT TP/FP265/92，225稳定对照损失0。RING64（外扩64窗减BOX）平均恢复1.533%，强13找回1、原19找回3，TP/FP255/91，稳定损失1；LOCAL64=二者并集为9/12、TP/FP264/91。
+
+13例上的效果不是简单可加：BOX能恢复的935在LOCAL64未恢复，LOCAL64能恢复的521/1012在BOX未恢复。放宽IoU0.3的BOX高分9例，实际IoU0.5 TP仅8，差异保留。LOCAL64/ALL与前bundle的38个前向（boxes/logits/tokenIDs）逐元素一致，171条mask计数核验BOX+RING=LOCAL。
+
+结果支持框内空间特征位置的重要性，不能解释为纯物体像素因果：编码器卷积/注意力的大感受野使框内外特征均可编码背景和物体；掩码面积不同、原图特征未平移也是局限。还须拆分BOX恢复对初始query内容/初始参考框/解码器memory的影响，不能直接把BOX结果归到某条解码路径。证据见box_ring_interventions_20261021同名audit/report目录。
+
+## 初始query与解码器读取特征分支拆分（10月22日）
+
+在内部TransformerDecoder入口，用GTBOX空间mask及其按原tokenIDs收集的querymask，分别恢复原图query内容（CONTENT）、初始bbox logits（REF）、二者（INIT）、仅原图框内raw memory（MEMORY）、全部BOX路径（JOINT）。原图tokenIDs均固定，目标querymask每图1–66个，无零query样本。JOINT在19图逐元素复现此前ENC_BOX，全部target/ref/memory恢复精确还原原图logits/nativeboxes；另57原始前向精确匹配。
+
+CONTENT/REF/INIT/MEMORY/JOINT强13实际找回2/2/4/7/8，原19找回3/3/5/10/12；TP/FP分别257/94、260/94、260/95、264/93、265/92；225稳定对照损失0/0/0/1/0。锁token本身强13已找回1，不把计数全称新增。MEMORY分支在该症状队列影响较大，但INIT仍有作用；不能声称只由初始query或只由memory统一解释。进一步逐层读取定位已完成，见后记。原始及评分见query_memory_interventions_20261021同名audit/report目录。
+
+## memory读取逐层恢复：不支持Decoder2单点故障（10月22日）
+
+仅在指定层cross-attention的3尺度value中恢复原图GTBOX位置，保留当前query与其自然生成的samplingweight/location。Decoder1..6单层强13实际找回1/1/3/3/3/1；锁token本身为1，不能把每层1称为新增。前1–2层为4、前1–3层为5、后4–6层为4、全6层为7。全6层19图逐元素复现前一轮BOX_MEMORY（另57原始精确控制）。
+
+全325GT TP/FP逐层259/94、256/94、259/95、260/94、258/94、256/94；前1–2为261/94、前1–3为262/92、后4–6为260/95、全6为264/93；稳定225损失依次0/0/0/0/0/0、0/1/0/1。第2层单独恢复连实际TP集合也未改变，但累计前两层有新增恢复，效应存在层间交互。与此前D2/D3 FFN或归一化差异放大观测不能混同为“D2读取/某层实现出错”。仅支持局部memory信号在多层解码过程中共同参与。见memory_layer_interventions_20261021同名audit/report目录。
+
+## FFN ReLU开关与连续幅值分解（10月22日）
+
+运行时验证Decoder2/3确为ReLU、linear2输入非负。对全部300对应query，分别恢复基准/平移间开关状态翻转的神经元、两边都激活的连续幅值、全部1024输入。D2 FLIPS/MAGNITUDES/FULL强13找回4/7/6，原19找回5/8/7，稳定225损失0/1/0；D3为3/5/7、原19 4/7/9、稳定损失4/0/2。完整恢复38图前向精确复现此前D2/3_FFN_DELTA，另57原始控制精确一致。
+
+D2每query平均翻转80.35/1024，两边均激活220.00；D3为93.64与230.04。两种分量恢复神经元预算不同，不能直接判定谁贡献更大；但两边都激活时的幅值变化同样可以驱动多例失稳，不支持“只有ReLU开关翻转”或“换激活函数必然修好”。分量作用非简单可加，完整恢复并不总优于单个分量，因为当前残差、其他层及query交互仍在变化。见relu_component_interventions_20261021同名audit/report目录。
+
+## 参考框坐标对齐与同token初始几何测量（10月22日）
+
+将恢复的原图初始参考框centerX显式+1/2560后再转回logit（仅X改变、其他3分量保持原始bit），与平移输入坐标一致。BOX_REF_ALIGNED/BOX_INIT_ALIGNED强13找回4/5，原19找回5/6，稳定225无损失；相对未对齐REF/INIT的2/4并未消失。原REF/INIT在38图前向逐元素复现上轮，另57原始控制一致。
+
+垃圾桶1296：原图score0.9288；自然右1最高0.0626；锁原token后最高0.3960；恢复对齐初始参考框即可达到0.9081（同原始query77、token19910），不换query内容/memory。该同token从原图0.9288跌至锁token0.00679时，最终IoU仍0.96777；其逆映射初始bbox从(cx564.175,cy534.266,w129.506,h228.063)变为(564.502,542.502,139.339,256.488)。输入仅1px，初始高度却变28.425px。
+
+船1471：同原query162/token28072，初始bbox从(1919.252,726.696,371.934,129.913)变为(1933.913,736.535,422.196,145.351)，宽变50.262px。同token最终IoU仍0.96273、score0.00266；只恢复对齐参考框score0.02405仍低，内容+对齐参考框一起恢复0.94432。不是所有强低分都能由单独参考框解释。这里分数为全部query同类oracle候选诊断，实际TP已在summary单列，不能用oracle替代匹配召回。
+
+244个GT（原19丢检+225稳定）均用原图最高合法同类分query，并在锁token前向跟踪相同token；初始框先逆映射1px。稳定225/丢检19/强13初始框两次IoU中位0.9044/0.8524/0.8264；中心偏移按GT宽高归一化L2中位0.0264/0.0409/0.0454；宽高log比值L2中位0.0641/0.0914/0.1384。只作该症状队列描述，非显著性/总体根因证明。最终框正常不排除早期参考几何变化改变采样与分类路径。详细query身份、初始/最终几何见reference_alignment_interventions报告的initial_reference_cases/groups.json。
+
+## 初始参考框分量恢复（10月22日）
+
+固定原token与框内querymask，只恢复对齐CX/CY/W/H/XY/WH/全4，强13实际找回2/3/3/3/2/3/4，原19为3/4/4/4/3/4/5，稳定225损失0/0/0/0/1/0/0。全4恢复19图逐元素复现前一轮对齐参考框恢复，另57原始控制精确一致。
+
+垃圾桶1296仅恢复H即可使同原query77/token19910同类分数0.9180，恢复WH为0.9121；CX-only及W-only也能过0.48，但获胜query变为223，不能混写成原query的同一恢复路径。船1471只恢复CY可达0.9440，但获胜为query188/token27749，而非原query162/token28072；全4参考框反而仅0.0241，说明参考分量/多query作用非单调、不能用全4不恢复否定某分量作用。分数仍是allquery oracle，actualTP见summary。
+
+这些干预同时改变GTBOX范围内多个query的参考分量，因此尚不能归因于获胜query自身。下一组单query与反向原图注入用于核验：其余query/content/memory保持相应输入前向，仅恢复/替换一个指定query的一个分量。证据见reference_component_interventions_20261021同名audit/report目录。
+
+## 单query双向验证与解释收紧（10月22日）
+
+单query恢复原获胜query的H/CY/全4参考几何，强13实际找回1/2/3（锁token自身为1）；恢复此前CY组获胜query的CY找回3。恢复整GTBOX候选组H/CY为3/3。全部干预114条位级检查确认只改变指定query允许分量，其他query初始参考坐标与tokenIDs不变。原Q_H/REF_H等对照38条精确复现，另57原始控制一致。
+
+垃圾桶1296的原q77：锁token分数0.00679；仅恢复该query H为0.00575，未恢复；全部GTBOX候选H恢复才到0.91801。因此撤回任何将整组H恢复解读为“该query自身H导致全部低分”的解释。原图不动只将q77 H换成平移值，分数仍0.93063，亦不支持自身H单独致因。
+
+船1471的原q162则存在直接单query效应：原图不动、其余初始query/特征memory不变，只将该query初始H换成平移值，boat分数0.94656→0.01792，最终IoU仍0.96217；只换CY为0.01571、IoU0.95567。但整体GT仍检出，由q188补位（最高0.94638/0.94566）。因此“反向没有整体漏检”不等于“原query置信度未受影响”。在平移输入中只恢复q188 CY即可0.94401并重新检出，原q162仍约0.00324；query身份已明确，不能混作同一query恢复。
+
+首尝试完成11图后在image145/GT1100因priorREF_CY无IoU>=.5候选被assert拦截，无完整可评分bundle，失败目录/source/log全部保留。先前将位置说成“首图/image2”不准确，已按原日志纠正。attempt2明确对缺少CY获胜query时退回原图获胜query，完成后实际仅image145与176发生该fallback，均记录；原queryH双向口径不变，无跳过GT。single_query_geometry_interventions_20261021的raw是新目录attempt2，failed_attempt1保留原现场。
+
+## 跨query影响的直接对照与传播链（10月22日，当前优先结论）
+
+垃圾桶1296采用相同右1像素输入、原300tokenIDs、当前初始query内容和当前memory。原q77/token19910初始参考框四分量全部位级保持不动；只将GTBOX内另外51个query的初始H恢复到原值（OTHERS_H），该原q77同类分数0.00678988→0.91632279，实际GT也从未检出变为检出。只恢复q77自身H没有恢复。19图OTHERS_H强13找回3（锁token已找回1）、原19找回4，TP/FP259/95，稳定225无损失。这里证明其他query几何能影响同一query分数，不证明它是全部自然平移丢检的唯一原因。19条scope检查证实原query四分量未动、其他改动只在H、tokenIDs不变。
+
+只读注意力trace在image170重放同7前向，全部logits/boxes逐元素复现上轮；另原始3前向、Q_H/REF_H两前向精确一致。第一层原q77的Q、K和全部query的V逐元素相同；恰好51个其他K改变，索引与改变H的query一致，原q77注意力权重行L1差0.009805、自注意力输出相对L2差0.001362。该差异从query_pos_head依赖初始参考几何进入self-attention；它不是NMS或候选阈值造成的原始分类logit变化。
+
+第二层同q的norm1输入cos0.998544，norm1后0.980999；跨注意力输出cos0.998698；门控残差混合后、gateway归一化前cos0.973631，gateway后0.838213；ReLU输出cos0.657170；norm3前0.867671，norm3后0.288951。说明本案例第2层的归一化、门控和FFN链条出现明显表征分歧，不是简单“第二层读取错了”或仅一个ReLU翻转。不同子模块的尺度/基底不同，不把相对距离的商称为放大倍率；也不能将相关trace单独当作某一个模块唯一致因。
+
+第6层实际执行分类头的raw正确类logit差7.375472，最终含原生质量修正的logit -4.985509→2.393402，对应0.68%→91.63%。中间head未在原生eval执行，不补造中间分数。注意力trace评分首尝试因误读未执行head产生KeyError，无有效report，保留失败源码/日志/空目录；修正后attempt2只分析实际已捕获数据，不重跑推理。后续子模块trace全部266个共享trace数组逐元素匹配前一trace，全部7模型前向仍完全一致。
+
+证据：other_query_height_interventions_20261021、cross_query_attention_trace_20261021、cross_query_component_trace_20261021，同名audit/report（注意attention评分为_attempt2）；原始Q/K/V、权重、子模块输出绑定query_attention_trace.npz SHA。删除/削弱自注意力此前完整200图筛选有副作用，不能由本案例推出删自注意力有效。所有结论仅属于冻结历史V36的合成平移诊断，不是纯净v1成绩，也不能宣称现实相邻帧全部由该路径解释。
+
+### 平移原因测试当前验收结论与未验证改进项（2026-10-22）
+
+**最新结论（10月22日）：已拿到跨query几何→自注意力→第二层表征分歧→分类低分的受控干预证据；仍未发现可直接纳入基准的有效修复。** 原query参考框不动，只改其他51个query的初始高度，垃圾桶该query从0.68%恢复到91.63%；另一船例在原图不动、只改一个query初始CY时，该query从94.66%降到1.57%，但另一query能补位。必须区分query掉分与整体漏检。第2层门控/归一化/FFN链条的放大发生在该案例，尚非所有案例或某一层代码bug的证明。
+
+原19丢检仍分为13强低分、4定位边界、2混合。完整200图方向、低通、gamma减弱、多尺度、局部/框内空间、五组等面积随机、query/memory/逐层/参考几何/单query双向与注意力传播测试均已完成；简单低通与gamma减弱均未通过，不写入基准。纯净v1仍未训练、124源文件保持冻结，无新训练。
+
+当前未验证改进方向仅保留两类：训练期微平移一致性（可包含初始参考几何、query表征和分数稳健性）；经过训练适配的采样抗混叠。两者均未证实有效，现有固定预滤波的负结果不能改写成训练适配版有效或无效。必须先按统一协议取得纯净v1实测基线，才能评价新训练改进；本轮不启动。
+
+## 归一化推理干预配对验收（2026-10-22）
+
+历史V36 epoch39 EMA，checkpoint SHA256 `cde9cb809a486cd8422a5abe43cc43c2243aab76d891a0c8f6c8e62e0867213c`；200图/1523非crowd GT、10组×原图/右移1网络输入像素，共4000次完整前向，400次未修改基线与旧输出逐元素一致。没有训练、改动权重或纯净v1。
+
+| 配置 | 原图mAP% | 微移mAP% | 原19漏检救回 | 原1134稳定新增丢失 |
+|---|---:|---:|---:|---:|
+| 保留原归一化 | 53.983 | 52.022 | 0 | 0 |
+| 第2层 Norm1 跳过 | 34.347 | 34.450 | 2 | 514 |
+| 第2层门控 Norm 跳过 | 52.686 | 52.033 | 7 | 13 |
+| 第2层 Norm3 跳过 | 49.457 | 48.531 | 4 | 77 |
+| 第2层门控 Norm、Norm3 均跳过 | 45.800 | 46.076 | 4 | 186 |
+| 全部解码层 Norm3 跳过 | 0.000 | 0.000 | 0 | 1134 |
+| 第2层 Norm3 去 γ、β | 51.784 | 50.996 | 6 | 31 |
+| 第2层 Norm3 仅去 β | 53.193 | 52.543 | 5 | 18 |
+| 第2层 Norm3 换 RMS（保留 γ、β） | 53.887 | 51.975 | 0 | 1 |
+| 第2层 Norm3 ε 改 1e-3 | 53.983 | 52.022 | 0 | 0 |
+
+没有一组同时保持原图精度并改善稳定性。跳过D2门控Norm救回7/19（强低分5/13），原图mAP降1.297点，原稳定损失13；仅去D2 Norm3 β微移mAP升0.521点，但原图降0.790点、原稳定损失18。全层Norm3跳过几乎丧失检测能力。RMS无恢复，epsilon1e-3没有实质影响，均不纳入基准。
+
+同q77实测Norm3拆解：输入cos0.867671→去均值/除std0.867815→乘γ0.387391→加β0.288951，输入std29.99/19.68，并非小方差导致；该位置绝对L2差259.17→10.55，不应称为绝对数值爆炸。cos改变不等价于分类有害；冻结权重推理跳过也不能代替同预算无归一化训练结论。
+
+原始预测/manifest：`work_dir/audits/normalization_screen_20261022/raw/`；完整指标、配对GT、病例数值和可视化：`outputs/reports/normalization_screen_20261022/`。
+
+## 三十五、2026-10-22 纯净基准 v1（Clean Baseline v1）50 轮全量训练启动
+
+- **性质**：正式启动通用正确性 14 项缺陷修复后的纯净基准 v1 端到端完整 50 轮训练（非 pilot、非热启动短跑）。
+- **硬件与平台**：远端实验室科研服务器 `ailab40`，锁定使用稳定健康的 GPU 1（Tesla V100-SXM2-32GB），PID `18924`，显存开销稳定在 ~19.9 GiB。
+- **配置与契约**：
+  - 展开单文件配置：`vendor/DEIMv2/configs/deimv2/aic_clean_baseline_v1.yml`
+  - 启动入口：`scripts/train/run_clean_baseline_v1_ailab40.sh`（远端对应 `/home/ailab40/hejianzhong/AIC_CLEAN_BASELINE_20261021/scripts/train/run_clean_baseline_v1.sh`）
+  - 纯 FP32 训练（禁用 AMP，禁用 cuDNN 避免 Volta SM_70 Winograd 异常，`stop_on_nonfinite: True`）
+  - 严格锁定底模：COCO 底模 `ckpts/dfine_x_obj2coco.pth`（SHA256: `39361855c21f8c4757a9bb777a7ff134ae8aa110d0db67a374f081e44c2ce04b`）
+  - 教师权重：Meta DINOv3-ViT-L（SHA256: `8aa4cbddda325040fc78db2c272754af6ebe8ff2c55f6ec4f1964d8890f66035`）
+  - 标注口径：100% 官方原始标注 1800 train / 200 val（`instances_train.json`）
+  - 单调 Clean Lifecycle：无中途回滚，每 epoch 验证后原子保存 `last.pth`，历史最佳保存 `best.pth`，最终收官硬链接 `final.pth`。
+- **启动状态**：Epoch 0 Step 0 平稳计算完成，初始 loss: 168.9127，正向反向计算与学习率调度器完全正常，日志落点远端 `/home/ailab40/hejianzhong/AIC_CLEAN_BASELINE_20261021/logs/aic_clean_baseline_v1_train.log`。
+

@@ -611,6 +611,53 @@
             overflow-x: auto;
             z-index: 80;
         }
+        .stage-toolbar-extra {
+            background: rgba(8, 12, 20, 0.98);
+            border-bottom: 1px solid var(--border-glass);
+            padding: 5px 14px;
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+            gap: 14px;
+            white-space: nowrap;
+            overflow-x: auto;
+            z-index: 79;
+            box-shadow: inset 0 4px 12px rgba(0,0,0,0.5);
+            animation: slideDownBar 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .stage-toolbar-extra.collapsed {
+            display: none !important;
+        }
+        @keyframes slideDownBar {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .btn-toolbar-collapse-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            border: 1px solid var(--border-glass);
+            background: rgba(30, 41, 59, 0.7);
+            color: #94a3b8;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .btn-toolbar-collapse-toggle:hover {
+            color: #fff;
+            border-color: #60a5fa;
+            background: rgba(37, 99, 235, 0.25);
+        }
+        .btn-toolbar-collapse-toggle.active {
+            color: #60a5fa;
+            border-color: #3b82f6;
+            background: rgba(37, 99, 235, 0.3);
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.35);
+        }
         .tool-cluster {
             display: flex;
             align-items: center;
@@ -670,6 +717,9 @@
             gap: 3px;
             pointer-events: none;
             box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+        }
+        .stage-viewports-container.split-mode-active .telemetry-hud {
+            top: 36px;
         }
         .telemetry-row {
             display: flex;
@@ -1098,6 +1148,9 @@
             background: #000;
             overflow: hidden;
             position: relative;
+            flex-direction: row;
+            width: 100%;
+            height: 100%;
         }
         .split-column {
             flex: 1;
@@ -1106,6 +1159,11 @@
             position: relative;
             border-right: 1px solid var(--border-glass);
             overflow: hidden;
+            min-width: 0;
+            height: 100%;
+        }
+        .split-column:last-child {
+            border-right: none;
         }
         .split-column-hdr {
             background: rgba(13, 17, 26, 0.95);
@@ -1115,16 +1173,21 @@
             font-weight: 700;
             display: flex;
             justify-content: space-between;
+            align-items: center;
             z-index: 50;
+            user-select: none;
+            height: 28px;
+            box-sizing: border-box;
         }
         .split-canvas-container {
             flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             position: relative;
             overflow: hidden;
             cursor: grab;
+            user-select: none;
+            background-color: #030406;
+            background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+            background-size: 24px 24px;
         }
         .split-canvas-container:active { cursor: grabbing; }
 
@@ -1451,18 +1514,18 @@
         <!-- Center Column: Canvas Stage & Toolbar -->
         <div class="stage-center">
             
-            <!-- Toolbar -->
+            <!-- Primary Toolbar Deck -->
             <div class="stage-toolbar-deck">
                 <!-- Modality Pills -->
                 <div class="tool-cluster">
                     <span class="tool-title">传感模态:</span>
                     <div class="pill-switch-group">
-                        <button class="pill-switch-btn active" id="btnModVis" onclick="setModality('visible')" title="可见光三通道 RGB 图像">🌈 可见光 (RGB)</button>
-                        <button class="pill-switch-btn" id="btnModIRAligned" onclick="setModality('ir_aligned')" title="双阶 ECC 刚性+热斑吸附+引导滤波配准红外">🎯 配准红外 (Aligned)</button>
-                        <button class="pill-switch-btn" id="btnModIRRaw" onclick="setModality('infrared')" title="未校正的原生红外传感器数据">🔥 原始红外 (Raw)</button>
-                        <button class="pill-switch-btn" id="btnModDepth" onclick="setModality('depth')" title="单目相对几何深度估计通道 (Depth Anything V2)">🌊 深度图 (Depth)</button>
+                        <button class="pill-switch-btn active" id="btnModVis" onclick="setModality('visible')" title="可见光三通道 RGB 图像">🌈 可见光</button>
+                        <button class="pill-switch-btn" id="btnModIRAligned" onclick="setModality('ir_aligned')" title="双阶 ECC 刚性+热斑吸附+引导滤波配准红外">🎯 配准红外</button>
+                        <button class="pill-switch-btn" id="btnModIRRaw" onclick="setModality('infrared')" title="未校正的原生红外传感器数据">🔥 原始红外</button>
+                        <button class="pill-switch-btn" id="btnModDepth" onclick="setModality('depth')" title="单目相对几何深度估计通道 (Depth Anything V2)">🌊 深度图</button>
                         <button class="pill-switch-btn" id="btnModBlend" onclick="setModality('blend')" title="可见光 + 选定模态半透明重叠混合">⚡ 模态融合</button>
-                        <button class="pill-switch-btn" id="btnModSR" onclick="setModality('sr4x')" title="RTX 5060 Ti Real-ESRGAN 4x 超分画质">🚀 深度超分 (4x SR)</button>
+                        <button class="pill-switch-btn" id="btnModSR" onclick="setModality('sr4x')" title="RTX 5060 Ti Real-ESRGAN 4x 超分画质">🚀 4x超分</button>
                     </div>
                 </div>
 
@@ -1499,11 +1562,42 @@
                     <span class="tool-title">对比视图:</span>
                     <div class="pill-switch-group">
                         <button class="pill-switch-btn active" id="btnLayoutOverlay" onclick="setLayout('overlay')">◫ 重叠</button>
-                        <button class="pill-switch-btn" id="btnLayoutSplit" onclick="setLayout('split')">◫ 双屏</button>
+                        <button class="pill-switch-btn" id="btnLayoutSplit" onclick="setLayout('split')">◫ 双图并排</button>
                         <button class="pill-switch-btn" id="btnLayoutCurtain" onclick="toggleCurtainMode()">⇋ 卷帘</button>
                     </div>
                 </div>
 
+                <!-- Model Layer Visibility Controls -->
+                <div class="tool-cluster" style="gap:7px;">
+                    <span class="tool-title">图层:</span>
+                    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;" title="切换标杆 F5 结果框显隐 (快捷键: F)">
+                        <input type="checkbox" id="chkShowF5" checked onchange="onRenderOptionChange()" />
+                        <span id="lblShowF5" style="color:#00f2fe;font-weight:700;">标杆 F5 [F]</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;" title="切换候选模型结果框显隐">
+                        <input type="checkbox" id="chkShowCand" checked onchange="onRenderOptionChange()" />
+                        <span id="lblShowCand" style="color:#f43f5e;font-weight:700;">候选模型</span>
+                    </label>
+                </div>
+
+                <!-- Confidence Threshold -->
+                <div class="tool-cluster">
+                    <span class="tool-title">置信度:</span>
+                    <input type="range" class="range-slider" id="confSlider" min="5" max="80" value="45" step="1" oninput="onConfChange()" />
+                    <span id="confVal" style="font-family:monospace;font-size:11px;color:#60a5fa;">0.45</span>
+                </div>
+
+                <!-- Toggle Extra Options Button -->
+                <div class="tool-cluster">
+                    <button type="button" class="btn-toolbar-collapse-toggle" id="btnToggleExtraToolbar" onclick="toggleExtraToolbar()" title="展开/收起 标注、画质、手动画框、放大镜等高级辅助选项">
+                        <span>⚙️ 高级选项</span>
+                        <span id="extraToolbarArrow" style="font-size:10px;margin-left:2px;">▾</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Secondary Collapsible Toolbar (Default Collapsed) -->
+            <div class="stage-toolbar-extra collapsed" id="stageToolbarExtra">
                 <!-- Manual Annotation Tool & Gemini Diagnostic (Top Priority) -->
                 <div class="tool-cluster" style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:6px;padding:2px 6px;">
                     <button class="pill-switch-btn" id="btnDrawMode" onclick="toggleDrawMode()" style="border-color:rgba(245,158,11,0.6);color:#fbbf24;font-weight:800;" title="在画布上直接拖拽鼠标绘制人工真值框 (快捷键 D)">✏️ 手动画框 (D)</button>
@@ -1542,18 +1636,33 @@
                     </label>
                 </div>
 
-                <!-- Confidence Threshold -->
-                <div class="tool-cluster">
-                    <span class="tool-title">置信度:</span>
-                    <input type="range" class="range-slider" id="confSlider" min="20" max="80" value="45" oninput="onConfChange()" />
-                    <span id="confVal" style="font-family:monospace;font-size:11px;color:#60a5fa;">0.45</span>
-                </div>
+                <!-- Close Extra Bar Button -->
+                <button type="button" class="btn-toolbar-collapse-toggle" onclick="toggleExtraToolbar()" style="margin-left:auto;padding:2px 8px;font-size:10px;color:#94a3b8;" title="收起高级选项栏">
+                    ▲ 收起折叠
+                </button>
             </div>
 
-            <!-- Single / Overlay Viewport -->
-            <div class="canvas-viewport-wrap" id="overlayViewport">
+            <!-- Center Stage Viewports Container -->
+            <div class="stage-viewports-container" id="stageViewportsContainer" style="flex: 1; position: relative; overflow: hidden; display: flex; flex-direction: column; width: 100%; height: 100%;">
                 
-                <!-- Telemetry HUD Overlay -->
+                <!-- Single / Overlay Viewport -->
+                <div class="canvas-viewport-wrap" id="overlayViewport">
+                    <!-- Canvas Transform Layer -->
+                    <div class="stage-transform-layer" id="stageWrapper">
+                        <div class="canvas-border-frame" id="canvasBorderFrame">
+                            <canvas id="mainCanvas"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Curtain Divider Slider -->
+                    <div class="curtain-divider" id="curtainDivider">
+                        <div class="curtain-handle">⇋</div>
+                    </div>
+                </div>
+
+
+
+                <!-- Telemetry HUD Overlay (Shared across overlay and split) -->
                 <div class="telemetry-hud" id="telemetryHUD">
                     <div class="telemetry-row">
                         <span style="color:#94a3b8;">帧编号:</span>
@@ -1577,19 +1686,7 @@
                     </div>
                 </div>
 
-                <!-- Canvas Transform Layer -->
-                <div class="stage-transform-layer" id="stageWrapper">
-                    <div class="canvas-border-frame" id="canvasBorderFrame">
-                        <canvas id="mainCanvas"></canvas>
-                    </div>
-                </div>
-
-                <!-- Curtain Divider Slider -->
-                <div class="curtain-divider" id="curtainDivider">
-                    <div class="curtain-handle">⇋</div>
-                </div>
-
-                <!-- Interactive Target Audit Card (Bubble) -->
+                <!-- Interactive Target Audit Card (Bubble) (Shared across overlay and split) -->
                 <div class="target-audit-card" id="targetAuditCard">
                     <div class="audit-card-hdr">
                         <span class="audit-card-title" id="auditCardTitle">目标审计核验</span>
@@ -1609,14 +1706,14 @@
                     </div>
                 </div>
 
-                <!-- HUD Reticle Loupe with Super-Resolution -->
+                <!-- HUD Reticle Loupe with Super-Resolution (Shared) -->
                 <div class="hud-reticle-loupe" id="hudReticleLoupe">
                     <canvas id="loupeCanvas" width="240" height="240"></canvas>
                     <div class="loupe-hud-overlay"></div>
                     <div class="loupe-tag-badge" id="loupeBadgeText">HUD LOUPE 4X</div>
                 </div>
 
-                <!-- Floating Zoom Dock -->
+                <!-- Floating Zoom Dock (Shared across overlay and split) -->
                 <div class="floating-zoom-dock">
                     <button class="zoom-action-btn" onclick="zoomIn()" title="放大 (+)">+</button>
                     <button class="zoom-action-btn" onclick="zoomOut()" title="缩小 (-)">−</button>
@@ -1630,32 +1727,6 @@
                 <!-- Floating Opener Buttons when sidebars are collapsed -->
                 <div class="floating-sidebar-opener floating-opener-left" id="openerLeft" onclick="toggleLeftSidebar()" title="展开样本列表">▶ 样本</div>
                 <div class="floating-sidebar-opener floating-opener-right" id="openerRight" onclick="toggleRightSidebar()" title="展开核验面板">◀ 核验</div>
-            </div>
-
-            <!-- Side-by-Side Dual Viewport -->
-            <div class="split-viewport-wrap" id="splitViewport">
-                <div class="split-column">
-                    <div class="split-column-hdr">
-                        <span style="color:var(--f5-cyan);" id="splitTitleA">标杆基准: F5 (57.266)</span>
-                        <span id="splitCountA" style="font-family:monospace;font-size:11px;">0 框</span>
-                    </div>
-                    <div class="split-canvas-container" id="splitWrapA">
-                        <div class="stage-transform-layer" id="splitTransformA">
-                            <canvas id="splitCanvasA"></canvas>
-                        </div>
-                    </div>
-                </div>
-                <div class="split-column">
-                    <div class="split-column-hdr">
-                        <span style="color:var(--candidate-rose);" id="splitTitleB">对比模型: Sovereign V26</span>
-                        <span id="splitCountB" style="font-family:monospace;font-size:11px;">0 框</span>
-                    </div>
-                    <div class="split-canvas-container" id="splitWrapB">
-                        <div class="stage-transform-layer" id="splitTransformB">
-                            <canvas id="splitCanvasB"></canvas>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
 
@@ -1719,12 +1790,23 @@
 
                 <!-- Discrepancy Status Filters -->
                 <div class="discrepancy-status-deck">
+                    <div style="display:flex;gap:4px;margin-bottom:6px;">
+                        <button type="button" class="btn-hdr" style="flex:1;justify-content:center;font-size:10px;padding:3px 5px;background:rgba(244,63,94,0.18);border-color:#f43f5e;color:#fecdd3;font-weight:700;" onclick="toggleOnlyCandidate()" title="只看候选模型预测结果（隐藏F5基准）">
+                            ⚡ 仅看候选(隐F5)
+                        </button>
+                        <button type="button" class="btn-hdr" style="flex:1;justify-content:center;font-size:10px;padding:3px 5px;background:rgba(0,242,254,0.18);border-color:#00f2fe;color:#cffafe;font-weight:700;" onclick="toggleOnlyF5()" title="只看标杆 F5 预测结果（隐藏候选模型）">
+                            ⚡ 仅看F5
+                        </button>
+                        <button type="button" class="btn-hdr" style="flex:1;justify-content:center;font-size:10px;padding:3px 5px;" onclick="resetModelLayers()" title="同时显示 F5 与候选模型进行对撞">
+                            ⚖️ 双模对撞
+                        </button>
+                    </div>
                     <div style="display:flex;gap:4px;margin-bottom:8px;">
                         <button type="button" class="btn-hdr" style="flex:1;justify-content:center;font-size:10px;padding:3px 5px;background:rgba(192,132,252,0.22);border-color:#c084fc;color:#e9d5ff;font-weight:700;" onclick="setDiscrepancyFilterMode('exclusive_only')">
                             🎯 只看独有框
                         </button>
                         <button type="button" class="btn-hdr" style="flex:1;justify-content:center;font-size:10px;padding:3px 5px;" onclick="setDiscrepancyFilterMode('all')">
-                            🌐 显示全部
+                            🌐 状态全显
                         </button>
                     </div>
                     <div class="disc-toggle-row">
@@ -2297,7 +2379,32 @@
             if (splitTitle) splitTitle.innerText = `候选: ${mObj.name} (${mObj.score})`;
             const aiTarget = document.getElementById('aiModalTargetModel');
             if (aiTarget) aiTarget.innerText = `${mObj.id.toUpperCase()} vs F5`;
+            const lblCand = document.getElementById('lblShowCand');
+            if (lblCand) {
+                const shortName = mObj.name ? mObj.name.split(' ')[0] : mObj.id;
+                lblCand.innerText = `候选: ${shortName}`;
+                lblCand.style.color = mObj.color || '#f43f5e';
+            }
             closeAuditBubble();
+            if (mid && mid.includes('thr10')) {
+                confThreshold = 0.10;
+                const cS = document.getElementById('confSlider');
+                const cV = document.getElementById('confVal');
+                if (cS) cS.value = 10;
+                if (cV) cV.innerText = '0.10';
+            } else if (mid && mid.includes('thr30')) {
+                confThreshold = 0.30;
+                const cS = document.getElementById('confSlider');
+                const cV = document.getElementById('confVal');
+                if (cS) cS.value = 30;
+                if (cV) cV.innerText = '0.30';
+            } else if (mid && mid.includes('thr50')) {
+                confThreshold = 0.50;
+                const cS = document.getElementById('confSlider');
+                const cV = document.getElementById('confVal');
+                if (cS) cS.value = 50;
+                if (cV) cV.innerText = '0.50';
+            }
             if (mid && mid.includes('exclusive')) {
                 setDiscrepancyFilterMode('exclusive_only');
             }
@@ -2740,11 +2847,7 @@
             document.getElementById('cntFPBadge').innerText = cntFP;
             document.getElementById('cntConfBadge').innerText = cntConf;
 
-            if (activeLayout === 'overlay') {
-                drawOverlayCanvas();
-            } else {
-                drawSplitCanvases();
-            }
+            drawOverlayCanvas();
 
             renderBoxInspectorList();
             updateManualBadge();
@@ -2752,15 +2855,20 @@
         }
 
         // Canvas Drawing Logic
+        // Master Canvas Drawing Logic (Unified Overlay & Stitched Dual View)
         function drawOverlayCanvas() {
             if (!activeMatchResult || !imgLoaded) return;
             const canvas = document.getElementById('mainCanvas');
             const ctx = canvas.getContext('2d');
-            const w = imgVis.naturalWidth || 800;
-            const h = imgVis.naturalHeight || 450;
-            if (canvas.width !== w || canvas.height !== h) {
-                canvas.width = w;
-                canvas.height = h;
+            const baseW = imgVis.naturalWidth || 800;
+            const baseH = imgVis.naturalHeight || 450;
+            const isSplit = (activeLayout === 'split');
+            const totalW = isSplit ? baseW * 2 : baseW;
+            const totalH = baseH;
+
+            if (canvas.width !== totalW || canvas.height !== totalH) {
+                canvas.width = totalW;
+                canvas.height = totalH;
             }
 
             if (qualityMode === 'pixel') {
@@ -2772,230 +2880,451 @@
                 canvas.style.imageRendering = 'auto';
             }
 
-            // 1. Draw Background Image based on Modality
-            if (activeModality === 'sr4x') {
-                if (srImageReady) {
-                    ctx.drawImage(imgSR, 0, 0, w, h);
-                } else {
-                    ctx.drawImage(imgVis, 0, 0, w, h);
-                    requestNeuralSRForCurrent();
-                }
-            } else if (activeModality === 'visible') {
-                ctx.drawImage(imgVis, 0, 0, w, h);
-            } else if (activeModality === 'ir_aligned') {
-                const im = imgIRAligned.naturalWidth ? imgIRAligned : (imgIR.naturalWidth ? imgIR : imgVis);
-                ctx.drawImage(im, 0, 0, w, h);
-            } else if (activeModality === 'infrared') {
-                const im = imgIR.naturalWidth ? imgIR : imgVis;
-                ctx.drawImage(im, 0, 0, w, h);
-            } else if (activeModality === 'depth') {
-                const im = imgDepth.naturalWidth ? imgDepth : imgVis;
-                ctx.drawImage(im, 0, 0, w, h);
-            } else if (activeModality === 'blend') {
-                ctx.drawImage(imgVis, 0, 0, w, h);
-                let overImg = imgIRAligned;
-                if (blendSource === 'infrared') overImg = imgIR;
-                else if (blendSource === 'depth') overImg = imgDepth;
-                else if (blendSource === 'ir_aligned') overImg = (imgIRAligned.naturalWidth ? imgIRAligned : imgIR);
+            // Background drawing helper
+            function drawBgAt(targetX, targetY, targetW, targetH) {
+                if (activeModality === 'sr4x') {
+                    if (srImageReady) {
+                        ctx.drawImage(imgSR, targetX, targetY, targetW, targetH);
+                    } else {
+                        ctx.drawImage(imgVis, targetX, targetY, targetW, targetH);
+                        requestNeuralSRForCurrent();
+                    }
+                } else if (activeModality === 'visible') {
+                    ctx.drawImage(imgVis, targetX, targetY, targetW, targetH);
+                } else if (activeModality === 'ir_aligned') {
+                    const im = imgIRAligned.naturalWidth ? imgIRAligned : (imgIR.naturalWidth ? imgIR : imgVis);
+                    ctx.drawImage(im, targetX, targetY, targetW, targetH);
+                } else if (activeModality === 'infrared') {
+                    const im = imgIR.naturalWidth ? imgIR : imgVis;
+                    ctx.drawImage(im, targetX, targetY, targetW, targetH);
+                } else if (activeModality === 'depth') {
+                    const im = imgDepth.naturalWidth ? imgDepth : imgVis;
+                    ctx.drawImage(im, targetX, targetY, targetW, targetH);
+                } else if (activeModality === 'blend') {
+                    ctx.drawImage(imgVis, targetX, targetY, targetW, targetH);
+                    let overImg = imgIRAligned;
+                    if (blendSource === 'infrared') overImg = imgIR;
+                    else if (blendSource === 'depth') overImg = imgDepth;
+                    else if (blendSource === 'ir_aligned') overImg = (imgIRAligned.naturalWidth ? imgIRAligned : imgIR);
 
-                if (overImg && overImg.naturalWidth) {
-                    ctx.save();
-                    ctx.globalAlpha = blendRatio;
-                    ctx.drawImage(overImg, nudgeX, nudgeY, w, h);
-                    ctx.restore();
+                    if (overImg && overImg.naturalWidth) {
+                        ctx.save();
+                        ctx.globalAlpha = blendRatio;
+                        ctx.drawImage(overImg, targetX + nudgeX, targetY + nudgeY, targetW, targetH);
+                        ctx.restore();
+                    }
                 }
             }
 
-            // 2. Curtain Mode (Swipe Before/After)
-            if (curtainMode && srImageReady) {
-                const splitPixelX = curtainX * w;
-                // Clip right side for 4x Real-ESRGAN
-                ctx.save();
-                ctx.beginPath();
-                ctx.rect(splitPixelX, 0, w - splitPixelX, h);
-                ctx.clip();
-                ctx.drawImage(imgSR, 0, 0, w, h);
-                ctx.restore();
-
-                // Draw Divider line
-                ctx.strokeStyle = '#00f2fe';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.moveTo(splitPixelX, 0);
-                ctx.lineTo(splitPixelX, h);
-                ctx.stroke();
-
-                // Labels
-                ctx.fillStyle = 'rgba(0,0,0,0.7)';
-                ctx.fillRect(splitPixelX - 90, 10, 80, 20);
-                ctx.fillRect(splitPixelX + 10, 10, 120, 20);
-                ctx.fillStyle = '#fff';
-                ctx.font = 'bold 10px monospace';
-                ctx.fillText('1X 原生', splitPixelX - 70, 24);
-                ctx.fillStyle = '#00f2fe';
-                ctx.fillText('4X 深度超分', splitPixelX + 20, 24);
-            }
-
-            // 3. Draw Dynamic Bounding Boxes
             const stem = filteredStems[curStemIndex];
             const { rawA, rawB, matchA, matchB } = activeMatchResult;
-            let totalRendered = 0;
-
             const chkCons = document.getElementById('chkConsensus').checked;
             const chkMiss = document.getElementById('chkMissed').checked;
             const chkFp = document.getElementById('chkFP').checked;
             const chkCf = document.getElementById('chkConf').checked;
+            const chkShowF5 = document.getElementById('chkShowF5') ? document.getElementById('chkShowF5').checked : true;
+            const chkShowCand = document.getElementById('chkShowCand') ? document.getElementById('chkShowCand').checked : true;
+            let totalRendered = 0;
 
-            function renderBox(b, role, isA, idx) {
-                const cid = b[0], cx = b[1], cy = b[2], bw = b[3], bh = b[4], sc = b[5];
-                if (!activeClasses.has(cid)) return;
+            if (!isSplit) {
+                // ==========================================
+                // 1. OVERLAY MODE (Single Canvas W x H)
+                // ==========================================
+                drawBgAt(0, 0, baseW, baseH);
 
-                let color = '#fff', tagPrefix = '';
-                if (role === 'exact') {
-                    if (!chkCons) return;
-                    color = '#10b981'; tagPrefix = '[共识]';
-                } else if (role === 'conflict') {
-                    if (!chkCf) return;
-                    color = '#f59e0b'; tagPrefix = '[冲突]';
-                } else if (role === 'missed') {
-                    if (!chkMiss) return;
-                    color = '#00f2fe'; tagPrefix = '[遗漏真]';
-                } else if (role === 'fp') {
-                    if (!chkFp) return;
-                    color = (curModelId && curModelId.includes('exclusive')) ? '#c084fc' : '#f43f5e';
-                    tagPrefix = (curModelId && curModelId.includes('exclusive')) ? '[独有]' : '[多报伪]';
-                }
-
-                totalRendered++;
-                const x1 = (cx - bw/2) * w, y1 = (cy - bh/2) * h;
-                const boxW = bw * w, boxH = bh * h;
-
-                const boxKey = getBoxAuditKey(stem, isA ? 'f5' : curModelId, b);
-                const auditRecord = auditRecords[boxKey];
-                const auditStatus = auditRecord ? auditRecord.status : null;
-
-                // Fill
-                ctx.fillStyle = (auditStatus === 'false') ? 'rgba(239, 68, 68, 0.22)' :
-                                (auditStatus === 'true') ? 'rgba(16, 185, 129, 0.22)' :
-                                (auditStatus === 'missed') ? 'rgba(245, 158, 11, 0.22)' :
-                                (color === '#00f2fe' ? 'rgba(0,242,254,0.12)' :
-                                 color === '#f43f5e' ? 'rgba(244,63,94,0.12)' :
-                                 color === '#10b981' ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)');
-                ctx.fillRect(x1, y1, boxW, boxH);
-
-                // Stroke
-                const isHovered = (hoveredBoxId === `${isA?'a':'b'}_${idx}`);
-                const isSelected = (activeBoxObj && activeBoxObj.key === boxKey);
-
-                if (auditStatus === 'false') {
-                    ctx.strokeStyle = '#ef4444';
-                    ctx.setLineDash([4, 4]);
-                } else if (auditStatus === 'true') {
-                    ctx.strokeStyle = '#10b981';
-                    ctx.setLineDash([]);
-                } else if (auditStatus === 'missed') {
-                    ctx.strokeStyle = '#f59e0b';
-                    ctx.setLineDash([]);
-                } else {
-                    ctx.strokeStyle = color;
-                    ctx.setLineDash([]);
-                }
-
-                ctx.lineWidth = (isSelected || isHovered) ? Math.max(3, 4 / zoomScale) : Math.max(1.5, 2 / zoomScale);
-                ctx.strokeRect(x1, y1, boxW, boxH);
-                ctx.setLineDash([]);
-
-                // Strikethrough diagonal for false positive
-                if (auditStatus === 'false') {
-                    ctx.strokeStyle = 'rgba(239,68,68,0.7)';
-                    ctx.lineWidth = Math.max(1.5, 2 / zoomScale);
+                // Curtain Mode (Swipe Before/After)
+                if (curtainMode && srImageReady) {
+                    const splitPixelX = curtainX * baseW;
+                    ctx.save();
                     ctx.beginPath();
-                    ctx.moveTo(x1, y1); ctx.lineTo(x1 + boxW, y1 + boxH);
+                    ctx.rect(splitPixelX, 0, baseW - splitPixelX, baseH);
+                    ctx.clip();
+                    ctx.drawImage(imgSR, 0, 0, baseW, baseH);
+                    ctx.restore();
+
+                    // Divider line
+                    ctx.strokeStyle = '#00f2fe';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(splitPixelX, 0);
+                    ctx.lineTo(splitPixelX, baseH);
                     ctx.stroke();
+
+                    // Labels
+                    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                    ctx.fillRect(splitPixelX - 90, 10, 80, 20);
+                    ctx.fillRect(splitPixelX + 10, 10, 120, 20);
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 10px monospace';
+                    ctx.fillText('1X 原生', splitPixelX - 70, 24);
+                    ctx.fillStyle = '#00f2fe';
+                    ctx.fillText('4X 深度超分', splitPixelX + 20, 24);
                 }
 
-                // Tag Display Control (文本标注开关: full, compact, off)
-                if (labelMode !== 'off') {
-                    const cname = PAYLOAD.class_zh_short[cid];
-                    let tag = (labelMode === 'compact') ? `${cname} ${sc.toFixed(2)}` : `${tagPrefix} ${cname} ${sc.toFixed(2)}`;
-                    let tagBg = color;
+                function renderBoxOverlay(b, role, isA, idx) {
+                    const cid = b[0], cx = b[1], cy = b[2], bw = b[3], bh = b[4], sc = b[5];
+                    if (!activeClasses.has(cid)) return;
 
-                    if (auditStatus) {
-                        if (auditStatus === 'true') { tag = `[✓真] ` + tag; tagBg = '#10b981'; }
-                        else if (auditStatus === 'false') { tag = `[✗伪] ` + tag; tagBg = '#ef4444'; }
-                        else if (auditStatus === 'missed') { tag = `[★漏] ` + tag; tagBg = '#f59e0b'; }
-                        else if (auditStatus === 'uncertain') { tag = `[?疑] ` + tag; tagBg = '#8b5cf6'; }
+                    let color = '#fff', tagPrefix = '';
+                    if (role === 'exact') {
+                        if (!chkCons) return;
+                        color = '#10b981'; tagPrefix = chkShowF5 ? '[共识]' : '[候选·共识]';
+                    } else if (role === 'conflict') {
+                        if (!chkCf) return;
+                        color = '#f59e0b'; tagPrefix = chkShowF5 ? '[冲突]' : '[候选·冲突]';
+                    } else if (role === 'missed') {
+                        if (!chkMiss) return;
+                        color = '#00f2fe'; tagPrefix = '[F5独有]';
+                    } else if (role === 'fp') {
+                        if (!chkFp) return;
+                        color = (curModelId && curModelId.includes('exclusive')) ? '#c084fc' : '#f43f5e';
+                        tagPrefix = (curModelId && curModelId.includes('exclusive')) ? '[独有]' : (chkShowF5 ? '[多报伪]' : '[候选独有]');
                     }
 
-                    const fontSize = Math.max(10, Math.min(14, 12 / Math.sqrt(zoomScale)));
-                    ctx.font = `bold ${fontSize}px sans-serif`;
-                    const tw = ctx.measureText(tag).width + 6;
-                    const th = fontSize + 6;
-                    const ty = Math.max(0, y1 - th);
-                    ctx.fillStyle = tagBg;
-                    ctx.fillRect(x1, ty, tw, th);
-                    ctx.fillStyle = '#fff';
-                    ctx.fillText(tag, x1 + 3, ty + fontSize);
+                    totalRendered++;
+                    const x1 = (cx - bw/2) * baseW, y1 = (cy - bh/2) * baseH;
+                    const boxW = bw * baseW, boxH = bh * baseH;
+
+                    const boxKey = getBoxAuditKey(stem, isA ? 'f5' : curModelId, b);
+                    const auditRecord = auditRecords[boxKey];
+                    const auditStatus = auditRecord ? auditRecord.status : null;
+
+                    // Fill
+                    ctx.fillStyle = (auditStatus === 'false') ? 'rgba(239, 68, 68, 0.22)' :
+                                    (auditStatus === 'true') ? 'rgba(16, 185, 129, 0.22)' :
+                                    (auditStatus === 'missed') ? 'rgba(245, 158, 11, 0.22)' :
+                                    (color === '#00f2fe' ? 'rgba(0,242,254,0.12)' :
+                                     color === '#f43f5e' ? 'rgba(244,63,94,0.12)' :
+                                     color === '#10b981' ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)');
+                    ctx.fillRect(x1, y1, boxW, boxH);
+
+                    // Stroke
+                    const isHovered = (hoveredBoxId === `${isA?'a':'b'}_${idx}`);
+                    const isSelected = (activeBoxObj && activeBoxObj.key === boxKey);
+
+                    if (auditStatus === 'false') {
+                        ctx.strokeStyle = '#ef4444';
+                        ctx.setLineDash([4, 4]);
+                    } else if (auditStatus === 'true') {
+                        ctx.strokeStyle = '#10b981';
+                        ctx.setLineDash([]);
+                    } else if (auditStatus === 'missed') {
+                        ctx.strokeStyle = '#f59e0b';
+                        ctx.setLineDash([]);
+                    } else {
+                        ctx.strokeStyle = color;
+                        ctx.setLineDash([]);
+                    }
+
+                    ctx.lineWidth = (isSelected || isHovered) ? Math.max(3, 4 / zoomScale) : Math.max(1.5, 2 / zoomScale);
+                    ctx.strokeRect(x1, y1, boxW, boxH);
+                    ctx.setLineDash([]);
+
+                    // Strikethrough diagonal for false positive
+                    if (auditStatus === 'false') {
+                        ctx.strokeStyle = 'rgba(239,68,68,0.7)';
+                        ctx.lineWidth = Math.max(1.5, 2 / zoomScale);
+                        ctx.beginPath();
+                        ctx.moveTo(x1, y1); ctx.lineTo(x1 + boxW, y1 + boxH);
+                        ctx.stroke();
+                    }
+
+                    // Tag Display Control
+                    if (labelMode !== 'off') {
+                        const cname = PAYLOAD.class_zh_short[cid];
+                        let tag = (labelMode === 'compact') ? `${cname} ${sc.toFixed(2)}` : `${tagPrefix} ${cname} ${sc.toFixed(2)}`;
+                        let tagBg = color;
+
+                        if (auditStatus) {
+                            if (auditStatus === 'true') { tag = `[✓真] ` + tag; tagBg = '#10b981'; }
+                            else if (auditStatus === 'false') { tag = `[✗伪] ` + tag; tagBg = '#ef4444'; }
+                            else if (auditStatus === 'missed') { tag = `[★漏] ` + tag; tagBg = '#f59e0b'; }
+                            else if (auditStatus === 'uncertain') { tag = `[?疑] ` + tag; tagBg = '#8b5cf6'; }
+                        }
+
+                        const fontSize = Math.max(10, Math.min(14, 12 / Math.sqrt(zoomScale)));
+                        ctx.font = `bold ${fontSize}px sans-serif`;
+                        const tw = ctx.measureText(tag).width + 6;
+                        const th = fontSize + 6;
+                        const ty = Math.max(0, y1 - th);
+                        ctx.fillStyle = tagBg;
+                        ctx.fillRect(x1, ty, tw, th);
+                        ctx.fillStyle = '#fff';
+                        ctx.fillText(tag, x1 + 3, ty + fontSize);
+                    }
                 }
-            }
 
-            rawA.forEach((b, i) => {
-                if (matchA[i]) {
-                    if (matchA[i].type === 'exact') renderBox(b, 'exact', true, i);
-                    else renderBox(b, 'conflict', true, i);
-                } else renderBox(b, 'missed', true, i);
-            });
+                if (chkShowF5 && chkShowCand) {
+                    rawA.forEach((b, i) => {
+                        if (matchA[i]) {
+                            if (matchA[i].type === 'exact') renderBoxOverlay(b, 'exact', true, i);
+                            else renderBoxOverlay(b, 'conflict', true, i);
+                        } else renderBoxOverlay(b, 'missed', true, i);
+                    });
+                    rawB.forEach((b, j) => {
+                        if (!matchB[j]) renderBoxOverlay(b, 'fp', false, j);
+                    });
+                } else if (!chkShowF5 && chkShowCand) {
+                    rawB.forEach((b, j) => {
+                        if (matchB[j]) {
+                            if (matchB[j].type === 'exact') renderBoxOverlay(b, 'exact', false, j);
+                            else renderBoxOverlay(b, 'conflict', false, j);
+                        } else {
+                            renderBoxOverlay(b, 'fp', false, j);
+                        }
+                    });
+                } else if (chkShowF5 && !chkShowCand) {
+                    rawA.forEach((b, i) => {
+                        if (matchA[i]) {
+                            if (matchA[i].type === 'exact') renderBoxOverlay(b, 'exact', true, i);
+                            else renderBoxOverlay(b, 'conflict', true, i);
+                        } else {
+                            renderBoxOverlay(b, 'missed', true, i);
+                        }
+                    });
+                }
 
-            rawB.forEach((b, j) => {
-                if (!matchB[j]) renderBox(b, 'fp', false, j);
-            });
+                // Draw Manual Ground Truth Annotations in Overlay Mode
+                const curStemManual = manualAnnotations.filter(m => m.stem === stem);
+                curStemManual.forEach(m => {
+                    const b = m.box;
+                    const x1 = (b[0] - b[2]/2) * baseW;
+                    const y1 = (b[1] - b[3]/2) * baseH;
+                    const boxW = b[2] * baseW;
+                    const boxH = b[3] * baseH;
 
-            // 4. Draw Manual Ground Truth Annotations
-            const curStemManual = manualAnnotations.filter(m => m.stem === stem);
-            curStemManual.forEach((m, idx) => {
-                const b = m.box;
-                const x1 = (b[0] - b[2]/2) * w;
-                const y1 = (b[1] - b[3]/2) * h;
-                const boxW = b[2] * w;
-                const boxH = b[3] * h;
+                    totalRendered++;
+                    ctx.save();
+                    ctx.fillStyle = (m.tag === 'gt') ? 'rgba(16, 185, 129, 0.22)' :
+                                    (m.tag === 'fn') ? 'rgba(245, 158, 11, 0.25)' :
+                                    (m.tag === 'fp') ? 'rgba(239, 68, 68, 0.22)' : 'rgba(168, 85, 247, 0.25)';
+                    ctx.fillRect(x1, y1, boxW, boxH);
+                    ctx.strokeStyle = (m.tag === 'gt') ? '#10b981' :
+                                      (m.tag === 'fn') ? '#f59e0b' :
+                                      (m.tag === 'fp') ? '#ef4444' : '#c084fc';
+                    ctx.lineWidth = Math.max(2.5, 3.5 / zoomScale);
+                    ctx.setLineDash([5, 3]);
+                    ctx.strokeRect(x1, y1, boxW, boxH);
+                    ctx.restore();
 
-                totalRendered++;
+                    if (labelMode !== 'off') {
+                        const tag = `[✏️手标·${m.tag_zh}] ${m.class_zh}`;
+                        const fontSize = Math.max(10, Math.min(14, 12 / Math.sqrt(zoomScale)));
+                        ctx.font = `bold ${fontSize}px sans-serif`;
+                        const tw = ctx.measureText(tag).width + 8;
+                        const th = fontSize + 6;
+                        const ty = Math.max(0, y1 - th);
+                        ctx.fillStyle = (m.tag === 'gt') ? '#10b981' :
+                                        (m.tag === 'fn') ? '#f59e0b' :
+                                        (m.tag === 'fp') ? '#ef4444' : '#a855f7';
+                        ctx.fillRect(x1, ty, tw, th);
+                        ctx.fillStyle = '#000';
+                        ctx.fillText(tag, x1 + 4, ty + fontSize);
+                    }
+                });
+
+            } else {
+                // ==========================================
+                // 2. SPLIT MODE: Two Images Stitched Side-by-Side (2W x H)
+                // ==========================================
+                // Left Image: F5 Benchmark
+                drawBgAt(0, 0, baseW, baseH);
+
+                // Right Image: Candidate Model
+                drawBgAt(baseW, 0, baseW, baseH);
+
+                // Crisp Vertical Divider Line
                 ctx.save();
-                ctx.fillStyle = (m.tag === 'gt') ? 'rgba(16, 185, 129, 0.22)' :
-                                (m.tag === 'fn') ? 'rgba(245, 158, 11, 0.25)' :
-                                (m.tag === 'fp') ? 'rgba(239, 68, 68, 0.22)' : 'rgba(168, 85, 247, 0.25)';
-                ctx.fillRect(x1, y1, boxW, boxH);
-
-                ctx.strokeStyle = (m.tag === 'gt') ? '#10b981' :
-                                  (m.tag === 'fn') ? '#f59e0b' :
-                                  (m.tag === 'fp') ? '#ef4444' : '#c084fc';
-                ctx.lineWidth = Math.max(2.5, 3.5 / zoomScale);
-                ctx.setLineDash([5, 3]);
-                ctx.strokeRect(x1, y1, boxW, boxH);
+                ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(baseW, 0);
+                ctx.lineTo(baseW, baseH);
+                ctx.stroke();
                 ctx.restore();
 
-                if (labelMode !== 'off') {
-                    const tag = `[✏️手标·${m.tag_zh}] ${m.class_zh}`;
-                    const fontSize = Math.max(10, Math.min(14, 12 / Math.sqrt(zoomScale)));
-                    ctx.font = `bold ${fontSize}px sans-serif`;
-                    const tw = ctx.measureText(tag).width + 8;
-                    const th = fontSize + 6;
-                    const ty = Math.max(0, y1 - th);
-                    ctx.fillStyle = (m.tag === 'gt') ? '#10b981' :
-                                    (m.tag === 'fn') ? '#f59e0b' :
-                                    (m.tag === 'fp') ? '#ef4444' : '#a855f7';
-                    ctx.fillRect(x1, ty, tw, th);
-                    ctx.fillStyle = '#000';
-                    ctx.fillText(tag, x1 + 4, ty + fontSize);
-                }
-            });
+                function renderBoxSplit(b, color, modelTag, isA, idx, offsetX) {
+                    const cid = b[0], cx = b[1], cy = b[2], bw = b[3], bh = b[4], sc = b[5];
+                    if (!activeClasses.has(cid)) return;
 
-            // 5. Draw Live In-Progress Drawing Box
+                    totalRendered++;
+                    const x1 = offsetX + (cx - bw/2) * baseW;
+                    const y1 = (cy - bh/2) * baseH;
+                    const boxW = bw * baseW;
+                    const boxH = bh * baseH;
+
+                    const boxKey = getBoxAuditKey(stem, isA ? 'f5' : curModelId, b);
+                    const auditRecord = auditRecords[boxKey];
+                    const auditStatus = auditRecord ? auditRecord.status : null;
+
+                    // Fill
+                    ctx.fillStyle = (auditStatus === 'false') ? 'rgba(239, 68, 68, 0.22)' :
+                                    (auditStatus === 'true') ? 'rgba(16, 185, 129, 0.22)' :
+                                    (auditStatus === 'missed') ? 'rgba(245, 158, 11, 0.22)' :
+                                    (isA ? 'rgba(0, 242, 254, 0.12)' : 'rgba(244, 63, 94, 0.12)');
+                    ctx.fillRect(x1, y1, boxW, boxH);
+
+                    // Stroke
+                    const isHovered = (hoveredBoxId === `${isA?'a':'b'}_${idx}`);
+                    const isSelected = (activeBoxObj && activeBoxObj.key === boxKey);
+
+                    if (auditStatus === 'false') {
+                        ctx.strokeStyle = '#ef4444';
+                        ctx.setLineDash([4, 4]);
+                    } else if (auditStatus === 'true') {
+                        ctx.strokeStyle = '#10b981';
+                        ctx.setLineDash([]);
+                    } else if (auditStatus === 'missed') {
+                        ctx.strokeStyle = '#f59e0b';
+                        ctx.setLineDash([]);
+                    } else {
+                        ctx.strokeStyle = color;
+                        ctx.setLineDash([]);
+                    }
+
+                    ctx.lineWidth = (isSelected || isHovered) ? Math.max(3, 4 / zoomScale) : Math.max(1.5, 2 / zoomScale);
+                    ctx.strokeRect(x1, y1, boxW, boxH);
+                    ctx.setLineDash([]);
+
+                    // Strikethrough diagonal for false positive
+                    if (auditStatus === 'false') {
+                        ctx.strokeStyle = 'rgba(239,68,68,0.7)';
+                        ctx.lineWidth = Math.max(1.5, 2 / zoomScale);
+                        ctx.beginPath();
+                        ctx.moveTo(x1, y1); ctx.lineTo(x1 + boxW, y1 + boxH);
+                        ctx.stroke();
+                    }
+
+                    // Tag Display Control
+                    if (labelMode !== 'off') {
+                        const cname = PAYLOAD.class_zh_short[cid];
+                        let tag = (labelMode === 'compact') ? `${cname} ${sc.toFixed(2)}` : `[${modelTag}] ${cname} ${sc.toFixed(2)}`;
+                        let tagBg = color;
+
+                        if (auditStatus) {
+                            if (auditStatus === 'true') { tag = `[✓真] ` + tag; tagBg = '#10b981'; }
+                            else if (auditStatus === 'false') { tag = `[✗伪] ` + tag; tagBg = '#ef4444'; }
+                            else if (auditStatus === 'missed') { tag = `[★漏] ` + tag; tagBg = '#f59e0b'; }
+                            else if (auditStatus === 'uncertain') { tag = `[?疑] ` + tag; tagBg = '#8b5cf6'; }
+                        }
+
+                        const fontSize = Math.max(10, Math.min(14, 12 / Math.sqrt(zoomScale)));
+                        ctx.font = `bold ${fontSize}px sans-serif`;
+                        const tw = ctx.measureText(tag).width + 6;
+                        const th = fontSize + 6;
+                        const ty = Math.max(0, y1 - th);
+                        ctx.fillStyle = tagBg;
+                        ctx.fillRect(x1, ty, tw, th);
+                        ctx.fillStyle = '#fff';
+                        ctx.fillText(tag, x1 + 3, ty + fontSize);
+                    }
+                }
+
+                // Render Left Side (F5)
+                if (chkShowF5) {
+                    rawA.forEach((b, i) => {
+                        renderBoxSplit(b, '#00f2fe', 'F5', true, i, 0);
+                    });
+                } else {
+                    ctx.save();
+                    ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+                    ctx.fillRect(0, 0, baseW, baseH);
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.font = 'bold 15px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('标杆 F5 图层已隐藏 (快捷键 F)', baseW / 2, baseH / 2);
+                    ctx.restore();
+                }
+
+                // Render Right Side (Candidate)
+                const curM = PAYLOAD.models.find(m => m.id === curModelId) || { name: '候选模型', score: '' };
+                const candColor = curM.color || '#f43f5e';
+                const candTag = curM.name ? curM.name.split(' ')[0] : '候选';
+                if (chkShowCand) {
+                    rawB.forEach((b, j) => {
+                        renderBoxSplit(b, candColor, candTag, false, j, baseW);
+                    });
+                } else {
+                    ctx.save();
+                    ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+                    ctx.fillRect(baseW, 0, baseW, baseH);
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.font = 'bold 15px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('候选模型图层已隐藏', baseW + baseW / 2, baseH / 2);
+                    ctx.restore();
+                }
+
+                // Draw Manual Ground Truth Annotations on BOTH Left and Right sides
+                const curStemManual = manualAnnotations.filter(m => m.stem === stem);
+                [0, baseW].forEach(offsetX => {
+                    curStemManual.forEach(m => {
+                        const b = m.box;
+                        const x1 = offsetX + (b[0] - b[2]/2) * baseW;
+                        const y1 = (b[1] - b[3]/2) * baseH;
+                        const boxW = b[2] * baseW;
+                        const boxH = b[3] * baseH;
+
+                        ctx.save();
+                        ctx.fillStyle = (m.tag === 'gt') ? 'rgba(16, 185, 129, 0.22)' :
+                                        (m.tag === 'fn') ? 'rgba(245, 158, 11, 0.25)' :
+                                        (m.tag === 'fp') ? 'rgba(239, 68, 68, 0.22)' : 'rgba(168, 85, 247, 0.25)';
+                        ctx.fillRect(x1, y1, boxW, boxH);
+                        ctx.strokeStyle = (m.tag === 'gt') ? '#10b981' :
+                                          (m.tag === 'fn') ? '#f59e0b' :
+                                          (m.tag === 'fp') ? '#ef4444' : '#c084fc';
+                        ctx.lineWidth = Math.max(2.5, 3.5 / zoomScale);
+                        ctx.setLineDash([5, 3]);
+                        ctx.strokeRect(x1, y1, boxW, boxH);
+                        ctx.restore();
+
+                        if (labelMode !== 'off') {
+                            const tag = `[✏️手标·${m.tag_zh}] ${m.class_zh}`;
+                            const fontSize = Math.max(10, Math.min(14, 12 / Math.sqrt(zoomScale)));
+                            ctx.font = `bold ${fontSize}px sans-serif`;
+                            const tw = ctx.measureText(tag).width + 8;
+                            const th = fontSize + 6;
+                            const ty = Math.max(0, y1 - th);
+                            ctx.fillStyle = (m.tag === 'gt') ? '#10b981' :
+                                            (m.tag === 'fn') ? '#f59e0b' :
+                                            (m.tag === 'fp') ? '#ef4444' : '#a855f7';
+                            ctx.fillRect(x1, ty, tw, th);
+                            ctx.fillStyle = '#000';
+                            ctx.fillText(tag, x1 + 4, ty + fontSize);
+                        }
+                    });
+                });
+
+                // Corner Header Badges (Left: 标杆 F5, Right: 当前对比模型)
+                ctx.save();
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+                ctx.fillRect(8, 8, 160, 24);
+                ctx.strokeStyle = 'rgba(0, 242, 254, 0.5)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(8, 8, 160, 24);
+                ctx.fillStyle = '#00f2fe';
+                ctx.font = 'bold 11px sans-serif';
+                ctx.fillText('标杆基准: F5 (57.266)', 16, 24);
+
+                const rightTitle = `对比模型: ${curM.name} ${curM.score ? '(' + curM.score + ')' : ''}`;
+                ctx.font = 'bold 11px sans-serif';
+                const rtw = Math.max(160, ctx.measureText(rightTitle).width + 20);
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+                ctx.fillRect(baseW + 8, 8, rtw, 24);
+                ctx.strokeStyle = 'rgba(244, 63, 94, 0.5)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(baseW + 8, 8, rtw, 24);
+                ctx.fillStyle = candColor;
+                ctx.fillText(rightTitle, baseW + 16, 24);
+                ctx.restore();
+            }
+
+            // In-Progress Manual Drawing Box
             if (isDrawing) {
                 const minX = Math.max(0, Math.min(drawStartPos.x, drawCurrentPos.x));
-                const maxX = Math.min(w, Math.max(drawStartPos.x, drawCurrentPos.x));
+                const maxX = Math.min(totalW, Math.max(drawStartPos.x, drawCurrentPos.x));
                 const minY = Math.max(0, Math.min(drawStartPos.y, drawCurrentPos.y));
-                const maxY = Math.min(h, Math.max(drawStartPos.y, drawCurrentPos.y));
+                const maxY = Math.min(totalH, Math.max(drawStartPos.y, drawCurrentPos.y));
                 const bw = maxX - minX;
                 const bh = maxY - minY;
 
@@ -3016,98 +3345,10 @@
                 ctx.restore();
             }
 
+            // Update Telemetry Badges
+            document.getElementById('hudResolution').innerText = isSplit ? `${baseW * 2} × ${baseH} px (双图并排)` : `${baseW} × ${baseH} px`;
             document.getElementById('totalVisibleBoxesBadge').innerText = `${totalRendered} 框显示`;
             document.getElementById('hudBoxCount').innerText = `${totalRendered} 框`;
-        }
-
-        function drawSplitCanvases() {
-            if (!activeMatchResult || !imgLoaded) return;
-            const { rawA, rawB } = activeMatchResult;
-            const w = imgVis.naturalWidth || 800;
-            const h = imgVis.naturalHeight || 450;
-
-            const cA = document.getElementById('splitCanvasA');
-            const cB = document.getElementById('splitCanvasB');
-            cA.width = w; cA.height = h;
-            cB.width = w; cB.height = h;
-
-            const ctxA = cA.getContext('2d');
-            const ctxB = cB.getContext('2d');
-
-            function getActiveBgForSplit() {
-                if (activeModality === 'sr4x') return srImageReady ? imgSR : imgVis;
-                if (activeModality === 'ir_aligned') return imgIRAligned.naturalWidth ? imgIRAligned : (imgIR.naturalWidth ? imgIR : imgVis);
-                if (activeModality === 'infrared') return imgIR.naturalWidth ? imgIR : imgVis;
-                if (activeModality === 'depth') return imgDepth.naturalWidth ? imgDepth : imgVis;
-                return imgVis;
-            }
-            const bgImg = getActiveBgForSplit();
-            ctxA.drawImage(bgImg, 0, 0, w, h);
-            ctxB.drawImage(bgImg, 0, 0, w, h);
-
-            let cntA = 0, cntB = 0;
-            rawA.forEach((b, i) => {
-                if (!activeClasses.has(b[0])) return;
-                cntA++;
-                drawBoxOnCtx(ctxA, b, '#00f2fe', 'F5', w, h, true);
-            });
-            rawB.forEach((b, j) => {
-                if (!activeClasses.has(b[0])) return;
-                cntB++;
-                drawBoxOnCtx(ctxB, b, '#f43f5e', '候选', w, h, false);
-            });
-
-            // Draw manual annotations on split canvases
-            const stem = filteredStems[curStemIndex];
-            const curStemManual = manualAnnotations.filter(m => m.stem === stem);
-            curStemManual.forEach(m => {
-                const b = m.box;
-                const x1 = (b[0] - b[2]/2) * w, y1 = (b[1] - b[3]/2) * h, boxW = b[2] * w, boxH = b[3] * h;
-                [ctxA, ctxB].forEach(c => {
-                    c.save();
-                    c.strokeStyle = '#f59e0b';
-                    c.lineWidth = Math.max(2, 2.5 / zoomScale);
-                    c.setLineDash([4, 2]);
-                    c.strokeRect(x1, y1, boxW, boxH);
-                    c.restore();
-                });
-            });
-
-            document.getElementById('splitCountA').innerText = `${cntA} 框`;
-            document.getElementById('splitCountB').innerText = `${cntB} 框`;
-            document.getElementById('totalVisibleBoxesBadge').innerText = `${cntA + cntB + curStemManual.length} 框显示`;
-            document.getElementById('hudBoxCount').innerText = `${cntA + cntB + curStemManual.length} 框`;
-        }
-
-        function drawBoxOnCtx(ctx, b, color, modelTag, w, h, isA) {
-            const cid = b[0], cx = b[1], cy = b[2], bw = b[3], bh = b[4], sc = b[5];
-            const x1 = (cx - bw/2) * w, y1 = (cy - bh/2) * h, boxW = bw * w, boxH = bh * h;
-            const stem = filteredStems[curStemIndex];
-            const boxKey = getBoxAuditKey(stem, isA ? 'f5' : curModelId, b);
-            const auditRecord = auditRecords[boxKey];
-            const auditStatus = auditRecord ? auditRecord.status : null;
-
-            ctx.strokeStyle = auditStatus === 'false' ? '#ef4444' : auditStatus === 'true' ? '#10b981' : color;
-            ctx.lineWidth = Math.max(1.5, 2 / zoomScale);
-            ctx.strokeRect(x1, y1, boxW, boxH);
-
-            if (labelMode !== 'off') {
-                let tag = (labelMode === 'compact') ? `${PAYLOAD.class_zh_short[cid]} ${sc.toFixed(2)}` : `[${modelTag}] ${PAYLOAD.class_zh_short[cid]} ${sc.toFixed(2)}`;
-                let tagBg = color;
-                if (auditStatus === 'true') { tag = `[✓真] ` + tag; tagBg = '#10b981'; }
-                else if (auditStatus === 'false') { tag = `[✗伪] ` + tag; tagBg = '#ef4444'; }
-                else if (auditStatus === 'missed') { tag = `[★漏] ` + tag; tagBg = '#f59e0b'; }
-
-                const fontSize = Math.max(10, Math.min(14, 12 / Math.sqrt(zoomScale)));
-                ctx.font = `bold ${fontSize}px sans-serif`;
-                const tw = ctx.measureText(tag).width + 6;
-                const th = fontSize + 6;
-                const ty = Math.max(0, y1 - th);
-                ctx.fillStyle = tagBg;
-                ctx.fillRect(x1, ty, tw, th);
-                ctx.fillStyle = '#fff';
-                ctx.fillText(tag, x1 + 3, ty + fontSize);
-            }
         }
 
         // ==========================================
@@ -3115,18 +3356,10 @@
         // ==========================================
         const overlayViewport = document.getElementById('overlayViewport');
         const stageWrapper = document.getElementById('stageWrapper');
-        const splitWrapA = document.getElementById('splitWrapA');
-        const splitTransformA = document.getElementById('splitTransformA');
-        const splitTransformB = document.getElementById('splitTransformB');
 
         function updateTransform() {
             const tStr = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
-            if (activeLayout === 'overlay') {
-                stageWrapper.style.transform = tStr;
-            } else {
-                splitTransformA.style.transform = tStr;
-                splitTransformB.style.transform = tStr;
-            }
+            stageWrapper.style.transform = tStr;
             document.getElementById('zoomLevelDisplay').innerText = `${Math.round(zoomScale * 100)}%`;
             document.getElementById('hudZoom').innerText = `${Math.round(zoomScale * 100)}%`;
             updateAuditBubblePosition();
@@ -3135,10 +3368,9 @@
 
         function setZoomScale(newScale, focalX = null, focalY = null) {
             const prevScale = zoomScale;
-            zoomScale = Math.max(0.4, Math.min(15.0, newScale));
+            zoomScale = Math.max(0.1, Math.min(15.0, newScale));
 
-            const vp = (activeLayout === 'overlay') ? overlayViewport : splitWrapA;
-            const rect = vp.getBoundingClientRect();
+            const rect = overlayViewport.getBoundingClientRect();
             const fx = (focalX !== null) ? focalX : rect.width / 2;
             const fy = (focalY !== null) ? focalY : rect.height / 2;
 
@@ -3154,31 +3386,42 @@
 
         function resetZoomAndFit() {
             if (!imgVis.naturalWidth) return;
-            const vp = (activeLayout === 'overlay') ? overlayViewport : splitWrapA;
-            const vpW = vp.clientWidth || 800;
-            const vpH = vp.clientHeight || 500;
-            const imgW = imgVis.naturalWidth;
-            const imgH = imgVis.naturalHeight;
+            const stageContainer = document.getElementById('stageViewportsContainer') || document.querySelector('.stage-center');
+            const totalW = stageContainer ? stageContainer.clientWidth : 1000;
+            const totalH = stageContainer ? stageContainer.clientHeight : 600;
 
-            const scaleW = (vpW * 0.95) / imgW;
-            const scaleH = (vpH * 0.95) / imgH;
+            const vpW = overlayViewport.clientWidth || totalW;
+            const vpH = overlayViewport.clientHeight || totalH;
+
+            const baseW = imgVis.naturalWidth;
+            const baseH = imgVis.naturalHeight;
+            const totalCanvasW = (activeLayout === 'split') ? (baseW * 2) : baseW;
+            const totalCanvasH = baseH;
+
+            const scaleW = (vpW * 0.95) / totalCanvasW;
+            const scaleH = (vpH * 0.95) / totalCanvasH;
             zoomScale = Math.min(scaleW, scaleH);
 
-            panX = (vpW - imgW * zoomScale) / 2;
-            panY = (vpH - imgH * zoomScale) / 2;
+            panX = (vpW - totalCanvasW * zoomScale) / 2;
+            panY = (vpH - totalCanvasH * zoomScale) / 2;
 
             updateTransform();
             recomputeAndDraw();
         }
 
-        overlayViewport.addEventListener('wheel', (e) => {
+        function handleWheelZoom(e, targetEl) {
             e.preventDefault();
-            const rect = overlayViewport.getBoundingClientRect();
+            const rect = targetEl.getBoundingClientRect();
             const factor = e.deltaY < 0 ? 1.18 : (1 / 1.18);
-            setZoomScale(zoomScale * factor, e.clientX - rect.left, e.clientY - rect.top);
-        }, { passive: false });
+            const focalX = e.clientX - rect.left;
+            const focalY = e.clientY - rect.top;
+            setZoomScale(zoomScale * factor, focalX, focalY);
+        }
+
+        overlayViewport.addEventListener('wheel', (e) => handleWheelZoom(e, overlayViewport), { passive: false });
 
         function setupPanEvents(viewportEl) {
+            if (!viewportEl) return;
             viewportEl.addEventListener('mousedown', (e) => {
                 if (e.button !== 0) return;
                 if (e.target.closest('#targetAuditCard') || e.target.closest('.floating-zoom-dock') || e.target.closest('.modal-overlay')) return;
@@ -3204,7 +3447,6 @@
             });
         }
         setupPanEvents(overlayViewport);
-        setupPanEvents(splitWrapA);
 
         window.addEventListener('mousemove', (e) => {
             if (isDrawing) {
@@ -3229,17 +3471,26 @@
             if (isDrawing) {
                 isDrawing = false;
                 const canvas = document.getElementById('mainCanvas');
+                const baseW = imgVis.naturalWidth || 800;
+                const baseH = imgVis.naturalHeight || 450;
+                const isSplit = (activeLayout === 'split');
+
                 const minX = Math.max(0, Math.min(drawStartPos.x, drawCurrentPos.x));
                 const maxX = Math.min(canvas.width, Math.max(drawStartPos.x, drawCurrentPos.x));
                 const minY = Math.max(0, Math.min(drawStartPos.y, drawCurrentPos.y));
                 const maxY = Math.min(canvas.height, Math.max(drawStartPos.y, drawCurrentPos.y));
                 const bw = maxX - minX;
                 const bh = maxY - minY;
-                if (bw >= 6 && bh >= 6 && canvas.width > 0 && canvas.height > 0) {
-                    const cx = (minX + bw / 2) / canvas.width;
-                    const cy = (minY + bh / 2) / canvas.height;
-                    const normW = bw / canvas.width;
-                    const normH = bh / canvas.height;
+
+                if (bw >= 6 && bh >= 6 && baseW > 0 && baseH > 0) {
+                    let localMinX = minX;
+                    if (isSplit && minX >= baseW) {
+                        localMinX = minX - baseW;
+                    }
+                    const cx = (localMinX + bw / 2) / baseW;
+                    const cy = (minY + bh / 2) / baseH;
+                    const normW = bw / baseW;
+                    const normH = bh / baseH;
                     openManualModal({ cx, cy, w: normW, h: normH });
                 }
                 drawOverlayCanvas();
@@ -3250,16 +3501,22 @@
 
         function focusOnBox(boxId, cx, cy, bw, bh) {
             highlightBox(boxId);
-            const w = imgVis.naturalWidth || 800;
-            const h = imgVis.naturalHeight || 450;
-            const boxPixelX = cx * w;
-            const boxPixelY = cy * h;
+            const baseW = imgVis.naturalWidth || 800;
+            const baseH = imgVis.naturalHeight || 450;
+            let boxPixelX = cx * baseW;
+            const boxPixelY = cy * baseH;
+            if (activeLayout === 'split' && boxId.startsWith('b_')) {
+                boxPixelX += baseW;
+            }
 
-            const vp = (activeLayout === 'overlay') ? overlayViewport : splitWrapA;
-            const vpW = vp.clientWidth;
-            const vpH = vp.clientHeight;
+            const stageContainer = document.getElementById('stageViewportsContainer') || document.querySelector('.stage-center');
+            const totalW = stageContainer ? stageContainer.clientWidth : 1000;
+            const totalH = stageContainer ? stageContainer.clientHeight : 600;
 
-            const targetScale = Math.min(8.0, Math.max(3.5, 0.38 / Math.max(bw, bh)));
+            const vpW = overlayViewport.clientWidth || totalW;
+            const vpH = overlayViewport.clientHeight || totalH;
+
+            const targetScale = Math.min(8.0, Math.max(2.5, 0.38 / Math.max(bw, bh)));
             zoomScale = targetScale;
 
             panX = vpW / 2 - boxPixelX * zoomScale;
@@ -3437,17 +3694,23 @@
         function updateAuditBubblePosition() {
             if (!activeBoxObj || targetAuditCard.style.display !== 'block') return;
             const b = activeBoxObj.b;
-            const w = imgVis.naturalWidth || 800;
-            const h = imgVis.naturalHeight || 450;
-            const boxPixelX = (b[1] + b[3]/2) * w;
-            const boxPixelY = (b[2] - b[4]/2) * h;
+            const baseW = imgVis.naturalWidth || 800;
+            const baseH = imgVis.naturalHeight || 450;
+            let boxPixelX = (b[1] + b[3]/2) * baseW;
+            const boxPixelY = (b[2] - b[4]/2) * baseH;
+
+            if (activeLayout === 'split' && !activeBoxObj.isA) {
+                boxPixelX += baseW;
+            }
+
+            const container = document.getElementById('stageViewportsContainer') || document.querySelector('.stage-center');
+            const contRect = container ? container.getBoundingClientRect() : { width: 1000, height: 600, left: 0, top: 0 };
 
             const screenX = panX + boxPixelX * zoomScale + 15;
             const screenY = panY + boxPixelY * zoomScale - 10;
 
-            const vp = overlayViewport.getBoundingClientRect();
-            const posX = Math.max(10, Math.min(vp.width - 300, screenX));
-            const posY = Math.max(10, Math.min(vp.height - 260, screenY));
+            const posX = Math.max(10, Math.min(contRect.width - 320, screenX));
+            const posY = Math.max(10, Math.min(contRect.height - 280, screenY));
 
             targetAuditCard.style.left = `${posX}px`;
             targetAuditCard.style.top = `${posY}px`;
@@ -3505,6 +3768,8 @@
             const { rawA, rawB, matchA, matchB } = activeMatchResult;
             const stem = filteredStems[curStemIndex];
             const filterMode = document.getElementById('selAuditFilter').value;
+            const chkShowF5 = document.getElementById('chkShowF5') ? document.getElementById('chkShowF5').checked : true;
+            const chkShowCand = document.getElementById('chkShowCand') ? document.getElementById('chkShowCand').checked : true;
 
             let html = '';
 
@@ -3523,8 +3788,8 @@
 
                 let roleColor = 'var(--consensus-emerald)';
                 let roleName = '双方共识';
-                if (role === 'missed') { roleColor = 'var(--f5-cyan)'; roleName = '📉 遗漏真框 (F5)'; }
-                else if (role === 'fp') { roleColor = 'var(--candidate-rose)'; roleName = '📈 多报伪框 (候选)'; }
+                if (role === 'missed') { roleColor = 'var(--f5-cyan)'; roleName = '📉 遗漏真框 (F5独有)'; }
+                else if (role === 'fp') { roleColor = 'var(--candidate-rose)'; roleName = chkShowF5 ? '📈 多报伪框 (候选独有)' : '🎯 候选独有检出'; }
                 else if (role === 'conflict') { roleColor = 'var(--conflict-amber)'; roleName = '⚠️ 类别冲突'; }
 
                 let auditBadgeHtml = '<span style="color:#64748b;font-size:10px;">未核验</span>';
@@ -3565,16 +3830,36 @@
                 </div>`;
             }
 
-            rawA.forEach((b, i) => {
-                if (matchA[i]) {
-                    if (matchA[i].type === 'exact') renderCard(b, 'exact', true, i);
-                    else renderCard(b, 'conflict', true, i);
-                } else renderCard(b, 'missed', true, i);
-            });
+            if (chkShowF5 && chkShowCand) {
+                rawA.forEach((b, i) => {
+                    if (matchA[i]) {
+                        if (matchA[i].type === 'exact') renderCard(b, 'exact', true, i);
+                        else renderCard(b, 'conflict', true, i);
+                    } else renderCard(b, 'missed', true, i);
+                });
 
-            rawB.forEach((b, j) => {
-                if (!matchB[j]) renderCard(b, 'fp', false, j);
-            });
+                rawB.forEach((b, j) => {
+                    if (!matchB[j]) renderCard(b, 'fp', false, j);
+                });
+            } else if (!chkShowF5 && chkShowCand) {
+                rawB.forEach((b, j) => {
+                    if (matchB[j]) {
+                        if (matchB[j].type === 'exact') renderCard(b, 'exact', false, j);
+                        else renderCard(b, 'conflict', false, j);
+                    } else {
+                        renderCard(b, 'fp', false, j);
+                    }
+                });
+            } else if (chkShowF5 && !chkShowCand) {
+                rawA.forEach((b, i) => {
+                    if (matchA[i]) {
+                        if (matchA[i].type === 'exact') renderCard(b, 'exact', true, i);
+                        else renderCard(b, 'conflict', true, i);
+                    } else {
+                        renderCard(b, 'missed', true, i);
+                    }
+                });
+            }
 
             container.innerHTML = html || '<span style="color:#64748b;font-size:11px;text-align:center;padding:20px;">当前筛选条件下无目标框</span>';
         }
@@ -3592,53 +3877,111 @@
             document.querySelectorAll('.box-inspector-card').forEach(c => c.classList.remove('hovered'));
         }
 
-        // Canvas Click Handler
+        // Canvas Click Handler (Unified for Overlay and Stitched Dual View)
         const mainCanvas = document.getElementById('mainCanvas');
         mainCanvas.addEventListener('click', (e) => {
-            if (!activeMatchResult || activeLayout !== 'overlay' || isDragging || isDrawing || isDrawMode) return;
+            if (!activeMatchResult || isDragging || isDrawing || isDrawMode) return;
             const rect = mainCanvas.getBoundingClientRect();
-            const mouseX = (e.clientX - rect.left) / rect.width;
-            const mouseY = (e.clientY - rect.top) / rect.height;
+            const baseW = imgVis.naturalWidth || 800;
+            const baseH = imgVis.naturalHeight || 450;
+            const isSplit = (activeLayout === 'split');
+            const totalW = isSplit ? (baseW * 2) : baseW;
+            const totalH = baseH;
+
+            const pixelX = (e.clientX - rect.left) / rect.width * totalW;
+            const pixelY = (e.clientY - rect.top) / rect.height * totalH;
 
             const stem = filteredStems[curStemIndex];
-
-            // 1. Check if clicked on an existing manual annotation
             const curManual = manualAnnotations.filter(m => m.stem === stem);
-            for (let i = curManual.length - 1; i >= 0; i--) {
-                const m = curManual[i];
-                const b = m.box;
-                const x1 = b[0] - b[2]/2, x2 = b[0] + b[2]/2;
-                const y1 = b[1] - b[3]/2, y2 = b[1] + b[3]/2;
-                if (mouseX >= x1 && mouseX <= x2 && mouseY >= y1 && mouseY <= y2) {
-                    openManualModal(null, m);
-                    return;
-                }
-            }
-
-            // 2. Check model predictions
             const { rawA, rawB, matchA, matchB } = activeMatchResult;
+            const chkShowF5 = document.getElementById('chkShowF5') ? document.getElementById('chkShowF5').checked : true;
+            const chkShowCand = document.getElementById('chkShowCand') ? document.getElementById('chkShowCand').checked : true;
             let hit = null;
 
-            rawA.forEach((b, i) => {
-                if (!activeClasses.has(b[0])) return;
-                const x1 = b[1] - b[3]/2, x2 = b[1] + b[3]/2;
-                const y1 = b[2] - b[4]/2, y2 = b[2] + b[4]/2;
-                if (mouseX >= x1 && mouseX <= x2 && mouseY >= y1 && mouseY <= y2) {
-                    const role = matchA[i] ? (matchA[i].type==='exact'?'双方共识':'类别冲突') : '遗漏真框';
-                    hit = { b, role, isA: true, idx: i, stem, modelId: 'f5' };
-                }
-            });
+            if (!isSplit) {
+                // Overlay mode
+                const mouseX = pixelX / baseW;
+                const mouseY = pixelY / baseH;
 
-            if (!hit) {
-                rawB.forEach((b, j) => {
-                    if (!activeClasses.has(b[0])) return;
-                    const x1 = b[1] - b[3]/2, x2 = b[1] + b[3]/2;
-                    const y1 = b[2] - b[4]/2, y2 = b[2] + b[4]/2;
+                // 1. Check manual annotations
+                for (let i = curManual.length - 1; i >= 0; i--) {
+                    const m = curManual[i];
+                    const b = m.box;
+                    const x1 = b[0] - b[2]/2, x2 = b[0] + b[2]/2;
+                    const y1 = b[1] - b[3]/2, y2 = b[1] + b[3]/2;
                     if (mouseX >= x1 && mouseX <= x2 && mouseY >= y1 && mouseY <= y2) {
-                        const role = matchB[j] ? (matchB[j].type==='exact'?'双方共识':'类别冲突') : '多报伪框';
-                        hit = { b, role, isA: false, idx: j, stem, modelId: curModelId };
+                        openManualModal(null, m);
+                        return;
                     }
-                });
+                }
+
+                // 2. Check model predictions
+                if (chkShowF5) {
+                    rawA.forEach((b, i) => {
+                        if (!activeClasses.has(b[0])) return;
+                        const x1 = b[1] - b[3]/2, x2 = b[1] + b[3]/2;
+                        const y1 = b[2] - b[4]/2, y2 = b[2] + b[4]/2;
+                        if (mouseX >= x1 && mouseX <= x2 && mouseY >= y1 && mouseY <= y2) {
+                            const role = matchA[i] ? (matchA[i].type==='exact'?'双方共识':'类别冲突') : '遗漏真框';
+                            hit = { b, role, isA: true, idx: i, stem, modelId: 'f5' };
+                        }
+                    });
+                }
+
+                if (!hit && chkShowCand) {
+                    rawB.forEach((b, j) => {
+                        if (!activeClasses.has(b[0])) return;
+                        const x1 = b[1] - b[3]/2, x2 = b[1] + b[3]/2;
+                        const y1 = b[2] - b[4]/2, y2 = b[2] + b[4]/2;
+                        if (mouseX >= x1 && mouseX <= x2 && mouseY >= y1 && mouseY <= y2) {
+                            const role = matchB[j] ? (matchB[j].type==='exact'?'双方共识':'类别冲突') : (chkShowF5 ? '多报伪框' : '候选独有');
+                            hit = { b, role, isA: false, idx: j, stem, modelId: curModelId };
+                        }
+                    });
+                }
+            } else {
+                // Split mode
+                const isLeft = (pixelX < baseW);
+                const localPixelX = isLeft ? pixelX : (pixelX - baseW);
+                const mouseX = localPixelX / baseW;
+                const mouseY = pixelY / baseH;
+
+                // 1. Check manual annotations
+                for (let i = curManual.length - 1; i >= 0; i--) {
+                    const m = curManual[i];
+                    const b = m.box;
+                    const x1 = b[0] - b[2]/2, x2 = b[0] + b[2]/2;
+                    const y1 = b[1] - b[3]/2, y2 = b[1] + b[3]/2;
+                    if (mouseX >= x1 && mouseX <= x2 && mouseY >= y1 && mouseY <= y2) {
+                        openManualModal(null, m);
+                        return;
+                    }
+                }
+
+                // 2. Left side: F5
+                if (isLeft && chkShowF5) {
+                    rawA.forEach((b, i) => {
+                        if (!activeClasses.has(b[0])) return;
+                        const x1 = b[1] - b[3]/2, x2 = b[1] + b[3]/2;
+                        const y1 = b[2] - b[4]/2, y2 = b[2] + b[4]/2;
+                        if (mouseX >= x1 && mouseX <= x2 && mouseY >= y1 && mouseY <= y2) {
+                            const role = matchA[i] ? (matchA[i].type==='exact'?'双方共识':'类别冲突') : '遗漏真框';
+                            hit = { b, role, isA: true, idx: i, stem, modelId: 'f5' };
+                        }
+                    });
+                }
+                // 3. Right side: Candidate
+                if (!isLeft && chkShowCand) {
+                    rawB.forEach((b, j) => {
+                        if (!activeClasses.has(b[0])) return;
+                        const x1 = b[1] - b[3]/2, x2 = b[1] + b[3]/2;
+                        const y1 = b[2] - b[4]/2, y2 = b[2] + b[4]/2;
+                        if (mouseX >= x1 && mouseX <= x2 && mouseY >= y1 && mouseY <= y2) {
+                            const role = matchB[j] ? (matchB[j].type==='exact'?'双方共识':'类别冲突') : (chkShowF5 ? '多报伪框' : '候选独有');
+                            hit = { b, role, isA: false, idx: j, stem, modelId: curModelId };
+                        }
+                    });
+                }
             }
 
             if (hit) {
@@ -3647,6 +3990,14 @@
             } else {
                 closeAuditBubble();
             }
+        });
+
+        let resizeTimer = null;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                resetZoomAndFit();
+            }, 100);
         });
 
         // Toolbar State Handlers
@@ -3765,10 +4116,12 @@
             activeLayout = layout;
             document.getElementById('btnLayoutOverlay').classList.toggle('active', layout === 'overlay');
             document.getElementById('btnLayoutSplit').classList.toggle('active', layout === 'split');
-            document.getElementById('overlayViewport').style.display = (layout === 'overlay') ? 'flex' : 'none';
-            document.getElementById('splitViewport').style.display = (layout === 'split') ? 'flex' : 'none';
+            const cont = document.getElementById('stageViewportsContainer');
+            if (cont) cont.classList.toggle('split-mode-active', layout === 'split');
             closeAuditBubble();
-            resetZoomAndFit();
+            requestAnimationFrame(() => {
+                resetZoomAndFit();
+            });
         }
 
         // Text Label Display Mode Switcher
@@ -3829,6 +4182,33 @@
             setTimeout(resetZoomAndFit, 310);
         }
 
+        // Secondary Toolbar Folding / Collapsing Logic
+        let isExtraToolbarExpanded = false;
+
+        function toggleExtraToolbar() {
+            isExtraToolbarExpanded = !isExtraToolbarExpanded;
+            const bar = document.getElementById('stageToolbarExtra');
+            const btn = document.getElementById('btnToggleExtraToolbar');
+            const arrow = document.getElementById('extraToolbarArrow');
+            if (bar) bar.classList.toggle('collapsed', !isExtraToolbarExpanded);
+            if (btn) btn.classList.toggle('active', isExtraToolbarExpanded);
+            if (arrow) arrow.innerText = isExtraToolbarExpanded ? '▴' : '▾';
+            localStorage.setItem('aic_extra_toolbar_expanded', isExtraToolbarExpanded ? '1' : '0');
+        }
+
+        function initExtraToolbar() {
+            const saved = localStorage.getItem('aic_extra_toolbar_expanded');
+            if (saved === '1') {
+                isExtraToolbarExpanded = true;
+                const bar = document.getElementById('stageToolbarExtra');
+                const btn = document.getElementById('btnToggleExtraToolbar');
+                const arrow = document.getElementById('extraToolbarArrow');
+                if (bar) bar.classList.remove('collapsed');
+                if (btn) btn.classList.add('active');
+                if (arrow) arrow.innerText = '▴';
+            }
+        }
+
         function switchRightTab(tab) {
             rightActiveTab = tab;
             const btnTargets = document.getElementById('tabBtnTargets');
@@ -3872,6 +4252,46 @@
                 if (chkFp) chkFp.checked = true;
             }
             recomputeAndDraw();
+        }
+
+        function toggleShowF5() {
+            const chk = document.getElementById('chkShowF5');
+            if (chk) {
+                chk.checked = !chk.checked;
+                onRenderOptionChange();
+            }
+        }
+
+        function toggleShowCand() {
+            const chk = document.getElementById('chkShowCand');
+            if (chk) {
+                chk.checked = !chk.checked;
+                onRenderOptionChange();
+            }
+        }
+
+        function toggleOnlyCandidate() {
+            const chkF5 = document.getElementById('chkShowF5');
+            const chkCand = document.getElementById('chkShowCand');
+            if (chkF5) chkF5.checked = false;
+            if (chkCand) chkCand.checked = true;
+            onRenderOptionChange();
+        }
+
+        function toggleOnlyF5() {
+            const chkF5 = document.getElementById('chkShowF5');
+            const chkCand = document.getElementById('chkShowCand');
+            if (chkF5) chkF5.checked = true;
+            if (chkCand) chkCand.checked = false;
+            onRenderOptionChange();
+        }
+
+        function resetModelLayers() {
+            const chkF5 = document.getElementById('chkShowF5');
+            const chkCand = document.getElementById('chkShowCand');
+            if (chkF5) chkF5.checked = true;
+            if (chkCand) chkCand.checked = true;
+            onRenderOptionChange();
         }
 
         function toggleFullscreen() {
@@ -3975,6 +4395,7 @@
             if (canvas) canvas.style.cursor = isDrawMode ? 'crosshair' : 'default';
 
             if (isDrawMode) {
+                if (!isExtraToolbarExpanded) toggleExtraToolbar();
                 switchRightTab('manual');
             }
             drawOverlayCanvas();
@@ -4654,6 +5075,7 @@
                 if (activeBoxObj) setAuditForActiveBox('true');
             } else if (k === 'f' || k === 'F') {
                 if (activeBoxObj) setAuditForActiveBox('false');
+                else toggleShowF5();
             } else if (k === 'm' || k === 'M') {
                 if (activeBoxObj) setAuditForActiveBox('missed');
             } else if (k === 'u' || k === 'U') {
@@ -4678,13 +5100,18 @@
         // Initialize Workstation
         document.addEventListener('DOMContentLoaded', async () => {
             initModelSwitcher();
+            initExtraToolbar();
             renderCategoryMatrix();
             applySampleFilter();
             await initAuditStorage();
             await initManualStorage();
+            selectModel(curModelId);
 
             // URL Deep Linking / Parameter Support
             const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('layout')) {
+                setLayout(urlParams.get('layout'));
+            }
             if (urlParams.get('label_mode')) {
                 setLabelMode(urlParams.get('label_mode'));
             }

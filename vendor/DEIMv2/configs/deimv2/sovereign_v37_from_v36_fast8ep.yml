@@ -1,0 +1,101 @@
+# =============================================================================
+# Sovereign V37 from V36 Base (8-Epoch Micro Fine-Tuning)
+# 架构特性:
+#   1. 继承 V36 的 P2 (Stride 4, 360x640) 跨尺度高频特征直通
+#   2. 挂载四大机制:
+#      - 机制一: Smooth Depth Fallback Mask (DOG 盲区柔性透传)
+#      - 机制二: 分层配额路由 (P3 30%, P4 30%, Global 40%)
+#      - 机制三: L0/L1 采样偏移 tanh 软裁剪 (+/- 2.0 网格安全约束)
+#      - 机制四: 渐进式阶梯 Aux Loss (0.4 -> 0.5 -> 0.6 -> 0.8 -> 0.9 -> 1.0)
+# 基底权重: Sovereign V36 checkpoint (checkpoint0027.pth / best_stg1.pth)
+# =============================================================================
+
+__include__: [
+  './sovereign_v36_p2_direct_injection_50ep_v100.yml',
+]
+
+output_dir: ./outputs/sovereign_v37_from_v36_fast8ep
+
+DFINETransformer:
+  # 机制二: 分层配额路由
+  use_anisotropic_routing: True
+  p3_quota_ratio: 0.30
+  p4_quota_ratio: 0.30
+  # 机制三: L0/L1 采样偏移 tanh 软裁剪
+  use_offset_clamp: True
+  offset_clamp_scale: 2.0
+  offset_clamp_layers: [0, 1]
+
+DEIMCriterion:
+  # 机制四: 渐进式辅助损失衰减
+  use_discounted_aux_loss: True
+  aux_loss_discount_steps: [0.4, 0.5, 0.6, 0.8, 0.9]
+
+HGNetv2MultiModal:
+  # 机制一: DOG 盲区柔性透传
+  disable_fallback: False
+
+# 8 轮极速微调排程 (低学习率 1e-5，平滑退火)
+epoches: 8
+lrsheduler: flatcosine
+warmup_iter: 20
+flat_epoch: 6
+no_aug_epoch: 2
+checkpoint_freq: 2
+print_freq: 20
+
+optimizer:
+  type: AdamW
+  lr: 0.00001
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+# 通用跨机器相对路径定义 (完美适配本地与远端)
+train_dataloader:
+  total_batch_size: 2
+  num_workers: 4
+  persistent_workers: True
+  pin_memory: True
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: ../../dataset/train/visible
+    ir_folder: ../../dataset/train/infrared_aligned
+    raw_ir_folder: ../../dataset/train/infrared
+    depth_folder: ../../dataset/train/depth
+    depth_read: raw16
+    destripe_ir: True
+    ann_file: ../../work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 6
+    remap_mscoco_category: False
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [1440, 2560]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+
+val_dataloader:
+  total_batch_size: 2
+  num_workers: 4
+  drop_last: False
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: ../../dataset/train/visible
+    ir_folder: ../../dataset/train/infrared_aligned
+    raw_ir_folder: ../../dataset/train/infrared
+    depth_folder: ../../dataset/train/depth
+    depth_read: raw16
+    destripe_ir: True
+    ann_file: ../../work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    n_channels: 6
+    remap_mscoco_category: False
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [1440, 2560]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}

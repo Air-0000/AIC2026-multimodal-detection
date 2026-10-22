@@ -12,6 +12,7 @@ Features:
 """
 
 import os
+import hashlib
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -27,6 +28,8 @@ class DINOv3TeacherDistiller(nn.Module):
         loss_cos_weight=1.0,
         loss_gram_weight=0.5,
         downsample_scale=0.5,   # Downsample 1152x2048 to 576x1024 for teacher
+        require_pretrained=False,
+        pretrained_sha256=None,
     ):
         super().__init__()
         self.model_path = model_path
@@ -47,8 +50,42 @@ class DINOv3TeacherDistiller(nn.Module):
         nn.init.kaiming_normal_(self.proj_head[3].weight)
         nn.init.zeros_(self.proj_head[3].bias)
 
-        self.teacher = None
+        ckpt_path = self._find_checkpoint()
+        if require_pretrained and ckpt_path is None:
+            raise FileNotFoundError(f'Required DINOv3 teacher checkpoint missing: {model_path}')
+        if require_pretrained and os.path.realpath(ckpt_path) != os.path.realpath(model_path):
+            raise FileNotFoundError(f'Refusing teacher fallback {ckpt_path}; required exact source {model_path}')
+        self.checkpoint_path = ckpt_path
+        if pretrained_sha256:
+            if ckpt_path is None:
+                raise FileNotFoundError('Cannot verify missing teacher weights')
+            digest = hashlib.sha256()
+            with open(ckpt_path, 'rb') as stream:
+                for block in iter(lambda: stream.read(8 * 1024 * 1024), b''):
+                    digest.update(block)
+            if digest.hexdigest() != pretrained_sha256:
+                raise ValueError('Teacher checkpoint differs from the pinned official weights')
+        print(f"[DINOv3Teacher] Initializing native DinoVisionTransformer (dinov3_vitl16)...")
+        self.teacher = DinoVisionTransformer(name="dinov3_vitl16")
+        if ckpt_path:
+            print(f"[DINOv3Teacher] Loading official weights from {ckpt_path}...")
+            state_dict = torch.load(ckpt_path, map_location="cpu")
+            res = self.teacher.load_state_dict(state_dict, strict=True)
+            print(f"[DINOv3Teacher] Weights loaded successfully (strict=True): {res}")
+        else:
+            print(f"[DINOv3Teacher] WARNING: Checkpoint not found at {self.model_path}, using uninitialized weights!")
+
+        self.teacher.eval()
+        for p in self.teacher.parameters():
+            p.requires_grad = False
         self._device = None
+
+    def train(self, mode=True):
+        # Only the projection head is trainable; parent model.train() must not
+        # reactivate stochastic layers in the frozen teacher.
+        super().train(mode)
+        self.teacher.eval()
+        return self
 
     def _find_checkpoint(self):
         candidates = [
@@ -66,24 +103,16 @@ class DINOv3TeacherDistiller(nn.Module):
         device = torch.device(device)
         dev_str = f"{device.type}:{device.index}" if device.index is not None else (f"cuda:{torch.cuda.current_device()}" if device.type == "cuda" else str(device))
         target_dev = torch.device(dev_str)
-        if self.teacher is None or self._device != target_dev:
-            ckpt_path = self._find_checkpoint()
-            print(f"[DINOv3Teacher] Initializing native DinoVisionTransformer (dinov3_vitl16)...")
-            self.teacher = DinoVisionTransformer(name="dinov3_vitl16")
-            if ckpt_path:
-                print(f"[DINOv3Teacher] Loading official weights from {ckpt_path} onto {target_dev}...")
-                state_dict = torch.load(ckpt_path, map_location="cpu")
-                res = self.teacher.load_state_dict(state_dict, strict=True)
-                print(f"[DINOv3Teacher] Weights loaded successfully (strict=True): {res}")
-            else:
-                print(f"[DINOv3Teacher] WARNING: Checkpoint not found at {self.model_path}, using uninitialized weights!")
-
+        try:
+            curr_dev = next(self.teacher.parameters()).device
+        except StopIteration:
+            curr_dev = None
+        if curr_dev != target_dev:
             self.teacher.to(target_dev)
             self.teacher.eval()
             for p in self.teacher.parameters():
                 p.requires_grad = False
             self._device = target_dev
-            print(f"[DINOv3Teacher] Teacher successfully frozen in eval mode on {target_dev}.")
 
     @torch.no_grad()
     def get_teacher_features(self, rgb):
@@ -120,11 +149,18 @@ class DINOv3TeacherDistiller(nn.Module):
         """
         rgb: [B, 3, H, W] (first 3 channels of 6-ch input)
         student_feats: list of multi-scale features from student backbone or encoder.
-                       Specifically student_feats[2] is P4 (stride 16, C=384).
+                       Matches P4 (stride 16, C=384) to DINOv3 patch representation.
         """
         if isinstance(student_feats, (list, tuple)):
-            # P4 is stage 2
-            student_p4 = student_feats[2] if len(student_feats) > 2 else student_feats[-1]
+            # P4 is stride 16:
+            # - If 4 levels [P2 (stride 4), P3 (stride 8), P4 (stride 16), P5 (stride 32)]: index 2 is P4
+            # - If 3 levels [P3 (stride 8), P4 (stride 16), P5 (stride 32)]: index 1 is P4
+            if len(student_feats) == 4:
+                student_p4 = student_feats[2]
+            elif len(student_feats) == 3:
+                student_p4 = student_feats[1]
+            else:
+                student_p4 = student_feats[-2] if len(student_feats) >= 2 else student_feats[-1]
         else:
             student_p4 = student_feats
 

@@ -531,6 +531,39 @@ RandomHorizontalFlip = register()(T.RandomHorizontalFlip)
 # RandomAffine is purely spatial, so it treats all C channels identically --
 # safe for 6ch input, unlike the colour ops which must be RGB-only.
 RandomAffine = register()(T.RandomAffine)
+
+
+@register()
+class RandomMicroShift(T.Transform):
+    """Sub-grid / micro-pixel spatial translation augmentation for multi-channel inputs.
+    Applies small pixel-level translations (e.g. max_shift_px=16) to simulate camera
+    jitter and break phase-dependent grid quantization on discrete feature maps.
+    """
+    def __init__(self, max_shift_px=16, p=0.5):
+        super().__init__()
+        self.max_shift_px = max_shift_px
+        self.p = p
+
+    def forward(self, *inputs: Any) -> Any:
+        is_single_seq = len(inputs) == 1 and isinstance(inputs[0], (tuple, list))
+        unpacked = inputs[0] if is_single_seq else inputs
+
+        if torch.rand(1).item() > self.p:
+            return inputs[0] if is_single_seq else (unpacked if len(unpacked) > 1 else unpacked[0])
+
+        img = unpacked[0]
+        if hasattr(img, 'shape'):
+            h, w = img.shape[-2:]
+        else:
+            h, w = F.get_size(img)
+
+        trans = T.RandomAffine(degrees=0, translate=(float(self.max_shift_px)/w, float(self.max_shift_px)/h))
+        res = trans(*unpacked)
+        if is_single_seq:
+            return tuple(res) if isinstance(inputs[0], tuple) else list(res)
+        return res
+
+
 Resize = register()(T.Resize)
 # ToImageTensor = register()(T.ToImageTensor)
 # ConvertDtype = register()(T.ConvertDtype)

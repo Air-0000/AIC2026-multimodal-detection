@@ -56,6 +56,7 @@ class CocoDetectionMultiModal(CocoDetection):
                              # 'clip8' = legacy BROKEN PIL convert("L") read, kept
                              # ONLY to re-evaluate checkpoints trained on clipped maps
         destripe_ir=False,   # 1D Column-wise Guided Destriping for Infrared NUC
+        strict_inputs=False,
     ):
         # torchvision CocoDetection only reads annotations; image IO is custom.
         try:
@@ -78,6 +79,14 @@ class CocoDetectionMultiModal(CocoDetection):
         self.depth_mode = depth_mode
         self.depth_read = depth_read
         self.destripe_ir = destripe_ir
+        self.strict_inputs = bool(strict_inputs)
+        if self.strict_inputs:
+            if n_channels != 6 or any(x is None for x in (ir_folder, raw_ir_folder, depth_folder)):
+                raise ValueError('Strict AIC input contract requires RGB + aligned IR + LBG IR + depth (6 channels)')
+            if depth_read != 'raw16' or depth_mode != 'raw':
+                raise ValueError('Strict AIC input contract requires raw16/raw depth')
+            if destripe_ir:
+                from destripe_1d import stripe_non_uniformity_correction_1d
 
     def _read_channel(self, folder, name, n_ch, destripe=False):
         p_png = os.path.join(folder, os.path.splitext(name)[0] + ".png")
@@ -93,6 +102,8 @@ class CocoDetectionMultiModal(CocoDetection):
                     arr = stripe_non_uniformity_correction_1d(arr)
                     t = torch.from_numpy(arr).float().unsqueeze(0) / 255.0
                 except Exception:
+                    if self.strict_inputs:
+                        raise
                     t = T.functional.pil_to_tensor(im).float() / 255.0
             else:
                 t = T.functional.pil_to_tensor(im).float() / 255.0  # [1,H,W]
@@ -157,6 +168,8 @@ class CocoDetectionMultiModal(CocoDetection):
         return n
 
     def load_item(self, idx):
+        if self.strict_inputs and os.environ.get('ABLATE', ''):
+            raise ValueError('ABLATE environment override is forbidden for the clean input contract')
         img_name = self.coco.loadImgs(self.ids[idx])[0]["file_name"]
         rgb_path = os.path.join(self.root, img_name)
         rgb_pil = Image.open(rgb_path).convert("RGB")
@@ -299,6 +312,8 @@ class CocoDetectionMultiModal(CocoDetection):
                     dv.append(crop.median() if crop.numel() > 0 else dep.median())
                 target['depth'] = torch.stack(dv)
             except Exception:
+                if self.strict_inputs:
+                    raise
                 # never let the depth hook break the dataloader
                 pass
 

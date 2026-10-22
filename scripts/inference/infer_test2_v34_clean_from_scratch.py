@@ -29,9 +29,13 @@ from PIL import Image
 from tqdm import tqdm
 import torchvision.transforms as T
 
-_root = Path("/home/ailab/ssd/bigdata/hejianzhong/AIC_V29")
-if not _root.exists():
-    _root = Path("/home/constant/CodeBuddy/Dev/AIC")
+_root_env = os.environ.get("AIC_ROOT")
+if _root_env and Path(_root_env).exists():
+    _root = Path(_root_env)
+else:
+    _root = Path("/home/ailab/ssd/bigdata/hejianzhong/AIC_V29")
+    if not _root.exists():
+        _root = Path("/home/constant/CodeBuddy/Dev/AIC")
 
 sys.path.insert(0, str(_root / 'vendor/DEIMv2'))
 sys.path.insert(0, str(_root / 'scripts/lib'))

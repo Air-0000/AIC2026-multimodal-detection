@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""Describe the same-query response within decoder components; not amplification ratios."""
+import argparse,hashlib,json
+from pathlib import Path
+import numpy as np
+p=argparse.ArgumentParser();p.add_argument('--bundle',type=Path,required=True);p.add_argument('--previous-trace',type=Path,required=True);p.add_argument('--out',type=Path,required=True);a=p.parse_args();sha=lambda f:hashlib.sha256(Path(f).read_bytes()).hexdigest();m=json.loads((a.bundle/'manifest.json').read_text());assert m['runs'][0]['status']=='complete';assert sha(a.bundle/'query_attention_trace.npz')==m['runs'][0]['query_attention_trace_sha256'];z=np.load(a.bundle/'query_attention_trace.npz');old=np.load(a.previous_trace);assert all(np.array_equal(z[k],old[k]) for k in old.files);left='SHIFT_X1_LOCKED';right='OTHERS_H';names=['norm1_input','norm1','cross_attn','gate_logits','gateway_norm_input','gateway','linear1','activation','linear2','norm3_input','norm3'];rows=[]
+for layer in range(6):
+ for name in names:
+  x=z[f'{left}_L{layer}_component_{name}'].astype(float);y=z[f'{right}_L{layer}_component_{name}'].astype(float);rows.append(dict(decoder_layer=layer+1,component=name,l2_reference=float(np.linalg.norm(x)),l2_intervention=float(np.linalg.norm(y)),l2_delta=float(np.linalg.norm(y-x)),relative_l2_delta=float(np.linalg.norm(y-x)/max(np.linalg.norm(x),1e-15)),cosine=float(x@y/max(np.linalg.norm(x)*np.linalg.norm(y),1e-15))))
+a.out.mkdir(exist_ok=True,parents=True);(a.out/'component_summary.json').write_text(json.dumps(dict(scope='Same layer/submodule differences foronecausalcase; differentcomponentbases/norms preventliteral amplificationfactorfromratios. Allsharedtracearrays exactlyequalprecedingtrace. No native intermediateheadreconstruction.',trace_sha256=sha(a.bundle/'query_attention_trace.npz'),previous_trace_sha256=sha(a.previous_trace),script_sha256=sha(__file__),exact_previous_trace_arrays=len(old.files),rows=rows),indent=2)+'\n');lines=['# Cross-query component trace','','Image170 / GT1296 / q77; SHIFT_X1_LOCKED vs OTHERS_H. Different stage norms/bases, so relative distances are descriptive; do not divide them into a claimed amplification factor.','','| Decoder | Component | L2 reference | L2 difference | Relative L2 difference | Cosine |','|---|---|---:|---:|---:|---:|']
+for r in rows:
+ if r['decoder_layer'] in [1,2,3]:lines.append(f"| {r['decoder_layer']} | {r['component']} | {r['l2_reference']:.4f} | {r['l2_delta']:.4f} | {r['relative_l2_delta']:.6f} | {r['cosine']:.6f} |")
+(a.out/'components.md').write_text('\n'.join(lines)+'\n');print('VERIFIED_PREVIOUS_TRACE_ARRAYS',len(old.files))

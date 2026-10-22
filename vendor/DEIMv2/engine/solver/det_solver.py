@@ -22,6 +22,9 @@ from ..optim.lr_scheduler import FlatCosineLRScheduler
 class DetSolver(BaseSolver):
 
     def fit(self, ):
+        if self.cfg.clean_baseline:
+            from .clean_lifecycle import fit_clean
+            return fit_clean(self)
         self.train()
         args = self.cfg
 
@@ -204,7 +207,8 @@ class DetSolver(BaseSolver):
 
         module = self.ema.module if self.ema else self.model
         test_stats, coco_evaluator = evaluate(module, self.criterion, self.postprocessor,
-                self.val_dataloader, self.evaluator, self.device)
+                self.val_dataloader, self.evaluator, self.device,
+                stop_on_nonfinite=self.cfg.stop_on_nonfinite)
 
         if self.output_dir:
             dist_utils.save_on_master(coco_evaluator.coco_eval["bbox"].eval, self.output_dir / "eval.pth")

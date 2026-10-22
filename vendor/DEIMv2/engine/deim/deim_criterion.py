@@ -53,6 +53,12 @@ class DEIMCriterion(nn.Module):
         use_ndsl=False,
         ndsl_min_iou=0.35,
         ndsl_factor=2.5,
+        use_secl=False,
+        secl_weight=1.0,
+        secl_min_iou=0.35,
+        use_discounted_aux_loss=False,
+        aux_loss_discount_steps=None,
+        aux_loss_discount_losses=None,
         ):
         """Create the criterion.
         Parameters:
@@ -104,6 +110,23 @@ class DEIMCriterion(nn.Module):
         self.ndsl_factor = float(ndsl_factor)
         if use_ndsl:
             print(f"[DEIMCriterion] Near-Duplicate Suppression Loss (NDSL): ON (min_iou={self.ndsl_min_iou}, factor={self.ndsl_factor})")
+        self.use_secl = use_secl
+        self.secl_weight = float(secl_weight)
+        self.secl_min_iou = float(secl_min_iou)
+        if use_secl:
+            print(f"[DEIMCriterion] Shift-Equivariant Consistency Loss (SECL): ON (weight={self.secl_weight}, min_iou={self.secl_min_iou})")
+        self.use_discounted_aux_loss = use_discounted_aux_loss
+        self.aux_loss_discount_steps = list(aux_loss_discount_steps) if aux_loss_discount_steps is not None else [0.4, 0.5, 0.6, 0.8, 0.9]
+        # None retains the earlier all-loss discount. Explicit loss names allow
+        # classification-only ablations without weakening box/local supervision.
+        self.aux_loss_discount_losses = (None if aux_loss_discount_losses is None
+                                         else frozenset(aux_loss_discount_losses))
+        if self.aux_loss_discount_losses is not None and not self.aux_loss_discount_losses.issubset(self.losses):
+            raise ValueError('aux_loss_discount_losses must be selected from losses')
+        if not self.aux_loss_discount_steps or any(not 0 < float(w) <= 1 for w in self.aux_loss_discount_steps):
+            raise ValueError('aux_loss_discount_steps must contain weights in (0, 1]')
+        if use_discounted_aux_loss:
+            print(f"[DEIMCriterion] Discounted Aux Loss: ON (steps={self.aux_loss_discount_steps})")
         self.cls_neg_scale = list(cls_neg_scale) if cls_neg_scale is not None else [
             1.0,  # 0: person
             1.5,  # 1: boat
@@ -589,6 +612,35 @@ class DEIMCriterion(nn.Module):
             results.append((final_rows.long(), final_cols.long()))
         return results
 
+    def loss_secl(self, outputs, targets, indices, num_boxes, **kwargs):
+        """Shift-Equivariant Consistency Loss (SECL).
+        Enforces Lipschitz continuity on the confidence manifold under micro-shifts.
+        Aligns classification score smoothly with geometric bounding-box quality (IoU).
+        """
+        if 'pred_boxes' not in outputs or 'pred_logits' not in outputs:
+            return {'loss_secl': torch.tensor(0.0, device=next(iter(outputs.values())).device)}
+        idx = self._get_src_permutation_idx(indices)
+        batch_idx, src_idx = idx
+        if len(batch_idx) == 0:
+            return {'loss_secl': torch.tensor(0.0, device=outputs['pred_logits'].device)}
+
+        src_boxes = outputs['pred_boxes'][idx]
+        target_boxes = torch.cat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+        target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(targets, indices)])
+
+        sb_xyxy = box_cxcywh_to_xyxy(src_boxes)
+        tb_xyxy = box_cxcywh_to_xyxy(target_boxes)
+        ious, _ = box_iou(sb_xyxy, tb_xyxy)
+        diag_iou = torch.diag(ious).detach()
+
+        pred_scores = outputs['pred_logits'][idx].sigmoid()
+        pred_cls_scores = pred_scores[torch.arange(len(target_classes_o), device=target_classes_o.device), target_classes_o]
+
+        target_quality = diag_iou.clamp(min=0.0, max=1.0)
+        loss = F.smooth_l1_loss(pred_cls_scores, target_quality, reduction='none')
+        loss_secl = loss.sum() / max(num_boxes, 1.0) * getattr(self, 'secl_weight', 1.0)
+        return {'loss_secl': loss_secl}
+
     def _clear_cache(self):
         self.fgl_targets, self.fgl_targets_dn = None, None
         self.own_targets, self.own_targets_dn = None, None
@@ -605,6 +657,7 @@ class DEIMCriterion(nn.Module):
             'rs': self.loss_labels_rs,
             'local': self.loss_local,
             'fcr': self.loss_fcr,
+            'secl': self.loss_secl,
         }
         assert loss in loss_map, f'do you really want to compute {loss} loss?'
         return loss_map[loss](outputs, targets, indices, num_boxes, **kwargs)
@@ -688,6 +741,7 @@ class DEIMCriterion(nn.Module):
             for i, aux_outputs in enumerate(outputs['aux_outputs']):
                 if 'local' in self.losses:      # only work for local loss
                     aux_outputs['up'], aux_outputs['reg_scale'] = outputs['up'], outputs['reg_scale']
+                layer_scale = self.aux_loss_discount_steps[i] if getattr(self, 'use_discounted_aux_loss', False) and i < len(self.aux_loss_discount_steps) else 1.0
                 for loss in self.losses:
                     use_uni_set = self.use_uni_set and (loss in ['boxes', 'local'])
                     indices_in = indices_go if use_uni_set else cached_indices[i]
@@ -695,13 +749,15 @@ class DEIMCriterion(nn.Module):
                     meta = self.get_loss_meta_info(loss, aux_outputs, targets, indices_in)
                     l_dict = self.get_loss(loss, aux_outputs, targets, indices_in, num_boxes_in, **meta)
 
-                    l_dict = {k: l_dict[k] * self.weight_dict[k] for k in l_dict if k in self.weight_dict}
+                    discount = layer_scale if self.aux_loss_discount_losses is None or loss in self.aux_loss_discount_losses else 1.0
+                    l_dict = {k: l_dict[k] * self.weight_dict[k] * discount for k in l_dict if k in self.weight_dict}
                     l_dict = {k + f'_aux_{i}': v for k, v in l_dict.items()}
                     losses.update(l_dict)
 
         # In case of auxiliary traditional head output at first decoder layer. just for dfine
         if 'pre_outputs' in outputs:
             aux_outputs = outputs['pre_outputs']
+            pre_scale = self.aux_loss_discount_steps[0] if getattr(self, 'use_discounted_aux_loss', False) and len(self.aux_loss_discount_steps) > 0 else 1.0
             for loss in self.losses:
                 use_uni_set = self.use_uni_set and (loss in ['boxes', 'local'])
                 indices_in = indices_go if use_uni_set else cached_indices[-1]
@@ -709,7 +765,8 @@ class DEIMCriterion(nn.Module):
                 meta = self.get_loss_meta_info(loss, aux_outputs, targets, indices_in)
                 l_dict = self.get_loss(loss, aux_outputs, targets, indices_in, num_boxes_in, **meta)
 
-                l_dict = {k: l_dict[k] * self.weight_dict[k] for k in l_dict if k in self.weight_dict}
+                discount = pre_scale if self.aux_loss_discount_losses is None or loss in self.aux_loss_discount_losses else 1.0
+                l_dict = {k: l_dict[k] * self.weight_dict[k] * discount for k in l_dict if k in self.weight_dict}
                 l_dict = {k + '_pre': v for k, v in l_dict.items()}
                 losses.update(l_dict)
 

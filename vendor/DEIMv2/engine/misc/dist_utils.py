@@ -26,7 +26,7 @@ from torch.utils.data import DistributedSampler
 from ..data import DataLoader
 
 
-def setup_distributed(print_rank: int=0, print_method: str='builtin', seed: int=None, ):
+def setup_distributed(print_rank: int=0, print_method: str='builtin', seed: int=None, strict=False):
     """
     env setup
     args:
@@ -41,17 +41,30 @@ def setup_distributed(print_rank: int=0, print_method: str='builtin', seed: int=
         WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
 
         backend = os.getenv('AIC_DISTRIBUTED_BACKEND', 'nccl')
-        torch.distributed.init_process_group(backend=backend, init_method='env://')
-        torch.distributed.barrier()
+        device_id = LOCAL_RANK if LOCAL_RANK >= 0 else 0
+        if torch.cuda.is_available():
+            torch.cuda.set_device(device_id)
 
-        device_id = LOCAL_RANK if LOCAL_RANK >= 0 else torch.distributed.get_rank()
-        torch.cuda.set_device(device_id)
-        torch.cuda.empty_cache()
+        try:
+            torch.distributed.init_process_group(
+                backend=backend,
+                init_method='env://',
+                device_id=torch.device(f"cuda:{device_id}") if torch.cuda.is_available() else None
+            )
+        except TypeError:
+            # Fallback for older torch versions without device_id in init_process_group
+            torch.distributed.init_process_group(backend=backend, init_method='env://')
+
+        torch.distributed.barrier()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         enabled_dist = True
         if get_rank() == print_rank:
             print('Initialized distributed mode...')
 
     except Exception:
+        if strict and int(os.getenv('WORLD_SIZE', '1')) > 1:
+            raise
         enabled_dist = False
         print('Not init distributed mode.')
 

@@ -1,0 +1,215 @@
+# =============================================================================
+# Sovereign V37: Sub-grid Shift Invariance & Continuous Equivariant Alignment (2560x1440)
+# 核心使命: 根治微小位移下的置信度跳变/断崖下跌 (406帧 0.668 -> 541帧 0.216)
+# 根治方案四大支柱:
+#   1. 方案 A (长宽比敏感特征路由 Anisotropic Stratified Routing):
+#      在 _select_topk 中打破单一依赖面积挤占 P5 的网格混叠，为 P3/P4 分配专属几何保障配额 (P3 30%, P4 30%, Global 40%)
+#   2. 方案 B (抗混叠下采样 Anti-Aliased BlurPool):
+#      在 HybridEncoder 下采样层集成低通高斯滤波，消除跨步下采样 Nyquist 混叠
+#   3. 方案 C (自适应可学习空间注意力偏置 Adaptive Spatial Relative Distance Bias):
+#      自注意力解码器引入以参考点物理欧氏距离为约束的距离衰减偏置 (零初始化可学习 gamma)，抑制全图无关背景 Query 干扰
+#   4. 方案 D (平移等变一致性损失 Shift-Equivariant Consistency Loss, SECL):
+#      将分类概率流形紧密锚定在连续几何 IoU 质量上，软化正负样本悬崖边界
+#   5. 全生命周期微平移数据增强:
+#      引入 RandomMicroShift(max_shift_px=16, p=0.5)，打碎跨网格离散相位依赖
+# =============================================================================
+
+__include__: [
+  '../deim_dfine/dfine_hgnetv2_x_coco.yml',
+]
+
+task: detection
+remap_mscoco_category: False
+num_classes: 12
+eval_spatial_size: [1440, 2560]
+output_dir: ./outputs/sovereign_v37_shift_cure_2560
+sync_bn: False
+find_unused_parameters: True
+
+DEIM:
+  backbone: HGNetv2MultiModal
+  use_scene_gate: False
+  use_internal_sahi: False
+  use_internal_tta: False
+  use_p2_cascade_zoom: False
+  use_planar_rigidity_gate: False
+  num_classes: 12
+  num_queries: 300
+  use_dinov3_distill: False     # 聚焦微位移鲁棒性，关闭蒸馏以大幅精简显存与计算开销
+  use_co_aux: True              # 保留 Co-ATSS 一对多辅助密集监督，提供密集正样本
+  co_aux_loss_weight_cls: 1.0
+  co_aux_loss_weight_reg: 2.0
+
+HGNetv2MultiModal:
+  name: B5
+  ir_in_chans: 2                # 2 通道 IR: Ch0=高精对齐 IR, Ch1=LBG 滤波 IR
+  inject_stages: [2, 3]         # stride 16 / 32
+  fusion: cssa
+  use_midboost: False
+  use_dcda: True                # DCDA 视差对齐
+  use_3d_lift: True             # 3D 物理空间坐标升维
+  use_dog: True                 # DOG 深度遮挡隔离门控
+  use_bilateral_pool: False
+  use_shallow_edge_fuse: False
+  use_rfgm_edge: False
+  use_frontend_rfgm: False
+  use_trunk_bridge: False
+  use_mixstyle: False
+  pretrained_ir_stem: True
+  return_idx: [1, 2, 3]         # 标准 [P3, P4, P5]
+  stem_base: 64
+  ir_drop_prob: 0.05
+  freeze_at: 0
+  freeze_norm: True
+  local_model_dir: weight/hgnetv2/
+  pretrained: False
+
+HybridEncoder:
+  csp_type: csp
+  use_anti_alias: True          # ★ 方案 B: 激活 BlurPool 抗混叠下采样
+  anti_alias_alpha: 0.1         # 初始平滑混合系数 (可学习自适应调整)
+
+DFINETransformer:
+  num_classes: 12
+  feat_channels: [384, 384, 384]
+  reg_scale: 8
+  num_denoising: 0
+  # ★ 方案 A: 长宽比多尺度分层路由
+  use_anisotropic_routing: True
+  p3_quota_ratio: 0.30          # P3 (stride 8) 保障 30% 配额 (90 个 queries)
+  p4_quota_ratio: 0.30          # P4 (stride 16) 保障 30% 配额 (90 个 queries)
+  # ★ 方案 C: 自适应可学习空间偏置
+  use_spatial_attn_bias: True
+  spatial_bias_learnable: True  # 零初始化可学习衰减因子 gamma，平滑自适应收敛
+  spatial_bias_sigma: 0.25
+  spatial_bias_start_layer: 0
+  # 层间融合
+  use_layer_ensemble: True
+  layer_ensemble_weights: [0.15, 0.25, 0.60]
+
+PostProcessor:
+  num_classes: 12
+  use_nms: True
+  nms_iou_thr: 0.60
+
+DEIMCriterion:
+  weight_dict:
+    loss_co_cls: 1.0
+    loss_co_reg: 2.0
+    loss_tadl: 2.0
+    loss_bbox: 5.0
+    loss_giou: 3.5
+    loss_fgl: 0.25
+    loss_ddf: 1.5
+    loss_secl: 1.0              # ★ 方案 D: 平移等变一致性损失权重
+  losses: ['tadl', 'boxes', 'local', 'secl']
+  gamma: 1.5
+  tadl_beta: 0.5
+  tadl_min_iou: 0.35
+  use_ndsl: False               # 关闭 NDSL 硬压制，防止微移候选被误杀
+  use_secl: True                # ★ 方案 D: 激活 SECL
+  secl_weight: 1.0
+  matcher:
+    type: HungarianMatcher
+    weight_dict:
+      cost_class: 2.0
+      cost_bbox: 5.0
+      cost_giou: 3.5
+    alpha: 0.25
+    gamma: 2.0
+
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*ir_align).*$'
+      lr: 0.0001
+    -
+      params: '^(?=.*co_aux_head).*$'
+      lr: 0.0001
+    -
+      params: '^(?=.*(?:ir_stem|ir_proj|occlusion_gate|coord_lift))(?!.*(?:norm|bn)).*$'
+      lr: 0.0001
+    -
+      params: '^(?=.*(?:score_head|class_embed)).*$'
+      lr: 0.00025
+    -
+      params: '^(?=.*(?:spatial_bias_gamma_param|anti_alias)).*$'
+      lr: 0.0005                # 空间偏置与抗混叠平滑因子赋予积极自适应学习率
+    -
+      params: '^(?=.*backbone)(?!.*norm|.*ir_stem|.*ir_proj|.*ir_align|.*occlusion_gate|.*coord_lift).*$'
+      lr: 0.000005
+    -
+      params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.
+  lr: 0.00008
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+epoches: 20
+lrsheduler: flatcosine
+lr_gamma: 0.5
+warmup_iter: 100
+flat_epoch: 12
+no_aug_epoch: 4
+
+accum_steps: 2
+print_freq: 10
+checkpoint_freq: 2
+
+train_dataloader:
+  total_batch_size: 2
+  num_workers: 4
+  persistent_workers: True
+  pin_memory: True
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: ../../dataset/train/visible
+    ir_folder: ../../dataset/train/infrared_aligned
+    raw_ir_folder: ../../dataset/train/infrared
+    depth_folder: ../../dataset/train/depth
+    depth_read: raw16
+    destripe_ir: True
+    ann_file: ../../work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 6
+    remap_mscoco_category: False
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [1440, 2560]}
+        - {type: RandomMicroShift, max_shift_px: 16, p: 0.5}  # ★ 微平移数据增强
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  collate_fn:
+    type: BatchImageCollateFunction
+    base_size: 2560
+    base_size_repeat: ~
+    stop_epoch: 16
+
+val_dataloader:
+  total_batch_size: 2
+  num_workers: 4
+  drop_last: False
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: ../../dataset/train/visible
+    ir_folder: ../../dataset/train/infrared_aligned
+    raw_ir_folder: ../../dataset/train/infrared
+    depth_folder: ../../dataset/train/depth
+    depth_read: raw16
+    destripe_ir: True
+    ann_file: ../../work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    n_channels: 6
+    remap_mscoco_category: False
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [1440, 2560]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  collate_fn:
+    type: BatchImageCollateFunction

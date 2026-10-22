@@ -26,7 +26,9 @@ class PostProcessor(nn.Module):
         'num_classes',
         'use_focal_loss',
         'num_top_queries',
-        'remap_mscoco_category'
+        'remap_mscoco_category',
+        'use_nms',
+        'nms_iou_thr',
     ]
 
     def __init__(
@@ -35,6 +37,8 @@ class PostProcessor(nn.Module):
         use_focal_loss=True,
         num_top_queries=300,
         remap_mscoco_category=False,
+        use_nms=False,
+        nms_iou_thr=0.60,
         depth_cond_enable=False,
         depth_cond_far=0.5,
         depth_cond_boost=1.5,
@@ -52,6 +56,8 @@ class PostProcessor(nn.Module):
         self.num_top_queries = num_top_queries
         self.num_classes = int(num_classes)
         self.remap_mscoco_category = remap_mscoco_category
+        self.use_nms = use_nms
+        self.nms_iou_thr = float(nms_iou_thr)
         self.deploy_mode = False
         # DepthPrior DCT: boost far (deep) predictions' score so they survive the
         # global confidence threshold at night. depth_cond_enable flips it on; the
@@ -135,6 +141,16 @@ class PostProcessor(nn.Module):
             )
         else:
             labels_list, boxes_list, scores_list = list(labels), list(boxes), list(scores)
+
+        if self.use_nms:
+            from torchvision.ops import batched_nms
+            new_labels_list, new_boxes_list, new_scores_list = [], [], []
+            for lab, box, sco in zip(labels_list, boxes_list, scores_list):
+                keep = batched_nms(box, sco, lab, self.nms_iou_thr)
+                new_labels_list.append(lab[keep])
+                new_boxes_list.append(box[keep])
+                new_scores_list.append(sco[keep])
+            labels_list, boxes_list, scores_list = new_labels_list, new_boxes_list, new_scores_list
 
         if self.deploy_mode:
             return labels, boxes, scores

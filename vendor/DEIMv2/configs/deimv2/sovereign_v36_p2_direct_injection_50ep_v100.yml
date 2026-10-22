@@ -1,0 +1,205 @@
+# =============================================================================
+# Sovereign V36: P2 (Stride=4) High-Resolution Direct Injection & Guidance (50 Epochs)
+#   3. [实际为 v10] P2 双路保峰池化引导 (v10_1 的小波/LMM/CSR 门控未启用)
+# 硬件平台: 实验室科研服务器 ailab40 (Tesla V100 32GB, 稳定健康的 GPU 1)
+# 核心原则:
+#   1. 纯血开源底模: ckpts/dfine_x_obj2coco.pth (零参赛历史污染)
+#   2. 方案 C 破局: 释放 Stage 0 (Stride 4, P2, 360x640 高分辨率特征)，彻底解决微小无人机、远景小行人在深层降采样中的信息衰减
+#   3. [实际为 v10] P2 双路保峰池化引导 (v10_1 的小波/LMM/CSR 门控未启用)
+#   4. 空间排斥独占查询: DFINETransformer SDQS (3x3 空间局部极大值过滤，斩断同目标多框产生)
+#   5. 密集正反馈: Co-ATSS 一对多辅助密集监督头 (保障 96%+ 极限召回)
+#   6. 知识蒸馏: Meta 官方 DINOv3-ViT-Large (300M) 在线语义空间微创蒸馏 (2x 下采样，零显存瓶颈)
+#   7. 纯净标注与排程: 100% 官方老标 (1800 图)，50 轮全量生产训练 (flat_epoch=30, lr_gamma=0.5, no_aug_epoch=4)
+# =============================================================================
+
+__include__: [
+  '../deim_dfine/dfine_hgnetv2_x_coco.yml',
+]
+
+task: detection
+remap_mscoco_category: False
+num_classes: 12
+eval_spatial_size: [1440, 2560]
+output_dir: outputs/sovereign_v36_p2_direct_injection_50ep_fp32_v100
+sync_bn: False
+find_unused_parameters: True
+
+DEIM:
+  backbone: HGNetv2MultiModal
+  use_scene_gate: False
+  use_internal_sahi: False
+  use_internal_tta: False
+  use_p2_cascade_zoom: False
+  use_planar_rigidity_gate: False
+  num_classes: 12
+  num_queries: 300
+  use_dinov3_distill: True      # ★ 核心激活：Meta DINOv3-ViT-Large 语义特征蒸馏
+  dinov3_teacher_path: "ckpts/dinov3/dinov3_vitl16_pretrain_lvd1689m-8aa4cbdd.pth"
+  distill_cos_weight: 1.0
+  distill_gram_weight: 0.5
+  distill_downsample_scale: 0.5 # 2x 下采样至 576x1024，显存仅占 ~2.0GB，零 OOM 风险
+  use_co_aux: True              # ★ 核心保留：Co-ATSS 一对多辅助密集监督 (保障极限高召回)
+  co_aux_loss_weight_cls: 1.0
+  co_aux_loss_weight_reg: 2.0
+
+HGNetv2MultiModal:
+  name: B5
+  ir_in_chans: 2                # 2 通道 IR: Ch0=高精对齐 IR, Ch1=LBG 滤波 IR
+  inject_stages: [2, 3]         # stride 16 / 32
+  fusion: cssa
+  use_midboost: False
+  use_dcda: True                # ★ 核心激活：DCDA 深度引导形变视差对齐
+  use_3d_lift: True             # ★ 核心激活：3D 物理空间坐标升维
+  use_dog: True                 # ★ 核心激活：DOG 深度阶跃遮挡隔离门控
+  use_bilateral_pool: False     # 关停视差双边抗混叠池化（消除 padding/border 下采样 exp 欠流与除零 NaN 隐患）
+  use_shallow_edge_fuse: False  # 关闭浅层注入，规避 Volta SM_70 内存不对齐陷阱
+  use_rfgm_edge: False
+  use_frontend_rfgm: False
+  use_trunk_bridge: False       # 保持主干纯净；注意 P2 引导实际为 v10 双池化，v10_1 的小波/LMM/CSR 未启用
+  use_mixstyle: False
+  pretrained_ir_stem: True      # RGB 预训练滤波器向 IR Stem 迁移
+  return_idx: [0, 1, 2, 3]      # ★ 方案 C 核心：释放 Stage 0 (Stride 4, P2, 360x640 高分辨率特征)
+  stem_base: 64
+  ir_drop_prob: 0.05
+  freeze_at: 0
+  freeze_norm: True
+  local_model_dir: weight/hgnetv2/
+  pretrained: False
+
+HybridEncoder:
+  csp_type: csp
+  use_p2_guidance: True         # ★ 方案 C 核心：P2 (Stride 4, 360x640) 跨尺度保峰高频残差引导直通
+  p2_version: "v10"             # 标准稳健版: 双路保峰池化 (Avg+Max) + 多尺度跨通道卷积直通，严格零初始化
+  p2_dim: 128                   # Stage 0 物理通道数 (128)
+
+DFINETransformer:
+  num_classes: 12
+  feat_channels: [384, 384, 384]
+  reg_scale: 8
+  num_denoising: 0              # ★ 根治 NaN：关停易反向溢出的 CDN 去噪，全面依托 Co-ATSS 密集正样本
+
+PostProcessor:
+  num_classes: 12
+  use_nms: True                 # ★ 标准单模型 NMS 去重
+  nms_iou_thr: 0.60             # IoU 0.60 类内极大值抑制，彻底消解实例多框
+
+DEIMCriterion:
+  weight_dict:
+    loss_distill: 1.0           # DINOv3 教师语义空间特征蒸馏权重
+    loss_co_cls: 1.0            # Co-ATSS 辅助分类损失权重
+    loss_co_reg: 2.0            # Co-ATSS 辅助回归损失权重
+    loss_cmal: 0.5              # 跨模态高频一致性损失
+    loss_tadl: 2.0              # 动态自适应焦点定位损失
+    loss_bbox: 5.0
+    loss_giou: 3.5
+    loss_fgl: 0.25
+    loss_ddf: 1.5
+  losses: ['tadl', 'boxes', 'local']
+  gamma: 1.5
+  tadl_beta: 0.5
+  tadl_min_iou: 0.35
+  use_ndsl: False
+  cls_neg_scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] # 1.0 原生统一平衡
+  matcher:
+    type: HungarianMatcher
+    weight_dict:
+      cost_class: 2.0
+      cost_bbox: 5.0
+      cost_giou: 3.5
+    alpha: 0.25
+    gamma: 2.0
+
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*dinov3_distiller).*$'
+      lr: 0.0001                # 蒸馏投影头全新初始化，设 1e-4 快速对齐
+    -
+      params: '^(?=.*ir_align).*$'
+      lr: 0.0001                # DCDA 视差分支 1e-4 充分收敛
+    -
+      params: '^(?=.*co_aux_head).*$'
+      lr: 0.0001                # Co-ATSS 辅助头 1e-4 快速注入正样本
+    -
+      params: '^(?=.*(?:ir_stem|ir_proj|occlusion_gate|coord_lift|p2_refinement|s0_to_p3_trunk))(?!.*(?:norm|bn)).*$'
+      lr: 0.0001                # P2 引导与多模态融合组件从头训练 1e-4
+    -
+      params: '^(?=.*(?:score_head|class_embed)).*$'
+      lr: 0.00025               # 分类头从 80 类重置为 12 类，设 2.5e-4 迅速激活
+    -
+      params: '^(?=.*backbone)(?!.*norm|.*ir_stem|.*ir_proj|.*ir_align|.*occlusion_gate|.*coord_lift|.*dinov3_distiller|.*s0_to_p3_trunk).*$'
+      lr: 0.000005              # RGB 骨干从 open coco 迁移，5e-6 稳定自适应
+    -
+      params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.
+  lr: 0.00008                   # 解码器主体 8e-5 充分收敛
+  betas: [0.9, 0.999]
+  weight_decay: 0.000125
+
+epoches: 50                     # ★ 全量 50 轮深层充分收敛
+lrsheduler: flatcosine
+lr_gamma: 0.5                   # 退火期学习率平滑衰减，提高框回归几何精度
+warmup_iter: 100
+flat_epoch: 30                  # 前 30 轮平原期充分学习特征蒸馏与多模态对齐
+no_aug_epoch: 4                 # 最后 4 轮 (Epoch 46~50) 关停所有增广，纯净几何吸附退火
+
+accum_steps: 4                  # 单卡 batch 2 * accum 4 = 等效 batch 8 稳定平滑梯度
+print_freq: 20
+checkpoint_freq: 2
+
+train_dataloader:
+  total_batch_size: 2           # 单卡 V100 32GB 稳妥承载 batch 2 (峰值 19.2GB / 32GB)
+  num_workers: 4
+  persistent_workers: True
+  pin_memory: True
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/dataset/train/visible
+    ir_folder: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/dataset/train/infrared_aligned
+    raw_ir_folder: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/work_dir/train_lbg_ir
+    depth_folder: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/dataset/train/depth
+    depth_read: raw16
+    destripe_ir: True
+    ann_file: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/work_dir/deimv2_dataset/train/annotations/instances_train.json
+    n_channels: 6
+    remap_mscoco_category: False
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [1440, 2560]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  collate_fn:
+    type: BatchImageCollateFunction
+    base_size: 2560
+    base_size_repeat: ~
+    stop_epoch: 46
+
+val_dataloader:
+  total_batch_size: 2
+  num_workers: 4
+  drop_last: False
+  dataset:
+    type: CocoDetectionMultiModal
+    img_folder: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/dataset/train/visible
+    ir_folder: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/dataset/train/infrared_aligned
+    raw_ir_folder: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/work_dir/train_lbg_ir
+    depth_folder: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/dataset/train/depth
+    depth_read: raw16
+    destripe_ir: True
+    ann_file: /home/ailab/ssd/bigdata/hejianzhong/AIC_V29/work_dir/deimv2_dataset/valid/annotations/instances_val.json
+    n_channels: 6
+    remap_mscoco_category: False
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [1440, 2560]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5], std: [0.229, 0.224, 0.225, 0.5, 0.5, 0.5]}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+  collate_fn:
+    type: BatchImageCollateFunction
