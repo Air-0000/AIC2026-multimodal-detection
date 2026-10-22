@@ -2129,7 +2129,7 @@ D2每query平均翻转80.35/1024，两边均激活220.00；D3为93.64与230.04�
 
 - **中断事实**：§三十五的 v1（ailab40 GPU1，PID 18924）于 2026-10-23 约 00:30（北京时间）在第 6 轮第 165 步停止，严格守卫报 `FloatingPointError: epoch=6 iter=165 micro=0 forward: nonfinite tensors ['loss_co_cls']`。第 0–5 轮验证 mAP 依次为 0.002、0.073、0.178、0.227、0.282、0.321；`last.pth`（第 5 轮末）、`best.pth`、`checkpoint0004.pth` 在盘。日志自第 1 轮起几乎每轮都有 `[DEIM TRACE] encoder output 1 has NaN/Inf`，另有 `backbone output 2 has NaN: 0, Inf: 0` 这类“检测到非有限值、复数却为 0”的自相矛盾打印。
 - **精确重放（只诊断）**：工具 `scripts/diagnostics/replay_v1_nan.py`，在独立目录 `/home/ailab40/hejianzhong/AIC_V1_NAN_DIAG_20261023/` 按 train.py 方式重建 solver，从 `last.pth` 严格恢复模型、EMA、优化器与 Python/NumPy/torch/CUDA 随机状态，调用原生 `train_one_epoch` 跑第 6 轮前 175 步（优化器更新只在内存中，未保存任何权重，未写 v1 目录），并对 encoder 全部模块及 backbone/decoder/co_aux_head/蒸馏投影头挂 479 个前向钩子。结果：
-  - 第 0 步（任何更新之前）总 loss 原始 35.3856、重放 35.4964，重放从第一步起即非逐位一致；第 165 步未复现崩溃，跑满 175 步无非有限输出。
+  - 第 0 步（任何更新之前）总 loss 原始 35.3856、重放 35.4964，重放从第一步起即非逐位一致；第 165 步未复现崩溃，跑满 175 步无非有限输出。**更正（同日）**：该次重放没有复现 train.py 在导入时对 Volta（SM 7.0）关闭 cuDNN 的设置，而原始训练是关闭的，因此第 0 步差异可由卷积后端不同解释，**不作为硬件故障的证据**；重放脚本已补上该设置。下面的钩子矛盾与硬件检测不受影响。
   - 钩子在模块返回时检查 backbone/encoder 输出均为有限值（0 条事件），而紧接其后、中间没有任何计算的模型内置检查仍三次打印 NaN/Inf（第 0 步 `backbone output 2 has NaN: 1, Inf: 1` 等）。同一显存两次读取结果不同，正常执行中不可能发生。
 - **硬件检测**：
   - `nvidia-smi -q -d ECC,PAGE_RETIREMENT`：两张 V100 **ECC 均为关闭**；退役页记录 GPU1 双比特错误 6 页、GPU0 1 页。

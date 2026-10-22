@@ -80,6 +80,10 @@ def main():
     dist_utils.setup_distributed(0, 'builtin', seed=cfg.seed, strict=cfg.clean_baseline)
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
+    # train.py's import-time settings: no cuDNN autotuning, and no cuDNN at all on Volta (SM 7.0).
+    torch.backends.cudnn.benchmark = False
+    if torch.cuda.get_device_capability() == (7, 0):
+        torch.backends.cudnn.enabled = False
     for bb in ['HGNetv2', 'HGNetv2MultiModal', 'HGNetv2ViTDualStream']:
         if bb in cfg.yaml_cfg:
             cfg.yaml_cfg[bb]['pretrained'] = False
