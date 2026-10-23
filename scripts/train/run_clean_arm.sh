@@ -42,3 +42,13 @@ fi
 
 echo "$(date '+%F %T') start ARM=$ARM CFG=$CFG GPU=$GPU RESUME=${RESUME:-none} commit=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo n/a)" | tee -a "$LOG"
 "$PY" -u train.py -c "configs/deimv2/$CFG.yml" "${ARGS[@]+"${ARGS[@]}"}" 2>&1 | tee -a "$LOG"
+
+if [ "${AUTO_SHUTDOWN:-0}" = 1 ]; then
+  echo "$(date '+%F %T') training finished, auto-shutdown triggered by AUTO_SHUTDOWN=1" | tee -a "$LOG"
+  sync
+  if [ -x /usr/bin/shutdown ]; then
+    /usr/bin/shutdown
+  else
+    poweroff
+  fi
+fi
