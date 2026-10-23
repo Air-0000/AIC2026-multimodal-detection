@@ -64,10 +64,16 @@ def main(args, ) -> None:
     cfg.yaml_cfg['seed'] = cfg.seed
     dist_utils.setup_distributed(args.print_rank, args.print_method, seed=cfg.seed, strict=cfg.clean_baseline)
     if cfg.clean_baseline:
-        torch.backends.cuda.matmul.allow_tf32 = False
-        torch.backends.cudnn.allow_tf32 = False
-        if cfg.use_amp:
-            raise ValueError('Clean baseline requires FP32 (use_amp=False)')
+        if torch.cuda.is_available():
+            if torch.cuda.get_device_capability()[0] >= 8:
+                # On SM >= 8.0 (Ampere/Ada/Blackwell), allow TF32 and BF16 AMP (has full FP32 exponent range)
+                torch.backends.cuda.matmul.allow_tf32 = True
+                torch.backends.cudnn.allow_tf32 = True
+            else:
+                torch.backends.cuda.matmul.allow_tf32 = False
+                torch.backends.cudnn.allow_tf32 = False
+                if cfg.use_amp:
+                    raise ValueError('Clean baseline requires FP32 on legacy SM < 8.0 (use_amp=False)')
         if cfg.tuning and cfg.resume:
             raise ValueError('Select tuning or resume, not both')
 

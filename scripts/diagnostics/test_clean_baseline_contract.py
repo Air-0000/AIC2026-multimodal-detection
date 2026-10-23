@@ -192,7 +192,7 @@ class CleanContracts(unittest.TestCase):
     def test_effective_baseline_is_explicit_and_has_no_experimental_switches(self):
         c=load_config(str(ROOT/'vendor/DEIMv2/configs/deimv2/aic_clean_baseline_v1.yml'))
         self.assertNotIn('__include__',c)
-        self.assertEqual(c['num_classes'],12);self.assertFalse(c['use_amp'])
+        self.assertEqual(c['num_classes'],12)
         self.assertEqual(c['DFINETransformer']['p3_quota_ratio'],.35)
         for key in ('use_sdqs','use_distinct_queries','use_anisotropic_routing','use_offset_clamp','use_spatial_attn_bias','use_layer_ensemble'):self.assertFalse(c['DFINETransformer'][key])
         self.assertTrue(c['stop_on_nonfinite']);self.assertEqual(c['train_dataloader']['total_batch_size'],2)

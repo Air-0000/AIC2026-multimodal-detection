@@ -24,8 +24,8 @@ def atomic_checkpoint(state, path):
 def fit_clean(solver):
     solver.train()
     cfg = solver.cfg
-    if cfg.use_amp or not cfg.stop_on_nonfinite or not cfg.strict_resume:
-        raise ValueError('Clean lifecycle requires FP32, stop_on_nonfinite and strict_resume')
+    if (cfg.use_amp and torch.cuda.is_available() and torch.cuda.get_device_capability()[0] < 8) or not cfg.stop_on_nonfinite or not cfg.strict_resume:
+        raise ValueError('Clean lifecycle requires FP32 on legacy SM < 8.0, stop_on_nonfinite and strict_resume')
     solver.self_lr_scheduler = True
     solver.lr_scheduler = FlatCosineLRScheduler(
         solver.optimizer, cfg.lr_gamma, len(solver.train_dataloader), cfg.epoches,

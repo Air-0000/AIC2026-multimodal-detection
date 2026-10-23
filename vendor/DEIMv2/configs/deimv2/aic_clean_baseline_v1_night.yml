@@ -70,7 +70,7 @@ train_dataloader:
     depth_mode: raw
     strict_inputs: true
   shuffle: true
-  num_workers: 0
+  num_workers: 8
   drop_last: true
   collate_fn:
     type: BatchImageCollateFunction
@@ -79,7 +79,7 @@ train_dataloader:
     stop_epoch: 46
     ema_restart_decay: 0.9998
   total_batch_size: 2
-  persistent_workers: false
+  persistent_workers: true
   pin_memory: true
 val_dataloader:
   type: DataLoader
@@ -123,7 +123,7 @@ val_dataloader:
     depth_mode: raw
     strict_inputs: true
   shuffle: false
-  num_workers: 0
+  num_workers: 4
   drop_last: false
   collate_fn:
     type: BatchImageCollateFunction
@@ -131,13 +131,13 @@ val_dataloader:
     base_size: 2560
     base_size_repeat: null
   total_batch_size: 1
-  persistent_workers: false
+  persistent_workers: true
 print_freq: 20
 output_dir: outputs/aic_clean_baseline_v1_night
 checkpoint_freq: 5
 sync_bn: false
 find_unused_parameters: true
-use_amp: false
+use_amp: true
 scaler:
   type: GradScaler
   enabled: true
@@ -360,7 +360,7 @@ HGNetv2MultiModal:
   local_model_dir: weight/hgnetv2/
   pretrained: false
   disable_fallback: true
-accum_steps: 2
+accum_steps: 1
 clean_baseline: true
 stop_on_nonfinite: true
 strict_resume: true

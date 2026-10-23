@@ -66,8 +66,12 @@ def main():
         cfg = YAMLConfig(a.config, output_dir=f'{tmp}/out', summary_dir=f'{tmp}/tb')
         cfg.seed = 0 if cfg.seed is None else cfg.seed
         dist_utils.setup_distributed(0, 'builtin', seed=cfg.seed, strict=cfg.clean_baseline)
-        torch.backends.cuda.matmul.allow_tf32 = False
-        torch.backends.cudnn.allow_tf32 = False
+        if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8:
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+        else:
+            torch.backends.cuda.matmul.allow_tf32 = False
+            torch.backends.cudnn.allow_tf32 = False
         torch.backends.cudnn.benchmark = False
         if torch.cuda.get_device_capability() == (7, 0):
             torch.backends.cudnn.enabled = False
