@@ -2185,3 +2185,18 @@ D2每query平均翻转80.35/1024，两边均激活220.00；D3为93.64与230.04�
     - `Epoch: [0] [ 40/900] loss:  83.3339, time: 0.7525, data: 0.0002, max mem: 21702 MB`
     - `Epoch: [0] [ 60/900] loss:  81.9642, time: 0.7825, data: 0.0002, max mem: 21702 MB`
   - 硬件指标：GPU 功耗 198W / 600W（P0 满载性能），核心温度 43°C，显存锁定于 21.7 GiB，零显存泄漏，无非有限异常。
+- **训练收敛实况与阶段性里程碑（截至 2026-10-24 00:15，进行至 Epoch 15）**：
+  - **运行概况**：已平稳连续运行 3 小时 45 分钟，完成 14 轮全量训练与验证，步时稳定在 0.76s ~ 0.82s，数据等待 0.0002s，GPU 处于 P0 满载工况（功耗 215W，温度 45°C，显存 18.5~21.7 GiB，零显存泄露，零 NaN/Inf 报警）。
+  - **验证集指标单调爬升轨迹（200 张 1440×2560 全分辨率评估）**：
+    - `Epoch  0`: train_loss 63.95, mAP 0.0144, AP50 0.0313
+    - `Epoch  1`: train_loss 50.13, mAP 0.0506, AP50 0.1038
+    - `Epoch  2`: train_loss 45.35, mAP 0.0768, AP50 0.1584
+    - `Epoch  5`: train_loss 33.72, mAP 0.2819, AP50 0.4901
+    - `Epoch 10`: train_loss 27.56, mAP 0.4029, AP50 0.6482
+    - `Epoch 13`: train_loss 24.63, mAP 0.4164, AP50 0.6623
+    - `Epoch 14`: train_loss 24.05, **mAP 0.4252**, AP50 0.6758, AP75 0.4429, AP_small 0.2400 (当前 `best.pth` 刷新)
+  - **检查点状态**：`last.pth` (3.5 GB) 与 `best.pth` (3.5 GB) 持续在 `/autodl-fs/data/clean_v1/outputs/aic_clean_baseline_v1/` 实时原子更新。
+  - **架构与历史消融定论**：
+    1. 完成 v1 架构（6 通道 + HGNetv2-B5 + DCDA + DOG + 3D-Lift + CSSA + P2-v10 + DFINETransformer 35% P3 保底 + DINOv3 蒸馏 + Co-ATSS）的全局技术对账；
+    2. 确证 v1 保留的各项机制在历史引入时均有确凿训练消融证据（V16~V20 正交多模态、V23 TADL、V28-A DCDA、V31 Co-ATSS、V32 PIG、V34 DINOv3、V36 P2-v10）；
+    3. 确证暗光全谱系容灾与各通道剥离消融早在 MidBoost 时期（V24/V25 及表 B 数十组全暗光梯度）已深入消融验证，后续 Night Arm 规划系为 2.5K 纯净 v1 提供统一口径的半决赛报告实证。
