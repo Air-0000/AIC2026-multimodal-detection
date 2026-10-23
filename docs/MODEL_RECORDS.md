@@ -2139,3 +2139,24 @@ D2每query平均翻转80.35/1024，两边均激活220.00；D3为93.64与230.04�
 - **修复建议**：(1) 由服务器管理员为两张 V100 开启 ECC（`nvidia-smi -i <id> -e 1`，需 root，并在 GPU 空闲时重启或重置后生效），开启后重跑同一自洽测试；若仍出现不可纠正错误应停用该卡或报修。(2) 修复前不在 ailab40 GPU1 上训练；GPU0 同样 ECC 关闭且有退役记录，使用前须先通过同一测试。(3) v1 建议在健康硬件上从头重训（仅损失约 7 小时），而不是从 `last.pth` 续训。纯净基准的模型与代码无需修改。
 - **产物**：重放日志 `/home/ailab40/hejianzhong/AIC_V1_NAN_DIAG_20261023/run1.log`、`run1/events.json`（0 条钩子事件）、`run1/encoder_absmax.json`；v1 原始日志与权重未改动。
 
+
+## 四十一、2026-10-23 纯净基准 v1 迁移至 RTX PRO 6000 Blackwell（96GB）从头重训上线
+
+- **背景与硬件迁移**：因 ailab40 GPU1 显存静默翻转故障（§四十），按 `docs/02_collaboration_and_specs/CLOUD_MIGRATION_RUNBOOK.md` 迁移至全新 SeetaCloud 算力节点（`connect.westd.seetacloud.com:28485`，别名 `seeta`），单卡 96GB NVIDIA RTX PRO 6000 Blackwell Server Edition（97,887 MiB VRAM），驱动 580.82.09，CUDA 13.0，PyTorch `2.12.1+cu130`，自动启用 cuDNN 加速（不同于 Volta SM_70 的强制禁用）。
+- **代码与数据持久化部署**：
+  - 代码基线：独立目录 `/root/autodl-tmp/AIC_clean_v1/`，与本地 `master`（提交 `807971a`）逐位一致，严格修复包含 14 项通用正确性缺陷后的完全展开配置 `aic_clean_baseline_v1.yml`。
+  - 数据与权重契约：可见光/深度/标注/预训练权重软链至原始集；对齐红外（2000 图）与 LBG 红外（2000 图）通过校内千兆内网直连（ailab40 -> seeta）完整同步到高可用存储 `/autodl-fs/data/clean_v1/`（余量 2.2 TB）。
+  - 输出解耦防满盘：`vendor/DEIMv2/outputs` 软链至 `/autodl-fs/data/clean_v1/outputs`，彻底消除根分区 7.2 GB 磁盘爆满隐患。
+- **上线前全流程预检（Preflight Pipeline，scripts/train/preflight_cloud.sh）**：
+  1. **环境与依赖快照**：Python 3.12、Torch 2.12.1+cu130、Torchvision 0.27.1、faster-coco-eval 1.8.0、pycocotools 全齐。
+  2. **输入哈希绝对核验**：对照标准验收清单 `work_dir/transfer/MANIFEST.sha256`，**8004 / 8004 文件 SHA256 逐字节 100% 匹配**。
+  3. **GPU 硬件自洽检测**（`gpu_selftest.py`）：24 GiB 显存读校验 **720 / 720 次完全一致（0 次不一致）**；8192³ 矩阵乘 300 次无偏差；大卷积 60 次重复 100% 确定性。硬件无静默位翻转。
+  4. **CPU 语义契约测试**：`test_clean_baseline_contract` (14/14 pass)、`test_rgb_control_contract` (7/7 pass)、`test_night_aug_contract` (3/3 pass) 全部通过。
+  5. **实机 30 步基准测时（BENCH=1）**：
+     - `aic_clean_baseline_v1`: 单步中位数 **2.186 s**（计算 1.385s，数据等待 0.814s），峰值显存 21.06 GiB，50 轮整周期预计 **27.3 小时**（对比 ailab40 V100 56 小时，加速 **2.04 倍**）。
+     - `aic_clean_baseline_v1_rgb_control`: 单步中位数 **1.599 s**，峰值显存 18.64 GiB，50 轮预计 **20.0 小时**。
+  - **判定结果**：`PREFLIGHT_PASS`。
+- **训练正式上线状态**：
+  - 启动命令：`ROOT=/root/autodl-tmp/AIC_clean_v1 ARM=v1 GPU=0 PY=/root/miniconda3/bin/python nohup bash scripts/train/run_clean_arm.sh`，日志记录于 `logs/aic_clean_baseline_v1_train.log`。
+  - 启动时间：2026-10-23 19:22:17（北京时间）。
+  - 前向数值健康：Step 0 loss 170.53 -> Step 20 loss 85.60 -> Step 40 loss 79.54 -> Step 60 loss 79.62；单步耗时稳定在 2.29s，显存平稳锁定于 21,570 MiB（无显存泄露），所有损失分项（TADL、BBox、GIoU、FGL、Distill、Co-ATSS Cls/Reg）收敛正常，无非有限异常。
