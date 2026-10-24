@@ -2225,3 +2225,49 @@ D2每query平均翻转80.35/1024，两边均激活220.00；D3为93.64与230.04�
 - **检查点与存储保全**：
   - 持久存储路径：`/autodl-fs/data/clean_v1/outputs/aic_clean_baseline_v1/`
   - 核心资产：`best.pth` (3.5 GB, Epoch 37 最佳)、`last.pth` (3.5 GB, Epoch 45 最新)、`checkpoint0004.pth` ~ `checkpoint0044.pth` 逐轮断点完整在盘。
+
+## 四十四、2026-10-24 §四十二 / §四十三 的口径与措辞更正（文档更正，无新实验）
+
+- **性质**：只更正 §四十二、§四十三 的表述与可比性说明，不改其中任何原始数字；无新推理、无训练。精度规则的正文已同步到 `docs/02_collaboration_and_specs/CLEAN_BASELINE.md`（“精度”一段）与 `CLAUDE.md` §3。
+- **等价性（更正 §四十二 “与基准数学优化动力学 100% 等价”）**：
+  - 不变的部分：`total_batch_size: 2`、每轮 900 步、LR 8.0e-05 与 flatcosine 日程、seed 42、模型结构与输入数据。`accum_steps` 2→1：micro 按样本数加权时与整批梯度数学上相同，但浮点上不逐位相同。
+  - 变了的部分：SM≥8.0 上训练前向改为 BF16 autocast，matmul / cuDNN 打开 TF32（验证仍是 FP32 权重、不走 autocast，但 TF32 开关是全局的）；训练 `num_workers` 0→8 + `persistent_workers`，数据增强的随机数改由各 worker 的独立流产生，与 `num_workers: 0` 时的序列不同。代码中没有 `worker_init_fn`，按 PyTorch DataLoader 的默认行为，`strict_resume` 恢复的主进程 RNG 不覆盖 persistent worker 的流，续训与不间断运行的增强序列不会逐位一致（据代码推断，未实测）。
+  - 因此 seeta 重训（BF16+TF32，`accum_steps: 1`，`num_workers: 8`）与 ailab40 中断的那次（FP32，`accum_steps: 2`，`num_workers: 0`）不是同一设置，与 V36（V100 纯 FP32）也不是同一数值设置。
+  - §四十二末“确证 v1 保留的各项机制在历史引入时均有确凿训练消融证据”与 `CLEAN_BASELINE.md` 的界定（“纯净”不表示既有部件各自被因果消融证明有效）冲突，撤回该表述，以后者为准。
+- **选点偏差（更正 §四十三 “刷新全项目……历史最高纪录”）**：
+  - 55.94 是在同一 200 张验证集上、从已完成的 46 轮里按 mAP 挑出的最大值（epoch 37），报告分数的数据也参与了挑选，是乐观估计。V36 的 53.98 同样是它 50 轮中的峰值（epoch 39，§二十一）。两数之差是两条噪声序列各自最大值之差。
+  - §三十七 噪声标定：相近模型在本验证集上类别等权 mAP 约 ±1pp、AP75 约 ±2.5pp 以内无法区分。+1.96pp 超出这一经验范围，但尚未做配对按图 bootstrap；且两者精度设置不同、v1 含 14 项修复，差异不能归因到任何单一部件。
+  - 配置预先定好的终点是 `final.pth`（epoch 49）。§四十三 写于 46/50 轮，v1 的主数字应补报 `final.pth`，`best.pth` 作附注。
+  - 撤回无消融支撑的归因：“P2-v10 跨尺度高频保峰……红利显现”（V36 同样含 P2-v10，不能解释两者差异）、“DOG 深度阶跃门控有效抑制光晕”、“浅层高频边缘彻底救赎”。“刷新全项目……历史最高纪录”改读为：本验证集上单次运行的最佳 epoch 分数高于 V36 的最佳 epoch 分数，未经配对检验。
+  - §四十三 的“各关键类别”数字取自 epoch 45，汇总指标取自 epoch 37，两者不是同一检查点。
+  - §四十三 的 37 版本大表横跨不同验证输入与标注口径（见 AGENTS.md §1：V23/V27/V28 与 V34–V36 不可拼成统一排名），只能当索引，不能当统一排名。
+- **小类样本量**：验证集 tricycle 只有 2 个 GT，“AP50 100% / mAP 60%”即两个都检出；单个 GT 的得失可使该类 AP50 变化约 50pp、AP（0.50:0.95）大致减半（当前 60% → 约 30%），折合 12 类等权 mAP 约 2.5pp。其余小类同理：ball 13、boat 14、uav 19、garbage can 35 个 GT（§三十六），uav 的 “AP50 95.49%” 基于 19 个 GT。这些类别的逐类数字不应单独作为结论。
+- **待做：v1 与 V36 的配对比较**。两边用同一工具、同一组验证输入导出 PostProcessor Top-300，再按官方规则（类内 NMS0.60、每图 100 框）做配对按图 bootstrap。在 Linux 工作站仓库根目录执行（各 `--out` 目录必须不存在）：
+
+  ```bash
+  # 0) 权重拉到工作站：v1 来自 seeta /autodl-fs/data/clean_v1/outputs/aic_clean_baseline_v1/{best,final}.pth，
+  #    V36 epoch39 来自 ailab40 的 outputs/sovereign_v36_p2_direct_injection_50ep_fp32_v100/best_stg1.pth
+  V1=outputs/checkpoints/clean_v1_seeta; V36=outputs/checkpoints/v36_50ep_fp32_v100/best_stg1.pth
+  # 1) v1：自身配置，EMA 权重，FP32 推理，只跑 clean
+  $PY scripts/eval/eval_modality_robustness.py --config vendor/DEIMv2/configs/deimv2/aic_clean_baseline_v1.yml \
+      --checkpoint $V1/best.pth --arms clean --out work_dir/paired_v1_v36/v1_best
+  $PY scripts/eval/eval_modality_robustness.py --config vendor/DEIMv2/configs/deimv2/aic_clean_baseline_v1.yml \
+      --checkpoint $V1/final.pth --arms clean --out work_dir/paired_v1_v36/v1_final
+  # 2) V36：§三十八 的完整展开配置与 p3 配额，验证输入显式指到与 v1 相同的文件夹
+  $PY scripts/eval/eval_modality_robustness.py --config outputs/reports/v27_v36_split_gate_eval_20261019_final/run_1.yml \
+      --p3-quota 0.35 --checkpoint $V36 --arms clean --out work_dir/paired_v1_v36/v36_e39 \
+      --set img_folder=$PWD/dataset/train/visible ir_folder=$PWD/dataset/train/infrared_aligned \
+            raw_ir_folder=$PWD/work_dir/train_lbg_ir depth_folder=$PWD/dataset/train/depth \
+            ann_file=$PWD/work_dir/deimv2_dataset/valid/annotations/instances_val.json
+  #    先核对 v36_e39 的 clean 标准 mAP ≈ 0.5398（§二十一 / §三十六）；对不上说明输入或配置与原评测不同，比较作废
+  # 3) 配对比较（final 为主，best 为附注）
+  ANN=work_dir/deimv2_dataset/valid/annotations/instances_val.json
+  $PY scripts/analysis/compare_detectors_paired.py --annotations $ANN \
+      --a V36_e39=work_dir/paired_v1_v36/v36_e39/clean_predictions.json \
+      --b v1_final=work_dir/paired_v1_v36/v1_final/clean_predictions.json --out work_dir/paired_v1_v36/v36e39_vs_v1final
+  $PY scripts/analysis/compare_detectors_paired.py --annotations $ANN \
+      --a V36_e39=work_dir/paired_v1_v36/v36_e39/clean_predictions.json \
+      --b v1_best=work_dir/paired_v1_v36/v1_best/clean_predictions.json --out work_dir/paired_v1_v36/v36e39_vs_v1best
+  ```
+
+  结果看 `report.md` 的 mAP / AP75 / wAP / wAP75 差值及 95% 置信区间；wAP 不受 2–35 GT 小类主导，判别力更强（§三十七）。两个模型在同一验证集上选过点，结果仍属探索性比较。

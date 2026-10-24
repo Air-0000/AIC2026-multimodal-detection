@@ -6,6 +6,8 @@
 
 **2026-10-23 更新：v1 在第 6 轮第 165 步因 `loss_co_cls` 非有限值被严格守卫停止（第 0–5 轮验证 mAP 至 0.321）。诊断结论为 ailab40 GPU1 显存硬件错误（ECC 关闭、6 页双比特错误退役记录；同一份数据反复读取校验和 84/660 次不一致，健康 GPU 对照 0 次），不是模型数值缺陷。** 详见 MODEL_RECORDS §四十。在硬件修复或换卡前不应在该卡上继续训练。
 
+**2026-10-23/24 更新：v1 迁到 seeta RTX PRO 6000 Blackwell 从头重训（BF16 autocast + TF32，见下方“精度”），截至 10-24 完成 46/50 轮，验证集最佳为 epoch 37 的 mAP 55.94。** 详见 MODEL_RECORDS §四十一–四十三；该数字的口径与限制见 §四十四。
+
 **比赛约束：逐图独立检测是必须遵守的要求。没有时间记忆不列为结构缺陷；所有改进和诊断保持单图推理，不引入跨图状态。**
 
 ## 唯一基准入口
@@ -14,7 +16,9 @@
 
 这里“纯净”指修复实现与实验流程正确性、明确来源和关闭未验证新增分支，不表示这些既有部件各自都被因果消融证明有效，也不等于官方纯RGB模型。
 
-固定：12类；1440×2560；FP32/TF32关闭，V100禁用cuDNN；seed42；普通aux BN更新（freeze_bn=false，RGB自身freeze_norm保持原骨架）；有效batch为2，accum_steps=2仅把这个loader batch拆成两个micro，不乘成4或8；50轮flatcosine（flat30/no_aug4），最后4轮停横翻。epoch0–49单调推进，final/last与best分别保存。此处是完整配置，当前没有运行该50轮训练。
+固定：12类；1440×2560；seed42；普通aux BN更新（freeze_bn=false，RGB自身freeze_norm保持原骨架）；有效batch为2（accum_steps只拆micro，不乘成4或8）；50轮flatcosine（flat30/no_aug4），最后4轮停横翻。epoch0–49单调推进，final/last与best分别保存。
+
+精度（2026-10-23 commit `c8657a6` 起，随GPU架构变化）：三臂配置均为`use_amp: true`、`accum_steps: 1`、训练`num_workers: 8`+`persistent_workers`。SM≥8.0（Ampere/Ada/Hopper/Blackwell）上`train.py`打开TF32，训练前向走BF16 autocast（criterion在FP32下计算，GradScaler仍启用），验证不走autocast；SM<8.0（V100）上TF32与cuDNN关闭，`train.py`与`clean_lifecycle.py`拒绝`use_amp: true`，须加`-u use_amp=False`按纯FP32运行。因此同一配置在V100与Blackwell上的数值设置不同，ailab40 中断的那次（FP32，`accum_steps: 2`，`num_workers: 0`）与 seeta 重训（BF16+TF32，`accum_steps: 1`，`num_workers: 8`）不是同一设置。同一组对照必须在同一架构上跑。修改前的FP32定义：`git show c8657a6^:vendor/DEIMv2/configs/deimv2/aic_clean_baseline_v1.yml`。
 
 查询选择明确保留历史P3配额35%+全局补齐；Fallback关闭，Routing/P4配额改动关闭，Aux分类减权关闭，SDQS/distinct开关False，V37平移/抗混叠/空间偏置/offset限制/层间融合/SECL全部不纳入。类内NMS0.60、标准COCO评测；不启用测试TTA/SAHI或内容融合。
 
