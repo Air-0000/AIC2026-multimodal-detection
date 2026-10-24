@@ -1,7 +1,8 @@
 # Clean baseline v1 + strong augmentation, batch 4, all 2000 labelled images (train 1800 + valid 200).
 # Only these differ from aic_clean_baseline_v1.yml: train ann_file (merged by scripts/prep/merge_coco_splits.py),
 # train transforms (Mosaic / RandomPhotometricDistort5ch on RGB only / RandomZoomOut / RandomIoUCrop, V27 parameters
-# scaled to 1440x2560), mixup in the collate, total_batch_size 4 (accum_steps 1), train num_workers 5 with
+# scaled to 1440x2560), mixup in the collate, total_batch_size 4 split into 2 micro-batches of 2 (accum_steps 2,
+# same per-forward batch as v1 and as the 2-per-forward recipes that worked elsewhere), train num_workers 5 with
 # prefetch_factor 1 and persistent_workers false, and the step-counted settings rescaled from 900 to 500 steps per
 # epoch so they cover the same number of epochs as in v1: ema.decay, ema.warmups, warmup_iter.
 # Batch 4 and 5 workers fit the seeta node's 2 GB /dev/shm: a batch is ~0.35 GB, so even if every worker finishes at
@@ -407,7 +408,7 @@ HGNetv2MultiModal:
   local_model_dir: weight/hgnetv2/
   pretrained: false
   disable_fallback: true
-accum_steps: 1
+accum_steps: 2
 clean_baseline: true
 stop_on_nonfinite: true
 strict_resume: true
