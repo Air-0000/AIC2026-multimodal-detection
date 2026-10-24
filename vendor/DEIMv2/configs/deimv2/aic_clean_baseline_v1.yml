@@ -1,5 +1,5 @@
 # Corrected V36-family reference; no experimental switches and no inherited includes.
-# Effective batch=2; accum_steps=2 splits a loader batch, it does not multiply it.
+# Effective batch=2 (total_batch_size); accum_steps only splits a loader batch into micro-batches, it does not multiply it.
 task: detection
 evaluator:
   type: CocoEvaluator

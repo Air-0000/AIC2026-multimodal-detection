@@ -37,7 +37,7 @@ CUDA_VISIBLE_DEVICES='' $PY scripts/diagnostics/test_clean_baseline_contract.py 
 - 基准训练：`cd vendor/DEIMv2 && $PY train.py -c configs/deimv2/aic_clean_baseline_v1.yml`。新实验必须用全新 `output_dir`。
 - **精度随 GPU 架构变化（2026-10-23 起，commit `c8657a6`）**：三臂配置都是 `use_amp: true`。
   - SM ≥ 8.0（Ampere / Ada / Hopper / Blackwell）：`train.py` 打开 TF32（matmul 与 cuDNN）；训练前向在 BF16 autocast 下运行（`det_engine.py` 按架构选 dtype），criterion 关闭 autocast 按 FP32 算；`GradScaler` 仍启用；验证 `evaluate()` 不走 autocast，FP32 权重 + TF32 matmul。纯净基准 v1 的 seeta 运行（§四十一–四十三）就是这种设置。
-  - SM < 8.0（V100）：TF32 关闭、cuDNN 关闭；`train.py` 与 `clean_lifecycle.py` 对 `use_amp: true` 直接报错，所以在 V100 上必须加 `-u use_amp=False` 才能按纯 FP32 跑。
+  - SM < 8.0（V100）：TF32 关闭、cuDNN 关闭；`train.py` 与 `clean_lifecycle.py` 对 `use_amp: true` 直接报错，所以在 V100 上必须加 `-u use_amp=False`（用 `scripts/train/run_clean_arm.sh` 时设 `USE_AMP=0`）才能按纯 FP32 跑。
   - 结果因此依赖 GPU 架构：同一份配置在 V100 是 FP32，在 Blackwell 是 BF16 + TF32。跨架构的运行不能当作同一设置比较；同一组对照（v1 / RGB 对照 / 暗光臂）要在同一架构上跑。
 - 续训：`-r <ckpt> -u tuning=null`。`strict_resume` 缺 model/EMA/optimizer/RNG 状态或 shape 不符即失败——这是设计，不要放宽。
 - CLI 语义：`-t` 只加载权重热启动；`-r` 完整恢复；`-u key=value` 覆盖 YAML；`--seed` 仅在显式传入时覆盖 YAML seed。

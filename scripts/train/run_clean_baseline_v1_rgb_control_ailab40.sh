@@ -24,4 +24,5 @@ cd "${ROOT}/vendor/DEIMv2"
 echo "Start: $(date)  GPU: ${CUDA_VISIBLE_DEVICES}  Root: ${ROOT}" | tee -a "${LOG}"
 exec $PY -u train.py \
   -c configs/deimv2/aic_clean_baseline_v1_rgb_control.yml \
+  -u use_amp=False \
   2>&1 | tee -a "${LOG}"

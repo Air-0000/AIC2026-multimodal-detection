@@ -6,10 +6,10 @@
 
 - **两张同型号的卡**，v1 与 RGB 对照各占一张并行跑；之后的暗光臂与最终训练也用同型号、同环境，否则对比不公平。
 - 每卡显存 ≥24 GB：实测峰值 v1 18.5 GiB、RGB 对照 16.1 GiB（FP32，ailab40 V100，`bench_clean_arm.py`）；16 GB 的卡两条线都会 OOM（5060 Ti 实测）。
-- 耗时参考：ailab40 V100（无 cuDNN）v1 每步 4.46 s（其中等数据 0.51 s），RGB 对照 3.80 s（0.17 s），50 轮不含验证约 56 h / 48 h。配置为 `num_workers: 0`，数据在主线程串行读取，换快卡也省不掉这部分（v1 约 900 步 × 50 轮 × 0.5 s ≈ 6 h，还取决于云机的 CPU 与磁盘）；实际耗时以第 4 步的 `BENCH=1` 为准。
+- 耗时参考：ailab40 V100（无 cuDNN）v1 每步 4.46 s（其中等数据 0.51 s），RGB 对照 3.80 s（0.17 s），50 轮不含验证约 56 h / 48 h。以上是当时的 `num_workers: 0` + 纯 FP32 配置。2026-10-23 起（commit `c8657a6`）三臂改为训练 `num_workers: 8`、`accum_steps: 1`，SM≥8.0 的卡上 BF16 autocast + TF32：RTX PRO 6000 Blackwell 上 v1 每步约 0.77 s、等数据约 0、峰值 21.7 GiB，每轮含验证约 14 分钟（MODEL_RECORDS §四十二、§四十三）。实际耗时以第 4 步的 `BENCH=1` 为准。
 - 优先选支持并已开启 ECC 的数据中心卡（A100、H100、L40S、RTX 6000 Ada、RTX PRO 6000 等）；消费卡（4090、5090）没有 ECC，只能靠第 4 步的自检把关。
 - 架构与 PyTorch：Ampere / Ada / Hopper 可用 torch 2.6 + CUDA 12.4（ailab40 训练环境同版本）；Blackwell（RTX PRO 6000、5090）需要 CUDA 12.8 以上的构建（torch ≥2.7，本地工作站为 torch 2.13 + CUDA 13.0）。两条线用同一个环境即可。
-- 非 V100 的卡会自动启用 cuDNN（train.py 只在 Volta 上关闭），比 ailab40 快很多；数值与 ailab40 不同，因此 v1 **从头重训**，不接 ailab40 的 `last.pth`。
+- 非 V100 的卡会自动启用 cuDNN（train.py 只在 Volta 上关闭），并按配置走 BF16 autocast + TF32；V100 上须 `USE_AMP=0`（`run_clean_arm.sh`）按纯 FP32 跑（CLAUDE.md §3）。数值与 ailab40 不同，因此 v1 **从头重训**，不接 ailab40 的 `last.pth`。
 - 磁盘：每份检查点约 3.66 GB，每 5 轮存一份加 last、best，每条线约 44 GB；两条线加数据（15.4 GB）与环境，建议 ≥150 GB。
 
 ## 1. 云端：代码与环境

@@ -39,4 +39,5 @@ echo "==========================================================================
 
 exec $PY -u train.py \
   -c configs/deimv2/aic_clean_baseline_v1.yml \
+  -u use_amp=False \
   2>&1 | tee -a "${ROOT}/logs/aic_clean_baseline_v1_train.log"

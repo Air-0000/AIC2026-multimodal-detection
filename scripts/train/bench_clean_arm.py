@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Measure time per training step and peak GPU memory of one clean-baseline arm, saving nothing.
 
-Builds the solver exactly as train.py does for a fresh run (COCO tuning, seed, FP32, TF32 off, cuDNN off
-only on Volta) and runs the real train_one_epoch for --iters steps of epoch 0. The optimizer steps happen
+Builds the solver as train.py does for a fresh run (COCO tuning, seed; on SM >= 8.0 TF32 on and the configs'
+use_amp: true trains in BF16 autocast, on older GPUs TF32 off and cuDNN off only on Volta) and runs the real
+train_one_epoch for --iters steps of epoch 0. Unlike train.py it does not reject use_amp: true on Volta, where
+the engine would autocast to FP16, so benchmark V100 runs with a use_amp: false copy of the config. The optimizer steps happen
 in memory only; checkpoints, logs and TensorBoard files go to a temporary folder that is deleted.
 Prints JSON (first --warmup steps excluded): median seconds per step and its compute / loader-wait parts,
 peak memory, and the projected hours for the full schedule excluding per-epoch validation.
