@@ -5,6 +5,7 @@
 #   ARM=v1     configs/deimv2/aic_clean_baseline_v1.yml
 #   ARM=rgb    configs/deimv2/aic_clean_baseline_v1_rgb_control.yml
 #   ARM=night  configs/deimv2/aic_clean_baseline_v1_night.yml
+#   ARM=v2     configs/deimv2/aic_clean_baseline_v2_aug_all2000.yml (needs the merged all2000 annotation file)
 # Precision follows train.py's clean-baseline guard: on SM >= 8.0 the configs' use_amp: true trains in BF16
 # autocast with TF32 on; on Volta TF32 and cuDNN are off and train.py rejects use_amp: true, so set USE_AMP=0
 # there (pure FP32). Refuses to overwrite an existing output folder unless RESUME
@@ -16,14 +17,15 @@
 set -euo pipefail
 
 ROOT=${ROOT:?set ROOT to the repo checkout}
-ARM=${ARM:?set ARM to v1, rgb or night}
+ARM=${ARM:?set ARM to v1, rgb, night or v2}
 GPU=${GPU:?set GPU to the physical GPU index}
 PY=${PY:-python}
 case "$ARM" in
   v1) CFG=aic_clean_baseline_v1 ;;
   rgb) CFG=aic_clean_baseline_v1_rgb_control ;;
   night) CFG=aic_clean_baseline_v1_night ;;
-  *) echo "ARM must be v1, rgb or night"; exit 1 ;;
+  v2) CFG=aic_clean_baseline_v2_aug_all2000 ;;
+  *) echo "ARM must be v1, rgb, night or v2"; exit 1 ;;
 esac
 
 export CUDA_VISIBLE_DEVICES="$GPU"
