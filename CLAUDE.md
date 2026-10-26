@@ -29,7 +29,7 @@ CUDA_VISIBLE_DEVICES='' $PY scripts/diagnostics/test_clean_baseline_contract.py
 CUDA_VISIBLE_DEVICES='' $PY scripts/diagnostics/test_clean_baseline_contract.py CleanContracts.test_yaml_loads_are_independent
 ```
 
-- 改动基准用到的 `engine/` 代码后至少重跑 `test_clean_baseline_contract.py`。其他 CPU 契约测试：`test_rgb_control_contract.py`、`test_night_aug_contract.py`（RGB 对照 / 暗光两臂）、`test_light_val_analysis.py`、`test_cssp_module.py`、`check_v36_*_contract.py`；`test_predict_contract.py` 是 `predict.py` 的验证集推理契约（要 GPU 与数据）。
+- 改动基准用到的 `engine/` 代码后至少重跑 `test_clean_baseline_contract.py`。其他 CPU 契约测试：`test_rgb_control_contract.py`、`test_night_aug_contract.py`（RGB 对照 / 暗光两臂）、`test_light_val_analysis.py`、`test_cssp_module.py`、`test_irbind_pilot_contract.py`（红外绑定试验：热启动键重映射、学习率分组、严格暗光增强）、`check_v36_*_contract.py`；`test_predict_contract.py` 是 `predict.py` 的验证集推理契约（要 GPU 与数据）。
 - GPU 端只读验收用 `scripts/diagnostics/audit_clean_baseline.py`（完整命令见 `CLEAN_BASELINE.md`；`--out` 目录必须不存在，先确认 GPU 空闲）。
 
 ## 3. 训练入口补充（对 AGENTS.md §5 的修正）

@@ -351,8 +351,11 @@ class RandomDNDTNightify(T.Transform):
     _transformed_types = (torch.Tensor,)
 
     def __init__(self, p=0.5, bright_range=(0.005, 0.5), log_bright=True,
-                 curriculum=True, total_epochs=30, mid_bright=0.06, seeded=False):
+                 curriculum=True, total_epochs=30, mid_bright=0.06, seeded=False, strict=False):
         super().__init__()
+        # strict: refuse to build when nightify_aic is not importable, instead of silently passing images through.
+        if strict and nightify is None:
+            raise ImportError('RandomDNDTNightify(strict=True): nightify_aic not importable; put scripts/lib on PYTHONPATH')
         self.p = p
         self.bright_range = bright_range
         self.log_bright = log_bright

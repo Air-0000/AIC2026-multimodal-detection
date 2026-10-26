@@ -245,6 +245,10 @@ class BaseSolver(object):
             pretrain_state_dict = state['model']
         else:
             pretrain_state_dict = state
+        remap = getattr(self.cfg, 'tuning_key_remap', None)
+        remapped = self._remap_tuning_keys(pretrain_state_dict, remap) if remap else None
+        if remapped is not None:
+            pretrain_state_dict, remap_counts = remapped
 
         # Adjust head parameters between datasets
         try:
@@ -267,6 +271,8 @@ class BaseSolver(object):
         self.tuning_load_report = dict(infos, missing_keys=list(result.missing_keys),
                                        unexpected_keys=list(result.unexpected_keys))
         self.tuning_load_report['matched_keys'] = len(stat)
+        if remapped is not None:
+            self.tuning_load_report['remapped_keys'] = remap_counts
         if getattr(self.cfg, 'init_ir_stem_after_tuning', False):
             if any(k.startswith(('backbone.ir_stem.', 'backbone.ir_proj.')) for k in pretrain_state_dict):
                 raise ValueError('Refusing to overwrite a trained multimodal IR stem; this option is COCO initialization only')
@@ -278,6 +284,31 @@ class BaseSolver(object):
             transfer_pretrained_stem_weights(bb.rgb_net.stem, bb.ir_stem, in_chans=bb.ir_in_chans)
             self.tuning_load_report['ir_stem_copied_after_rgb_load'] = True
         print(f'Load model.state_dict, {infos}')
+
+    @staticmethod
+    def _remap_tuning_keys(state: Dict[str, torch.Tensor], remap):
+        """Rename checkpoint key prefixes before matching, all pairs at once (e.g. shift per-stage IR modules
+        when inject_stages gains a stage). Fails closed: every prefix must end with '.', match at least one key,
+        and the renamed keys must not collide."""
+        pairs = [(str(a), str(b)) for a, b in remap]
+        if any(not a.endswith('.') or not b.endswith('.') for a, b in pairs):
+            raise ValueError(f'tuning_key_remap prefixes must end with ".": {pairs}')
+        out, counts = {}, {a: 0 for a, _ in pairs}
+        for k, v in state.items():
+            hits = [(a, b) for a, b in pairs if k.startswith(a)]
+            if len(hits) > 1:
+                raise ValueError(f'tuning_key_remap: {k} matches several prefixes {hits}')
+            if hits:
+                a, b = hits[0]
+                counts[a] += 1
+                k = b + k[len(a):]
+            if k in out:
+                raise ValueError(f'tuning_key_remap: two checkpoint keys map to {k}')
+            out[k] = v
+        unused = [a for a, n in counts.items() if n == 0]
+        if unused:
+            raise ValueError(f'tuning_key_remap prefixes match no checkpoint key: {unused}')
+        return out, counts
 
     @staticmethod
     def _matched_state(state: Dict[str, torch.Tensor], params: Dict[str, torch.Tensor]):

@@ -77,6 +77,7 @@ class BaseConfig(object):
         self.init_ir_stem_after_tuning :bool = False
         self.reset_rng_after_setup :bool = False
         self.required_tuning_sha256 :str = None
+        self.tuning_key_remap :list = None  # [[old_prefix., new_prefix.], ...] applied to -t checkpoint keys
         self.clip_max_norm : float = 0.
         self.find_unused_parameters :bool = None
 

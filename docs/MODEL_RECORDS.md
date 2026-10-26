@@ -2288,3 +2288,31 @@ D2每query平均翻转80.35/1024，两边均激活220.00；D3为93.64与230.04�
 - **生成方式**：thr0.45 包为完整推理，同时把预测存为 `work_dir/submissions/clean_v1_phase3_preds.pkl`（SHA256 前缀 `3824a8e898e2`）；thr0.40 / 0.48 / 0.55 由同一 pkl 经 `predict.py --load-preds`（commit `87b3cff`）只改阈值得到。四个包：0.40 → 14,367 框（`0b19a8d1b217`）、0.45 → 13,411（`f818e3a379bc`）、0.48 → 12,918（`790051f22ca1`）、0.55 → 11,915（`165638bb11ee`）。
 - **阈值来源**：0.48 是为了让总框数接近官方公布的 Phase 3 目标总数 12,900（`docs/01_competition/SUBMISSION_CONFIDENCE_THRESHOLD_PRIOR.md` 的官方统计表）而选的，不是在有标签验证集上定的。按 CLAUDE.md，总框数对齐不能证明阈值最优；目前只有这一个分数，没有证据表明它优于其他阈值。
 - **Phase 3 数据特征（v1 thr0.45 输出，无标签描述）**：每图 13.41 框（Phase 2 同设置 7.66）；增量几乎全是 person（13,411 框中 6,748 个），六位数字命名图每图 7.6 个 person（Phase 2 为 1.8），shuming 来源从 54 张增至 144 张；person 最密的图是运动会操场方阵（`shuming_333`–`336`）与远处站满人的公园草地（`0039xx`），框基本落在真实的人身上，看台观众大多未框（与训练集看台不标的口径一致）。93 张图超过 30 框、9 张超过 60 框、1 张达到 100 框上限；平均亮度低于 80 的暗图 19 张（Phase 2 为 4 张）。F5 式每图 60 框上限在这里会砍掉 9 张人群图的 165 个框，Phase 2 的紧凑后处理不能直接照搬。
+
+## 四十七、2026-10-26 纯净基准 v1 模态鲁棒性剖面、红外通路机理测量与红外绑定 pilot 配置（只推理 + 配置，无训练）
+
+- **剖面（只推理）**：主机 RTX 5060 Ti，`scripts/eval/eval_modality_robustness.py` 对 `aic_clean_baseline_v1.yml` + seeta `best.pth`（epoch 37，SHA256 前缀 `19c0dc7e4305`）跑全部 14 种条件，FP32、TF32 关、无 TTA，200 张验证图，口径同 §三十八。产物 `outputs/reports/modality_robustness_clean_v1_e37_20261026/`（`report.md` SHA256 `25977f070b0d2eccd75e6a1e2e4a666921670ac3036ce1ab369d1f2a41519f23`，`manifest.json` `0c39b6ddeb96d98951c41704b5a66702041aafee06be566ee1baa87725828170`），日志 `logs/modality_robustness_clean_v1_e37_20261026.log`（`26fec0512493…`）。
+
+| 条件 | mAP | AP75 | wAP | ΔmAP vs 原图 [95% CI] | ΔwAP [95% CI] |
+|---|---:|---:|---:|---|---|
+| 原图 | 55.88 | 62.17 | 55.56 | — | — |
+| night50 / 25 / 12 | 39.65 / 28.14 / 14.29 | 42.86 / 30.52 / 13.13 | 43.23 / 33.77 / 18.03 | −16.25 / −27.75 / −41.59 | −12.32 / −21.78 / −37.51 |
+| night05 | 2.42 | 1.74 | 3.49 | −53.46 [−57.76, −50.31] | −52.06 |
+| night01 及以下、rgb_black | 0.00 | 0.00 | 0.00 | −55.88 [−60.61, −52.84] | −55.54 |
+| ir_off | 54.79 | 61.28 | 55.03 | −1.10 [−2.54, −0.06] | −0.52 [−1.02, −0.14] |
+| depth_off | 55.77 | 61.52 | 55.44 | −0.12 [−0.49, +0.24] | −0.12 [−0.34, +0.07] |
+| ir_depth_off | 54.80 | 61.47 | 54.95 | −1.09 [−2.40, −0.10] | −0.61 [−1.13, −0.21] |
+
+  结论：§三十八 对 v1 的预计成立，且更彻底——红外与深度完整保留、RGB 置黑或压到 1% 亮度时 mAP 为 0.00；去掉红外约 −1.1pp，去掉深度无可测影响。v1 与 V36 一样只靠 RGB 检测。
+
+- **红外通路机理（v1 权重实测，只读 / 只推理）**：红外与深度对主干的全部影响都经过 `hgnetv2_mm.py` 的 `y = y + ir_res(ir_fuse(y, f))`：
+  1. 只注入 stage 2 / 3（步长 16 / 32）；红外 stem 算出的步长 8 特征 `c2` 未被使用，P3 与 P2 不含任何红外信息。
+  2. 红外 stem 为 3 层步长 2 卷积（128 通道），经 1×1 投影到 1024 / 2048 通道，难以形成目标级语义。
+  3. 零初始化门 `ir_res`（524 万参数）与 CSSA `ir_fuse` 不在 1e-4 的红外参数组正则内，落入 backbone 组，学习率 5e-6，为红外 stem 的 1/20。epoch 37 时 `ir_res` 平均 |w| 为 5.2e-4 / 5.9e-4，相邻 RGB 1×1 卷积为 1.2e-2。
+  4. 20 张验证图前向：红外残差范数 / RGB 特征范数在步长 16 为 7.3%、步长 32 为 3.0%；RGB 置为归一化均值时为 7.0% / 2.6%，即 RGB 无信息时红外权重不上升。
+  5. 训练无使用红外的理由：训练图全为亮图（§三十八），v1 仅有水平翻转，另有 `ir_drop_prob: 0.05` 随机丢弃红外。DCDA / DOG / 3D-Lift 只作用于红外特征或融合输入，最终同样穿过这一小残差，与 depth_off 无影响一致。
+
+- **红外绑定 pilot 配置（未训练）**：`vendor/DEIMv2/configs/deimv2/aic_irbind_pilot_ws_v1.yml`（SHA256 前缀 `2c5c503d3a6c`），从 v1 `best.pth` 热启动（`required_tuning_sha256` 钉死、`init_ir_stem_after_tuning: false`），同时改五处，属联合 pilot、不是单变量对照：① `ir_fuse` / `ir_res` 移入 1e-4 红外组；② `inject_stages: [1, 2, 3]`，P3 也注入红外，`tuning_key_remap` 把 v1 各级红外模块 0→1、1→2 平移以保持对应级；③ `ir_drop_prob: 0`；④ RGB 上 `RandomDNDTNightify`（p 0.5、亮度 [0.0005, 0.5] 对数均匀、`strict: true`、末期不关）；⑤ 12 轮（flat 6，余弦到 0.5×，末 2 轮关横翻）。判据：相对本节剖面，rgb_black / night05 明显高于 0，同时原图 mAP 在置信区间内不降；暗光验证图由 nightify 生成，night 各档对该 pilot 部分属分布内。
+- **配套代码**：`engine/solver/_solver.py::load_tuning_state` 新增 `tuning_key_remap`（`engine/core/_config.py` 声明；前缀须以 `.` 结尾、每条至少匹配一个键、重命名后不得撞键，否则报错；结果记入 `tuning_load_report['remapped_keys']`）；`RandomDNDTNightify` 新增 `strict`（找不到 `nightify_aic` 时拒绝构建，原默认行为为静默跳过，暗光臂 `aic_clean_baseline_v1_night.yml` 仍是旧行为）。
+- **验收（CPU 契约 + GPU 只推理）**：在主机临时副本上，`test_clean_baseline_contract.py` 14/14、`test_night_aug_contract.py` 3 项（2 项跳过，同前）、新增 `scripts/diagnostics/test_irbind_pilot_contract.py` 6/6 通过（重映射后各级模块逐元素一致、新 stage-1 门为零、不重映射即被拒绝、前缀错误 / 无匹配 / 撞键均报错、学习率分组互斥且门在 1e-4 组、严格暗光增强缺依赖即报错）。用真实 v1 `best.pth` 经 pilot 配置与真实加载器（SHA 校验 + 重映射 + clean_baseline 缺口检查）热启动：12 组前缀全部命中，缺失的只有 6 个新 stage-1 模块，无形状不符，匹配 1,582 键；3 张验证图上 pilot 与 v1 的 `pred_logits` / `pred_boxes` 最大差均为 0，即起点与 v1 逐位相同。
+- **未做**：pilot 未训练。v1 在 96GB Blackwell 上训练，pilot 能否在 16GB 主机上训练未测试。
