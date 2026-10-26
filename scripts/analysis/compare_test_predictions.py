@@ -17,7 +17,8 @@ Lists the images with most disagreement for visual review. OUT must not exist.
 A detector always produces candidates, so an image with no raw candidates in some cache means that cache's export
 failed there (the 2026-10-04 F5 reproduction on ailab40 has none for the 4th image of every batch of 4, 249 images,
 while the official F5 package had 7,184 boxes). Such images are dropped for every model and listed in the report;
---keep-empty-raw keeps them.
+--keep-empty-raw keeps them. A cache built from a thresholded submission legitimately has empty images; name it with
+--allow-empty so its empty images are not taken for failed exports.
 
 Example (on ailab40):
   python compare_test_predictions.py --images AIC_V29/dataset/test/AIC2026_PHASE_2_1000/visible --reference F5 \
@@ -197,7 +198,7 @@ def compare(model, ref, names, a, rare):
 def render(res):
     out = [f"# Test-set prediction comparison (no labels)", '',
            f"Post-processing for every model: {res['settings']}", '',
-           f"Images with no raw candidates, by cache: {res['empty_raw']}; "
+           f"Images with no raw candidates, by cache: {res['empty_raw']} (thresholded, kept: {res['allow_empty'] or 'none'}); "
            + (f"{len(res['excluded_images'])} such images dropped for every model, {res['images']} compared."
               if res['excluded_images'] else f"none dropped, {res['images']} compared."), '',
            '## Each model on its own', '',
@@ -247,6 +248,8 @@ def main():
     p.add_argument('--top-images', type=int, default=20)
     p.add_argument('--class-names', default='person,boat,animal,seat,sign,bicycle,car,ball,light,garbage can,uav,tricycle')
     p.add_argument('--keep-empty-raw', action='store_true', help='keep images where some cache has no raw candidates')
+    p.add_argument('--allow-empty', nargs='+', default=[], metavar='NAME',
+                   help='models whose caches are thresholded, so an empty image there is a real empty result')
     a = ARGS = p.parse_args()
     if a.out.exists():
         sys.exit(f'refusing: {a.out} exists')
@@ -268,8 +271,10 @@ def main():
         caches[name], missing = load_cache(path, sizes)
         res['inputs'][name] = dict(path=str(Path(path).resolve()), missing_images=len(missing))
         empty_raw[name] = sorted(stem for stem, (cls, _, _) in caches[name].items() if len(cls) == 0)
-    excluded = set() if a.keep_empty_raw else {s for v in empty_raw.values() for s in v}
-    res.update(empty_raw={k: len(v) for k, v in empty_raw.items()}, excluded_images=sorted(excluded),
+    if set(a.allow_empty) - set(models):
+        sys.exit(f'--allow-empty names unknown models: {sorted(set(a.allow_empty) - set(models))}')
+    excluded = set() if a.keep_empty_raw else {s for k, v in empty_raw.items() if k not in a.allow_empty for s in v}
+    res.update(empty_raw={k: len(v) for k, v in empty_raw.items()}, allow_empty=a.allow_empty, excluded_images=sorted(excluded),
                images=len(sizes) - len(excluded))
     for name, cache in caches.items():
         dets[name] = {}
