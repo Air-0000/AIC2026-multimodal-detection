@@ -1581,10 +1581,18 @@
                 </div>
 
                 <!-- Confidence Threshold -->
-                <div class="tool-cluster">
+                <div class="tool-cluster" style="gap:5px;">
                     <span class="tool-title">置信度:</span>
                     <input type="range" class="range-slider" id="confSlider" min="5" max="80" value="45" step="1" oninput="onConfChange()" />
-                    <span id="confVal" style="font-family:monospace;font-size:11px;color:#60a5fa;">0.45</span>
+                    <span id="confVal" style="font-family:monospace;font-size:11px;color:#60a5fa;min-width:28px;">0.45</span>
+                    <div style="display:flex;gap:3px;margin-left:2px;">
+                        <button type="button" class="btn-hdr" style="padding:1px 6px;font-size:10px;font-weight:700;border:1px solid rgba(245,158,11,0.3);color:#f59e0b;" onclick="setQuickThreshold(0.20)" title="过滤阈值 0.20">0.20</button>
+                        <button type="button" class="btn-hdr" style="padding:1px 6px;font-size:10px;font-weight:700;" onclick="setQuickThreshold(0.30)" title="过滤阈值 0.30">0.30</button>
+                        <button type="button" class="btn-hdr" style="padding:1px 6px;font-size:10px;font-weight:700;" onclick="setQuickThreshold(0.40)" title="过滤阈值 0.40">0.40</button>
+                        <button type="button" class="btn-hdr" style="padding:1px 6px;font-size:10px;font-weight:700;" onclick="setQuickThreshold(0.45)" title="过滤阈值 0.45">0.45</button>
+                        <button type="button" class="btn-hdr" style="padding:1px 6px;font-size:10px;font-weight:700;" onclick="setQuickThreshold(0.48)" title="过滤阈值 0.48 (12900先验)">0.48</button>
+                        <button type="button" class="btn-hdr" style="padding:1px 6px;font-size:10px;font-weight:700;" onclick="setQuickThreshold(0.50)" title="过滤阈值 0.50">0.50</button>
+                    </div>
                 </div>
 
                 <!-- Toggle Extra Options Button -->
@@ -2392,23 +2400,21 @@
             }
             closeAuditBubble();
             if (mid && mid.includes('thr10')) {
-                confThreshold = 0.10;
-                const cS = document.getElementById('confSlider');
-                const cV = document.getElementById('confVal');
-                if (cS) cS.value = 10;
-                if (cV) cV.innerText = '0.10';
+                setQuickThreshold(0.10);
+            } else if (mid && mid.includes('thr20')) {
+                setQuickThreshold(0.20);
             } else if (mid && mid.includes('thr30')) {
-                confThreshold = 0.30;
-                const cS = document.getElementById('confSlider');
-                const cV = document.getElementById('confVal');
-                if (cS) cS.value = 30;
-                if (cV) cV.innerText = '0.30';
+                setQuickThreshold(0.30);
+            } else if (mid && mid.includes('thr40')) {
+                setQuickThreshold(0.40);
+            } else if (mid && mid.includes('thr48')) {
+                setQuickThreshold(0.48);
+            } else if (mid && mid.includes('thr45')) {
+                setQuickThreshold(0.45);
             } else if (mid && mid.includes('thr50')) {
-                confThreshold = 0.50;
-                const cS = document.getElementById('confSlider');
-                const cV = document.getElementById('confVal');
-                if (cS) cS.value = 50;
-                if (cV) cV.innerText = '0.50';
+                setQuickThreshold(0.50);
+            } else if (mid && mid.includes('thr55')) {
+                setQuickThreshold(0.55);
             }
             if (mid && mid.includes('exclusive')) {
                 setDiscrepancyFilterMode('exclusive_only');
@@ -4133,6 +4139,15 @@
             const val = document.getElementById('confSlider').value;
             confThreshold = val / 100.0;
             document.getElementById('confVal').innerText = confThreshold.toFixed(2);
+            recomputeAndDraw();
+        }
+
+        function setQuickThreshold(val) {
+            confThreshold = val;
+            const cS = document.getElementById('confSlider');
+            const cV = document.getElementById('confVal');
+            if (cS) cS.value = Math.round(val * 100);
+            if (cV) cV.innerText = val.toFixed(2);
             recomputeAndDraw();
         }
 
