@@ -31,6 +31,10 @@ os.makedirs(REPORTS_DIR, exist_ok=True)
 
 VIS_DIR = os.path.join(ROOT_DIR, 'dataset/test/AIC2026_PHASE_2_1000/visible')
 IR_DIR = os.path.join(ROOT_DIR, 'dataset/test/AIC2026_PHASE_2_1000/infrared')
+VIS_DIR_P2 = os.path.join(ROOT_DIR, 'dataset/test/AIC2026_PHASE_2_1000/visible')
+VIS_DIR_P3 = os.path.join(ROOT_DIR, 'dataset/test/AIC2026_PHASE_3_1000/visible')
+IR_DIR_P2 = os.path.join(ROOT_DIR, 'dataset/test/AIC2026_PHASE_2_1000/infrared')
+IR_DIR_P3 = os.path.join(ROOT_DIR, 'dataset/test/AIC2026_PHASE_3_1000/infrared')
 STAGEA_VIS_DIR = os.path.join(ROOT_DIR, 'work_dir/visualizations/v23_test_vis_all1000')
 
 CLASS_NAMES = {
@@ -248,16 +252,27 @@ def quick_match(bf, bg, iou_exact=0.25, iou_conf=0.30):
     n_fp = len(bg) - len(matched_g)
     return n_exact, n_conf, n_missed, n_fp
 
-print("1. Scanning 1,000 test set images...")
+print("1. Scanning test set images (Phase 2 & Phase 3)...")
 file_map = {}
-if os.path.exists(VIS_DIR):
-    for f in os.listdir(VIS_DIR):
+file_phase = {}
+if os.path.exists(VIS_DIR_P2):
+    for f in sorted(os.listdir(VIS_DIR_P2)):
         if f.endswith('.png') or f.endswith('.jpg'):
             stem = f.rsplit('.', 1)[0]
             file_map[stem] = f
+            file_phase[stem] = 'AIC2026_PHASE_2_1000'
 
+if os.path.exists(VIS_DIR_P3):
+    for f in sorted(os.listdir(VIS_DIR_P3)):
+        if f.endswith('.png') or f.endswith('.jpg'):
+            stem = f.rsplit('.', 1)[0]
+            file_map[stem] = f
+            file_phase[stem] = 'AIC2026_PHASE_3_1000'
+
+p2_stems = sorted([s for s, ph in file_phase.items() if ph == 'AIC2026_PHASE_2_1000'])
+p3_stems = sorted([s for s, ph in file_phase.items() if ph == 'AIC2026_PHASE_3_1000'])
 all_stems = sorted(file_map.keys())
-print(f"Total test images: {len(all_stems)}")
+print(f"Total test images: {len(all_stems)} (Phase 2: {len(p2_stems)}, Phase 3: {len(p3_stems)})")
 
 print("2. Parsing bounding boxes across all models...")
 raw_predictions = {}
@@ -271,12 +286,35 @@ print("3. Precomputing discrepancy metrics and matrix summaries...")
 diff_summaries = {}
 model_matrix_stats = []
 
+def get_model_phase(m_id, preds):
+    if 'phase3' in m_id.lower() or 'test3' in m_id.lower():
+        return 3
+    p3_hits = sum(1 for s in preds if s in p3_stems)
+    p2_hits = sum(1 for s in preds if s in p2_stems)
+    return 3 if p3_hits > p2_hits else 2
+
+p3_baseline_id = 'clean_v1_phase3_thr048'
+if p3_baseline_id not in raw_predictions or not raw_predictions[p3_baseline_id]:
+    for m in MODELS_CONFIG:
+        if get_model_phase(m['id'], raw_predictions.get(m['id'], {})) == 3:
+            p3_baseline_id = m['id']
+            break
+
 for m in MODELS_CONFIG:
     mid = m['id']
     preds = raw_predictions[mid]
-    f5_preds = raw_predictions['f5']
-    diff_list = []
+    m_phase = get_model_phase(mid, preds)
     
+    if m_phase == 3:
+        ref_id = p3_baseline_id
+        ref_preds = raw_predictions.get(p3_baseline_id, {})
+        target_stems = p3_stems
+    else:
+        ref_id = 'f5'
+        ref_preds = raw_predictions.get('f5', {})
+        target_stems = p2_stems
+
+    diff_list = []
     total_f = 0
     total_c = 0
     total_exact = 0
@@ -286,8 +324,8 @@ for m in MODELS_CONFIG:
     
     cat_stats = {cid: {'f5': 0, 'cand': 0, 'exact': 0, 'missed': 0, 'fp': 0} for cid in range(12)}
     
-    for stem in all_stems:
-        bf = [b for b in f5_preds.get(stem, []) if b[5] >= 0.45]
+    for stem in target_stems:
+        bf = [b for b in ref_preds.get(stem, []) if b[5] >= 0.45]
         bg = [b for b in preds.get(stem, []) if b[5] >= 0.45]
         n_exact, n_conf, n_missed, n_fp = quick_match(bf, bg)
         delta = len(bg) - len(bf)
@@ -307,6 +345,7 @@ for m in MODELS_CONFIG:
 
         diff_list.append({
             'stem': stem,
+            'phase': m_phase,
             'f_cnt': len(bf),
             'c_cnt': len(bg),
             'exact': n_exact,
@@ -324,10 +363,12 @@ for m in MODELS_CONFIG:
     diff_summaries[mid] = diff_list
     
     total_union = total_exact + total_missed + total_fp
-    agree_pct = round((total_exact / total_union * 100), 1) if total_union > 0 else 0.0
+    agree_pct = round((total_exact / total_union * 100), 1) if total_union > 0 else (100.0 if total_c > 0 and mid == ref_id else 0.0)
     
     model_matrix_stats.append({
         'id': mid,
+        'phase': m_phase,
+        'ref_id': ref_id,
         'name': m['name'],
         'score': m['score'],
         'badge': m['badge'],
@@ -343,13 +384,19 @@ for m in MODELS_CONFIG:
         'cat_stats': cat_stats
     })
 
-print("4. Building Stage A 1,000-Image Full Gallery Index...")
+print("4. Building Gallery Index across Phase 2 & Phase 3...")
 stage_a_preds = raw_predictions.get('v23_stageA', {})
+p3_base_preds = raw_predictions.get('clean_v1_phase3_thr048', raw_predictions.get('clean_v1_phase3_thr045', {}))
 gallery_index = []
 class_distribution = Counter()
 
 for stem in all_stems:
-    boxes = stage_a_preds.get(stem, [])
+    ph = file_phase[stem]
+    if ph == 'AIC2026_PHASE_3_1000':
+        boxes = p3_base_preds.get(stem, [])
+    else:
+        boxes = stage_a_preds.get(stem, [])
+        
     counts = Counter(b[0] for b in boxes)
     for cid, cnt in counts.items():
         class_distribution[cid] += cnt
@@ -361,6 +408,7 @@ for stem in all_stems:
         
     gallery_index.append({
         'stem': stem,
+        'phase': ph,
         'total': len(boxes),
         'counts': dict(counts),
         'tags': " ".join(tag_strs) if tag_strs else "无检出",
@@ -391,7 +439,7 @@ if os.path.exists(ball_json_p):
         print(f"Ball audit load failed: {e}")
 
 uav_cases = []
-for stem in all_stems:
+for stem in p2_stems:
     f5_b = [b for b in raw_predictions['f5'].get(stem, []) if b[0] == 10 and b[5] >= 0.45]
     v23_b = [b for b in stage_a_preds.get(stem, []) if b[0] == 10 and b[5] >= 0.45]
     if f5_b or v23_b:
@@ -405,7 +453,7 @@ for stem in all_stems:
 print(f"Indexed {len(uav_cases)} UAV comparison cases.")
 
 tricycle_cases = []
-for stem in all_stems:
+for stem in p2_stems:
     f5_b = [b for b in raw_predictions['f5'].get(stem, []) if b[0] == 11 and b[5] >= 0.45]
     v23_b = [b for b in stage_a_preds.get(stem, []) if b[0] == 11 and b[5] >= 0.45]
     if f5_b or v23_b:
@@ -461,6 +509,9 @@ master_payload = {
     'class_zh_short': CLASS_ZH_SHORT,
     'class_colors': CLASS_COLORS,
     'file_map': file_map,
+    'file_phase': file_phase,
+    'p2_stems': p2_stems,
+    'p3_stems': p3_stems,
     'models': MODELS_CONFIG,
     'baseline': BASELINE_CONFIG,
     'diff_summaries': diff_summaries,
@@ -496,7 +547,7 @@ tabs_header_html = """
                     🛰️ 对撞与超分工作台
                 </button>
                 <button type="button" class="master-tab-btn" id="btnMasterTabGallery" onclick="switchMasterTab('gallery')" style="cursor:pointer;">
-                    🖼️ Stage A 全量 1000 图画廊 (<span id="galleryTotalBadge" style="color:#f59e0b;font-family:monospace;">1000</span>)
+                    🖼️ 全模态 2000 图画廊 (<span id="galleryTotalBadge" style="color:#10b981;font-family:monospace;">2000</span>)
                 </button>
                 <button type="button" class="master-tab-btn" id="btnMasterTabMatrix" onclick="switchMasterTab('matrix')" style="cursor:pointer;">
                     ⚖️ 历代模型矩阵对比
@@ -666,22 +717,24 @@ extra_css_and_views = """
 <div id="viewGallery" class="master-view" style="flex-direction:column;background:var(--bg-obsidian);">
     <div style="padding:12px 20px;border-bottom:1px solid var(--border-glass);background:rgba(11,15,23,0.92);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
         <div style="display:flex;align-items:center;gap:12px;">
-            <span style="font-size:14px;font-weight:800;color:#fff;">🖼️ Stage A 补标底座 全量 1,000 张测试预测画廊</span>
-            <span style="font-size:11px;color:#f59e0b;background:rgba(245,158,11,0.12);padding:3px 8px;border-radius:6px;border:1px solid rgba(245,158,11,0.3);">
-                72 轮收敛底模 · 1152x2048 零畸变 · 共 7,323 框 (τ≥0.45)
+            <span style="font-size:14px;font-weight:800;color:#fff;">🖼️ AIC 2026 全模态测试预测全景画廊</span>
+            <span style="font-size:11px;color:#10b981;background:rgba(16,185,129,0.12);padding:3px 8px;border-radius:6px;border:1px solid rgba(16,185,129,0.3);">
+                测试集 2 (1,000 张) + 决赛测试集 3 (1,000 张) · 共 2,000 张全量样本
             </span>
         </div>
         <div style="display:flex;align-items:center;gap:10px;">
             <div class="search-input-wrap" style="width:260px;">
                 <span class="search-icon">🔍</span>
-                <input type="text" class="search-input" id="gallerySearchInput" placeholder="搜索样本 ID (如 003429)..." oninput="renderGalleryPage(1)" />
+                <input type="text" class="search-input" id="gallerySearchInput" placeholder="搜索样本 ID (如 00000001)..." oninput="renderGalleryPage(1)" />
             </div>
             <div class="filter-chip-deck" style="margin:0;">
-                <button type="button" class="chip-btn active" id="chipGalAll" onclick="setGalleryFilter('all')">全部 (1000)</button>
-                <button type="button" class="chip-btn" id="chipGalTricycle" onclick="setGalleryFilter('tricycle')">🛵 三轮车 (8)</button>
-                <button type="button" class="chip-btn" id="chipGalBall" onclick="setGalleryFilter('ball')">⚽ 小球 (48)</button>
-                <button type="button" class="chip-btn" id="chipGalUAV" onclick="setGalleryFilter('uav')">🛸 无人机 (46)</button>
-                <button type="button" class="chip-btn" id="chipGalBoat" onclick="setGalleryFilter('boat')">⛵ 船只 (46)</button>
+                <button type="button" class="chip-btn active" id="chipGalAll" onclick="setGalleryFilter('all')">全部 (2000)</button>
+                <button type="button" class="chip-btn" id="chipGalPhase3" onclick="setGalleryFilter('phase3')" style="color:#10b981;font-weight:700;">⚡ 决赛测试集 3 (1000)</button>
+                <button type="button" class="chip-btn" id="chipGalPhase2" onclick="setGalleryFilter('phase2')" style="color:#00f2fe;font-weight:700;">🛰️ 复赛测试集 2 (1000)</button>
+                <button type="button" class="chip-btn" id="chipGalTricycle" onclick="setGalleryFilter('tricycle')">🛵 三轮车</button>
+                <button type="button" class="chip-btn" id="chipGalBall" onclick="setGalleryFilter('ball')">⚽ 小球</button>
+                <button type="button" class="chip-btn" id="chipGalUAV" onclick="setGalleryFilter('uav')">🛸 无人机</button>
+                <button type="button" class="chip-btn" id="chipGalBoat" onclick="setGalleryFilter('boat')">⛵ 船只</button>
                 <button type="button" class="chip-btn" id="chipGalDense" onclick="setGalleryFilter('dense')">🔥 高密(≥10框)</button>
             </div>
         </div>
@@ -690,7 +743,7 @@ extra_css_and_views = """
     <div class="gallery-grid-deck" id="galleryCardsDeck"></div>
     
     <div style="padding:10px 20px;border-top:1px solid var(--border-glass);background:rgba(11,15,23,0.92);display:flex;align-items:center;justify-content:space-between;">
-        <span style="font-size:12px;color:var(--text-dim);" id="galleryPaginationInfo">显示 1 - 48 / 共 1000 项</span>
+        <span style="font-size:12px;color:var(--text-dim);" id="galleryPaginationInfo">显示 1 - 48 / 共 2000 项</span>
         <div style="display:flex;gap:8px;">
             <button type="button" class="btn-hdr" onclick="changeGalleryPage(-1)">◀ 上一页</button>
             <span id="galleryCurrentPageBadge" style="font-family:monospace;font-weight:700;padding:4px 10px;background:rgba(255,255,255,0.06);border-radius:4px;">1</span>
@@ -789,6 +842,8 @@ function setGalleryFilter(filterType) {
     document.querySelectorAll('#viewGallery .chip-btn').forEach(b => b.classList.remove('active'));
     
     if (filterType === 'all') document.getElementById('chipGalAll').classList.add('active');
+    else if (filterType === 'phase3') document.getElementById('chipGalPhase3').classList.add('active');
+    else if (filterType === 'phase2') document.getElementById('chipGalPhase2').classList.add('active');
     else if (filterType === 'tricycle') document.getElementById('chipGalTricycle').classList.add('active');
     else if (filterType === 'ball') document.getElementById('chipGalBall').classList.add('active');
     else if (filterType === 'uav') document.getElementById('chipGalUAV').classList.add('active');
@@ -808,6 +863,8 @@ function renderGalleryPage(page = 1) {
     
     let filtered = PAYLOAD.gallery_index.filter(item => {
         if (searchVal && !item.stem.toLowerCase().includes(searchVal)) return false;
+        if (currentGalleryFilter === 'phase3' && item.phase !== 'AIC2026_PHASE_3_1000') return false;
+        if (currentGalleryFilter === 'phase2' && item.phase !== 'AIC2026_PHASE_2_1000') return false;
         if (currentGalleryFilter === 'tricycle' && !item.has_tricycle) return false;
         if (currentGalleryFilter === 'ball' && !item.has_ball) return false;
         if (currentGalleryFilter === 'uav' && !item.has_uav) return false;
@@ -826,7 +883,7 @@ function renderGalleryPage(page = 1) {
     
     // Update pagination UI
     const infoEl = document.getElementById('galleryPaginationInfo');
-    if (infoEl) infoEl.textContent = `显示 ${totalItems > 0 ? startIdx + 1 : 0} - ${endIdx} / 筛选共 ${totalItems} 项 (全量 1000)`;
+    if (infoEl) infoEl.textContent = `显示 ${totalItems > 0 ? startIdx + 1 : 0} - ${endIdx} / 筛选共 ${totalItems} 项 (全量 2000)`;
     const pageBadge = document.getElementById('galleryCurrentPageBadge');
     if (pageBadge) pageBadge.textContent = `${currentGalleryPage} / ${maxPage}`;
     
@@ -837,7 +894,15 @@ function renderGalleryPage(page = 1) {
     const basePath = isFileProto ? '../../' : '/';
     
     deck.innerHTML = pageItems.map(item => {
-        const imgSrc = `${basePath}work_dir/visualizations/v23_test_vis_all1000/${item.stem}.jpg`;
+        const isP3 = (item.phase === 'AIC2026_PHASE_3_1000');
+        const pDir = isP3 ? 'dataset/test/AIC2026_PHASE_3_1000' : 'dataset/test/AIC2026_PHASE_2_1000';
+        const fname = (PAYLOAD.file_map && PAYLOAD.file_map[item.stem]) || `${item.stem}.jpg`;
+        const imgSrc = isP3 ? `${basePath}${pDir}/visible/${fname}` : `${basePath}work_dir/visualizations/v23_test_vis_all1000/${item.stem}.jpg`;
+        const fallbackSrc = `${basePath}${pDir}/visible/${fname}`;
+        const phaseBadge = isP3 ?
+            `<span style="position:absolute;top:6px;left:6px;background:rgba(16,185,129,0.85);color:#fff;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:800;border:1px solid rgba(16,185,129,0.4);">Phase 3</span>` :
+            `<span style="position:absolute;top:6px;left:6px;background:rgba(2,132,199,0.85);color:#fff;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:800;border:1px solid rgba(2,132,199,0.4);">Phase 2</span>`;
+
         const tagsHtml = Object.entries(item.counts).map(([cid, cnt]) => {
             const cColor = PAYLOAD.class_colors[cid] || '#38bdf8';
             const cZh = PAYLOAD.class_zh_short[cid] || cid;
@@ -847,7 +912,8 @@ function renderGalleryPage(page = 1) {
         return `
         <div class="gallery-card" onclick="jumpToWorkbenchSample('${item.stem}')">
             <div class="gallery-thumb-wrap">
-                <img src="${imgSrc}" loading="lazy" alt="${item.stem}" onerror="this.onerror=null;this.src='${basePath}dataset/test/AIC2026_PHASE_2_1000/visible/${item.stem}.jpg';" />
+                <img src="${imgSrc}" loading="lazy" alt="${item.stem}" onerror="this.onerror=null;this.src='${fallbackSrc}';" />
+                ${phaseBadge}
                 <span style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.75);color:#f59e0b;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:800;border:1px solid rgba(245,158,11,0.4);font-family:monospace;">
                     ${item.total} 框
                 </span>
@@ -906,8 +972,11 @@ function renderMatrixView() {
     const el = document.getElementById('matrixContainer');
     if (!el || !PAYLOAD || !PAYLOAD.model_matrix_stats) return;
     
-    let rowsHtml = PAYLOAD.model_matrix_stats.map(st => {
-        return `
+    function buildTableRows(statsList) {
+        if (!statsList || statsList.length === 0) {
+            return `<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:16px;">暂无该测试集的模型数据</td></tr>`;
+        }
+        return statsList.map(st => `
         <tr>
             <td style="font-weight:800;color:${st.color};">
                 ${st.name}
@@ -926,18 +995,53 @@ function renderMatrixView() {
                 </button>
             </td>
         </tr>
-        `;
-    }).join('');
-    
+        `).join('');
+    }
+
+    const p3Stats = PAYLOAD.model_matrix_stats.filter(st => st.phase === 3);
+    const p2Stats = PAYLOAD.model_matrix_stats.filter(st => st.phase !== 3);
+
     el.innerHTML = `
+    <!-- Phase 3 Table -->
+    <div class="matrix-card" style="border-color:rgba(16,185,129,0.35);background:linear-gradient(180deg,rgba(16,185,129,0.06),rgba(18,24,37,0.85));">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div>
+                <h2 style="font-size:18px;font-weight:800;color:#10b981;">🏆 AIC 2026 决赛测试集 3 (Phase 3) 空间对撞矩阵</h2>
+                <p style="font-size:12px;color:var(--text-dim);margin-top:4px;">基准标杆：<strong>纯净基准 v1 thr0.48 (12,918 框 / 吻合官方 12,900 先验 99.86%)</strong> 逐样本二分图真实 IoU 空间对撞分析</p>
+            </div>
+            <span style="padding:4px 12px;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:#10b981;border-radius:6px;font-weight:800;font-size:11px;">
+                ${p3Stats.length} 款 Phase 3 提交包就绪
+            </span>
+        </div>
+        <table class="matrix-table">
+            <thead>
+                <tr>
+                    <th>模型版本与阈值</th>
+                    <th>置信度均值 / 状态</th>
+                    <th>预测总框数</th>
+                    <th>双方共识 (TP)</th>
+                    <th>类别冲突</th>
+                    <th>相对基准遗漏</th>
+                    <th>增量检出 (FP/高召回)</th>
+                    <th>吻合率</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${buildTableRows(p3Stats)}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Phase 2 Table -->
     <div class="matrix-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
             <div>
-                <h2 style="font-size:18px;font-weight:800;color:#fff;">⚖️ AIC 2026 历代检测模型全量对撞矩阵</h2>
-                <p style="font-size:12px;color:var(--text-dim);margin-top:4px;">基准标杆：<strong>F5 (57.266 / 7,097 框)</strong> 逐样本二分图真实 IoU 空间对撞分析</p>
+                <h2 style="font-size:18px;font-weight:800;color:#00f2fe;">⚖️ AIC 2026 复赛测试集 2 (Phase 2) 历代对撞矩阵</h2>
+                <p style="font-size:12px;color:var(--text-dim);margin-top:4px;">基准标杆：<strong>F5 (58.105 黄金标杆 / 7,184 框)</strong> 逐样本二分图真实 IoU 空间对撞分析</p>
             </div>
             <span style="padding:4px 12px;background:rgba(0,242,254,0.12);border:1px solid rgba(0,242,254,0.3);color:#00f2fe;border-radius:6px;font-weight:800;font-size:11px;">
-                7 款旗舰全息就绪
+                ${p2Stats.length} 款历代旗舰全息就绪
             </span>
         </div>
         <table class="matrix-table">
@@ -955,7 +1059,7 @@ function renderMatrixView() {
                 </tr>
             </thead>
             <tbody>
-                ${rowsHtml}
+                ${buildTableRows(p2Stats)}
             </tbody>
         </table>
     </div>

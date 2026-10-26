@@ -14,7 +14,7 @@ import os
 import sys
 import json
 import urllib.parse
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, SimpleHTTPRequestHandler
 import threading
 import zipfile
 
@@ -29,6 +29,10 @@ VIS_DIR = os.path.join(ROOT_DIR, 'dataset/test/AIC2026_PHASE_2_1000/visible')
 IR_DIR = os.path.join(ROOT_DIR, 'dataset/test/AIC2026_PHASE_2_1000/infrared')
 VIS_SR_DIR = os.path.join(ROOT_DIR, 'dataset/test/AIC2026_PHASE_2_1000/visible_sr4x')
 IR_SR_DIR = os.path.join(ROOT_DIR, 'dataset/test/AIC2026_PHASE_2_1000/infrared_sr4x')
+VIS_DIR_P3 = os.path.join(ROOT_DIR, 'dataset/test/AIC2026_PHASE_3_1000/visible')
+IR_DIR_P3 = os.path.join(ROOT_DIR, 'dataset/test/AIC2026_PHASE_3_1000/infrared')
+VIS_SR_DIR_P3 = os.path.join(ROOT_DIR, 'dataset/test/AIC2026_PHASE_3_1000/visible_sr4x')
+IR_SR_DIR_P3 = os.path.join(ROOT_DIR, 'dataset/test/AIC2026_PHASE_3_1000/infrared_sr4x')
 F5_ZIP_PATH = os.path.join(ROOT_DIR, 'work_dir/audits/f5_reproduce/submission_F5_cap60thr45_50.zip')
 V26_ZIP_PATH = os.path.join(ROOT_DIR, 'outputs/submissions/submissions_v26/submission_sovereign_v26_rare45_common50_clean7241.zip')
 
@@ -242,15 +246,28 @@ class WorkstationRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json_response({'error': 'Missing stem'}, 400)
                 return
                 
+            # Check both Phase 2 and Phase 3 SR directories
             vis_sr_path = os.path.join(VIS_SR_DIR, f"{stem}.jpg")
             ir_sr_path = os.path.join(IR_SR_DIR, f"{stem}.jpg")
+            vis_url = f"/dataset/test/AIC2026_PHASE_2_1000/visible_sr4x/{stem}.jpg"
+            ir_url = f"/dataset/test/AIC2026_PHASE_2_1000/infrared_sr4x/{stem}.jpg"
+
+            if not os.path.exists(vis_sr_path):
+                p3_vis_sr = os.path.join(VIS_SR_DIR_P3, f"{stem}.jpg")
+                p3_ir_sr = os.path.join(IR_SR_DIR_P3, f"{stem}.jpg")
+                if os.path.exists(p3_vis_sr):
+                    vis_sr_path = p3_vis_sr
+                    ir_sr_path = p3_ir_sr
+                    vis_url = f"/dataset/test/AIC2026_PHASE_3_1000/visible_sr4x/{stem}.jpg"
+                    ir_url = f"/dataset/test/AIC2026_PHASE_3_1000/infrared_sr4x/{stem}.jpg"
+
             ready = os.path.exists(vis_sr_path)
             
             self.send_json_response({
                 'stem': stem,
                 'ready': ready,
-                'vis_url': f"/dataset/test/AIC2026_PHASE_2_1000/visible_sr4x/{stem}.jpg" if ready else None,
-                'ir_url': f"/dataset/test/AIC2026_PHASE_2_1000/infrared_sr4x/{stem}.jpg" if os.path.exists(ir_sr_path) else None
+                'vis_url': vis_url if ready else None,
+                'ir_url': ir_url if os.path.exists(ir_sr_path) else None
             })
             return
 
@@ -258,30 +275,38 @@ class WorkstationRequestHandler(SimpleHTTPRequestHandler):
         if parsed.path == '/api/generate_sr':
             query = urllib.parse.parse_qs(parsed.query)
             stem = query.get('stem', [''])[0]
+            phase = query.get('phase', [''])[0]
             if not stem:
                 self.send_json_response({'error': 'Missing stem'}, 400)
                 return
                 
-            vis_sr_path = os.path.join(VIS_SR_DIR, f"{stem}.jpg")
-            ir_sr_path = os.path.join(IR_SR_DIR, f"{stem}.jpg")
+            is_p3 = (phase == 'AIC2026_PHASE_3_1000') or os.path.exists(os.path.join(VIS_DIR_P3, f"{stem}.jpg")) or os.path.exists(os.path.join(VIS_DIR_P3, f"{stem}.png"))
+            vis_out_dir = VIS_SR_DIR_P3 if is_p3 else VIS_SR_DIR
+            ir_out_dir = IR_SR_DIR_P3 if is_p3 else IR_SR_DIR
+            v_dir = VIS_DIR_P3 if is_p3 else VIS_DIR
+            i_dir = IR_DIR_P3 if is_p3 else IR_DIR
+            phase_slug = 'AIC2026_PHASE_3_1000' if is_p3 else 'AIC2026_PHASE_2_1000'
+
+            vis_sr_path = os.path.join(vis_out_dir, f"{stem}.jpg")
+            ir_sr_path = os.path.join(ir_out_dir, f"{stem}.jpg")
             
             try:
                 enhancer = get_enhancer()
-                os.makedirs(VIS_SR_DIR, exist_ok=True)
-                os.makedirs(IR_SR_DIR, exist_ok=True)
+                os.makedirs(vis_out_dir, exist_ok=True)
+                os.makedirs(ir_out_dir, exist_ok=True)
                 
                 # Check visible
-                vis_src = os.path.join(VIS_DIR, f"{stem}.jpg")
+                vis_src = os.path.join(v_dir, f"{stem}.jpg")
                 if not os.path.exists(vis_src):
-                    vis_src = os.path.join(VIS_DIR, f"{stem}.png")
+                    vis_src = os.path.join(v_dir, f"{stem}.png")
                     
                 if not os.path.exists(vis_sr_path) and os.path.exists(vis_src):
                     enhancer.enhance_file(vis_src, vis_sr_path)
 
                 # Check infrared
-                ir_src = os.path.join(IR_DIR, f"{stem}.jpg")
+                ir_src = os.path.join(i_dir, f"{stem}.jpg")
                 if not os.path.exists(ir_src):
-                    ir_src = os.path.join(IR_DIR, f"{stem}.png")
+                    ir_src = os.path.join(i_dir, f"{stem}.png")
                     
                 if not os.path.exists(ir_sr_path) and os.path.exists(ir_src):
                     enhancer.enhance_file(ir_src, ir_sr_path)
@@ -289,8 +314,8 @@ class WorkstationRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json_response({
                     'status': 'ok',
                     'stem': stem,
-                    'vis_url': f"/dataset/test/AIC2026_PHASE_2_1000/visible_sr4x/{stem}.jpg",
-                    'ir_url': f"/dataset/test/AIC2026_PHASE_2_1000/infrared_sr4x/{stem}.jpg" if os.path.exists(ir_sr_path) else None
+                    'vis_url': f"/dataset/test/{phase_slug}/visible_sr4x/{stem}.jpg",
+                    'ir_url': f"/dataset/test/{phase_slug}/infrared_sr4x/{stem}.jpg" if os.path.exists(ir_sr_path) else None
                 })
             except Exception as e:
                 self.send_json_response({'error': str(e)}, 500)
@@ -301,16 +326,29 @@ class WorkstationRequestHandler(SimpleHTTPRequestHandler):
             query = urllib.parse.parse_qs(parsed.query)
             stem = query.get('stem', [''])[0]
             cmap = query.get('cmap', ['turbo'])[0]
+            phase = query.get('phase', [''])[0]
             if not stem:
                 self.send_json_response({'error': 'Missing stem'}, 400)
                 return
 
-            depth_dir = os.path.join(ROOT_DIR, 'dataset/test/AIC2026_PHASE_2_1000/depth')
+            depth_dirs = []
+            if phase:
+                depth_dirs.append(os.path.join(ROOT_DIR, 'dataset/test', phase, 'depth'))
+            depth_dirs.extend([
+                os.path.join(ROOT_DIR, 'dataset/test/AIC2026_PHASE_3_1000/depth'),
+                os.path.join(ROOT_DIR, 'dataset/test/AIC2026_PHASE_2_1000/depth')
+            ])
+
             dep_path = None
-            for ext in ['.png', '.jpg', '.jpeg']:
-                p = os.path.join(depth_dir, f"{stem}{ext}")
-                if os.path.exists(p):
-                    dep_path = p
+            for ddir in depth_dirs:
+                if not os.path.exists(ddir):
+                    continue
+                for ext in ['.png', '.jpg', '.jpeg']:
+                    p = os.path.join(ddir, f"{stem}{ext}")
+                    if os.path.exists(p):
+                        dep_path = p
+                        break
+                if dep_path:
                     break
 
             if not dep_path:
@@ -551,7 +589,7 @@ class WorkstationRequestHandler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
 def run_server(port=8088):
-    server = HTTPServer(('0.0.0.0', port), WorkstationRequestHandler)
+    server = ThreadingHTTPServer(('0.0.0.0', port), WorkstationRequestHandler)
     print(f"============================================================")
     print(f"AIC 2026 Multimodal Workstation Server running at:")
     print(f"  http://localhost:{port}/")

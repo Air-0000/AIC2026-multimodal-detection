@@ -195,6 +195,8 @@ def main():
     p.add_argument('--no-workstation', action='store_true', help='skip workstation registration (e.g. reviewer machines)')
     p.add_argument('--workstation-id')
     p.add_argument('--workstation-name')
+    p.add_argument('--dump-preds', type=Path, help='save raw predictions dictionary to pickle')
+    p.add_argument('--load-preds', type=Path, help='load raw predictions dictionary from pickle, skipping model inference')
     a = p.parse_args()
     a.out_dir = a.out_dir.resolve()
     work = a.out_dir.parent/(a.out_dir.name+'_meta')
@@ -203,9 +205,20 @@ def main():
     ann.write_text(json.dumps(stub_annotations(a.images, a.rgb_dir)))
     overrides = {'DFINETransformer': {'p3_quota_ratio': a.p3_quota}} if a.p3_quota is not None else None
     c = configure_inputs(load_config(a.config, overrides), ann, a.rgb_dir, a.ir_dir, a.lbg_dir, a.depth_dir, a.batch)
-    cfg = build(c, work)
-    model, post = load_model(cfg, a.checkpoint.resolve(), a.device)
-    preds = run(cfg, model, post, a.device)
+    if a.load_preds:
+        import pickle
+        with open(a.load_preds, 'rb') as f:
+            preds = pickle.load(f)
+    else:
+        cfg = build(c, work)
+        model, post = load_model(cfg, a.checkpoint.resolve(), a.device)
+        preds = run(cfg, model, post, a.device)
+        if a.dump_preds:
+            import pickle
+            a.dump_preds.parent.mkdir(parents=True, exist_ok=True)
+            with open(a.dump_preds, 'wb') as f:
+                pickle.dump(preds, f)
+            print(f'dumped raw predictions to {a.dump_preds}')
     write_submission(preds, a.out_dir, a.score_thr, a.max_dets)
     total = sum(len(lines_for(w, h, d, a.score_thr, a.max_dets)) for w, h, d in preds.values())
     print(f'{len(preds)} images, {total} boxes written to {a.out_dir}')

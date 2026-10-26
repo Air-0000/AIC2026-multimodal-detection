@@ -2378,7 +2378,12 @@
             const splitTitle = document.getElementById('splitTitleB');
             if (splitTitle) splitTitle.innerText = `候选: ${mObj.name} (${mObj.score})`;
             const aiTarget = document.getElementById('aiModalTargetModel');
-            if (aiTarget) aiTarget.innerText = `${mObj.id.toUpperCase()} vs F5`;
+            const isP3 = mid && (mid.includes('phase3') || mid.includes('test3'));
+            const lblF5 = document.getElementById('lblShowF5');
+            if (lblF5) {
+                lblF5.innerText = isP3 ? '标杆: thr0.48 [F]' : '标杆 F5 [F]';
+            }
+            if (aiTarget) aiTarget.innerText = isP3 ? `${mObj.id.toUpperCase()} vs thr0.48` : `${mObj.id.toUpperCase()} vs F5`;
             const lblCand = document.getElementById('lblShowCand');
             if (lblCand) {
                 const shortName = mObj.name ? mObj.name.split(' ')[0] : mObj.id;
@@ -2692,11 +2697,12 @@
             srImageReady = false;
 
             const isHttp = window.location.protocol.startsWith('http');
-            const prefix = isHttp ? '/dataset/test/AIC2026_PHASE_2_1000' : 'dataset/test/AIC2026_PHASE_2_1000';
+            const phaseDir = (PAYLOAD.file_phase && PAYLOAD.file_phase[stem]) || 'AIC2026_PHASE_2_1000';
+            const prefix = isHttp ? `/dataset/test/${phaseDir}` : `dataset/test/${phaseDir}`;
             const visPath = `${prefix}/visible/${fname}`;
             const irPath = `${prefix}/infrared/${fname}`;
             const irAlignedPath = `${prefix}/infrared_aligned/${fname}`;
-            const depthPath = isHttp ? `/api/depth_view?stem=${stem}&cmap=turbo` : `${prefix}/depth/${fname}`;
+            const depthPath = isHttp ? `/api/depth_view?stem=${stem}&phase=${phaseDir}&cmap=turbo` : `${prefix}/depth/${fname}`;
             const srPath = `${prefix}/visible_sr4x/${stem}.jpg`;
 
             let visLoaded = false;
@@ -2780,9 +2786,27 @@
             return union > 0 ? inter / union : 0;
         }
 
+        function getBaselineModelId(stem) {
+            const isP3 = (PAYLOAD.file_phase && PAYLOAD.file_phase[stem] === 'AIC2026_PHASE_3_1000') ||
+                         (curModelId && (curModelId.includes('phase3') || curModelId.includes('test3')));
+            if (isP3) {
+                if (PAYLOAD.predictions && PAYLOAD.predictions['clean_v1_phase3_thr048']) {
+                    return 'clean_v1_phase3_thr048';
+                }
+                return curModelId;
+            }
+            return 'f5';
+        }
+
         function performDynamicMatching(stem) {
-            const rawA = (PAYLOAD.predictions.f5[stem] || []).filter(b => b[5] >= confThreshold);
-            const rawB = (PAYLOAD.predictions[curModelId][stem] || []).filter(b => b[5] >= confThreshold);
+            const baseId = getBaselineModelId(stem);
+            const basePreds = (PAYLOAD.predictions && PAYLOAD.predictions[baseId] && PAYLOAD.predictions[baseId][stem]) ?
+                              PAYLOAD.predictions[baseId][stem] :
+                              (PAYLOAD.predictions && PAYLOAD.predictions.f5 ? (PAYLOAD.predictions.f5[stem] || []) : []);
+            const candPreds = (PAYLOAD.predictions && PAYLOAD.predictions[curModelId] && PAYLOAD.predictions[curModelId][stem]) ?
+                              PAYLOAD.predictions[curModelId][stem] : [];
+            const rawA = basePreds.filter(b => b[5] >= confThreshold);
+            const rawB = candPreds.filter(b => b[5] >= confThreshold);
 
             const pairsExact = [];
             for (let i = 0; i < rawA.length; i++) {
