@@ -2279,3 +2279,12 @@ D2每query平均翻转80.35/1024，两边均激活220.00；D3为93.64与230.04�
 - **终止方式**：训练日志停在下一轮验证的 `Test: [70/200]`，其后无报错或回溯；`auto_shutdown.log` 只有 00:26 的 “Watchdog started” 一行，没有 “PID has finished”。据此推断训练进程与关机脚本在约 07:20 一同被外部停止（实例被停），而不是训练出错或关机脚本触发；具体停止原因未查明。查询时实例处于无卡模式（`nvidia-smi` 报 “No devices were found”）。
 - **决定**：2026-10-24 用户决定不再续跑 epoch 46–49（关闭横翻增强的最后 4 轮）。因此 §四十四 中“主数字应补报 `final.pth`”无法实现：v1 的可用权重是 `best.pth`（epoch 37，在同一验证集上按 mAP 选出）与 `last.pth`（epoch 45）。报告与提交使用 `best.pth` 时，须注明其按验证集选点、训练未跑完计划的 50 轮。
 - **关联修正**：同日 `scripts/train/watch_and_shutdown.sh` 改为必须传入存活的 PID（原默认 PID 11163 在新机器上会被当作“已结束”，约 5 分钟后关机），`final.pth` 路径可用 `FINAL_PTH` 覆盖；`scripts/train/run_clean_arm.sh` 新增 `USE_AMP=0` 以便在 V100 上按纯 FP32 运行。
+
+## 四十六、2026-10-26 纯净基准 v1 决赛测试集（Phase 3）首个官方成绩 51.1
+
+- **成绩**：官方榜单 **51.1**（用户报告，2026-10-26，决赛测试集 Phase 3 的第一次提交）。Phase 3 与复赛 Phase 2 是不同的测试集，不能与 Phase 2 的 F5 58.105、V23 53.555 比较。
+- **提交包**：主机 `work_dir/submissions/clean_v1_phase3_thr048/submission.zip`，SHA256 `790051f22ca19321a807144864e3c5a91b6d814b4f36cafd5133ff8f312a4e2a`；1000 个 txt，12,918 框，9 个空文件，最多 100 框/图。2026-10-26 用 `scripts/eval/check_submission.py` 复核为 PASS。
+- **模型与推理**：`aic_clean_baseline_v1.yml` + seeta 训练的 `best.pth`（epoch 37，SHA256 前缀 `19c0dc7e4305`，在同一 200 张验证集上按 mAP 选出，训练停在 epoch 45、未跑满 50 轮，见 §四十五）；`scripts/inference/predict.py` 单次 FP32 前向，PostProcessor Top-300、类内 NMS 0.60、P3 配额 0.35，全局阈值 0.48，无 TTA。输入为 `dataset/test/AIC2026_PHASE_3_1000/{visible,depth}` 与按训练同法生成的 `work_dir/test3_ir_like_train/{infrared_aligned,lbg_ir}`（manifest：933 张 PNG 原样保留、67 张 JPG 按 v3 对齐，生成器 SHA256 前缀 `96c53e45894d`）。
+- **生成方式**：thr0.45 包为完整推理，同时把预测存为 `work_dir/submissions/clean_v1_phase3_preds.pkl`（SHA256 前缀 `3824a8e898e2`）；thr0.40 / 0.48 / 0.55 由同一 pkl 经 `predict.py --load-preds`（commit `87b3cff`）只改阈值得到。四个包：0.40 → 14,367 框（`0b19a8d1b217`）、0.45 → 13,411（`f818e3a379bc`）、0.48 → 12,918（`790051f22ca1`）、0.55 → 11,915（`165638bb11ee`）。
+- **阈值来源**：0.48 是为了让总框数接近官方公布的 Phase 3 目标总数 12,900（`docs/01_competition/SUBMISSION_CONFIDENCE_THRESHOLD_PRIOR.md` 的官方统计表）而选的，不是在有标签验证集上定的。按 CLAUDE.md，总框数对齐不能证明阈值最优；目前只有这一个分数，没有证据表明它优于其他阈值。
+- **Phase 3 数据特征（v1 thr0.45 输出，无标签描述）**：每图 13.41 框（Phase 2 同设置 7.66）；增量几乎全是 person（13,411 框中 6,748 个），六位数字命名图每图 7.6 个 person（Phase 2 为 1.8），shuming 来源从 54 张增至 144 张；person 最密的图是运动会操场方阵（`shuming_333`–`336`）与远处站满人的公园草地（`0039xx`），框基本落在真实的人身上，看台观众大多未框（与训练集看台不标的口径一致）。93 张图超过 30 框、9 张超过 60 框、1 张达到 100 框上限；平均亮度低于 80 的暗图 19 张（Phase 2 为 4 张）。F5 式每图 60 框上限在这里会砍掉 9 张人群图的 165 个框，Phase 2 的紧凑后处理不能直接照搬。
