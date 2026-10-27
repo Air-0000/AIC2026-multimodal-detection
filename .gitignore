@@ -37,6 +37,8 @@ index.html
 .DS_Store
 archive/
 vendor/Depth-Anything-V2/
+# mmdetection v3.3.0 clone made by scripts/train/codino/setup_codino_env.sh (Co-DINO RGB ceiling run)
+vendor/mmdetection/
 vendor/cv-model-improvement-master/
 work/
 
