@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 # =============================================================================
-# One-time setup of the Co-DINO environment for the pure-RGB ceiling runs on Blackwell GPUs (SM 12.0).
+# One-time setup of the Co-DINO environment for the pure-RGB ceiling runs (Ampere / Ada / Hopper / Blackwell GPUs).
 # A separate conda env; the deimv2 training env is not touched. Installs, in order:
 #   python 3.10 · torch 2.7.1 / torchvision 0.22.1 cu128 (first release with sm_120 kernels)
 #   · a CUDA 12.8 nvcc: CUDA_HOME if it is set (e.g. /usr/local/cuda-12.8), otherwise the toolkit is installed
 #     inside the env (nvcc must match torch's CUDA major; seeta's system CUDA is 13.0)
 #   · mmengine 0.10.7 · fairscale 0.4.13 (Co-DETR encoder activation checkpointing)
-#   · mmcv 2.1.0 compiled for sm_120 (mmdet 3.3.0 needs mmcv < 2.2.0 and no prebuilt wheel covers Blackwell)
-#   · mmdetection v3.3.0, editable, in vendor/mmdetection (Co-DETR lives in its projects/ folder)
-# then freezes the package list into logs/ and runs check_codino_env.py. Checkpoints: fetch_codino_weights.sh.
-# Re-running skips the env and clones that already exist; pip steps are idempotent.
+#   · mmcv 2.1.0 compiled for the GPUs present, or TORCH_CUDA_ARCH_LIST (mmdet 3.3.0 needs mmcv < 2.2.0 and no
+#     prebuilt wheel matches torch 2.7 / CUDA 12.8)
+#   · mmdetection v3.3.0 checked out in vendor/mmdetection and imported through PYTHONPATH (Co-DETR lives in its
+#     projects/ folder); only its runtime requirements are pip-installed
+# then freezes the package list into logs/ and runs check_codino_env.py. Checkpoint paths: codino_env.sh.
+# Re-running skips the env and clones that already exist; pip steps are idempotent. SKIP_MMCV_BUILD=1 does all but
+# the mmcv compile and the GPU check (e.g. during a no-GPU boot with too little RAM to compile); rerun without it later.
 # Usage: ROOT=/root/autodl-tmp/AIC_clean_v1 bash scripts/train/codino/setup_codino_env.sh
 #   workstation: ROOT=... CONDA=~/miniconda3/bin/conda ENV_PREFIX=~/miniconda3/envs/codino \
 #                CUDA_HOME=/usr/local/cuda-12.8 BUILD_DIR=... MAX_JOBS=6 bash .../setup_codino_env.sh
@@ -67,11 +70,21 @@ step "build tools and pinned runtime packages"
 "${PIP[@]}" setuptools==75.8.2 wheel ninja numpy==1.26.4 opencv-python==4.10.0.84 mmengine==0.10.7
 "${PIP[@]}" --no-build-isolation fairscale==0.4.13
 
-step "mmcv 2.1.0 compiled for sm_120 from the PyPI sdist (takes 10-30 min)"
-# BUILD_DIR holds pip's temporary build tree (a few GB); on seeta / is too small for it.
-mkdir -p "$BUILD_DIR"
-TMPDIR="$BUILD_DIR" MMCV_WITH_OPS=1 FORCE_CUDA=1 TORCH_CUDA_ARCH_LIST=12.0 MAX_JOBS=$MAX_JOBS \
-  "${PIP[@]}" --no-build-isolation --no-binary mmcv -v mmcv==2.1.0
+if [ "${SKIP_MMCV_BUILD:-0}" = 1 ]; then
+  step "mmcv build skipped (SKIP_MMCV_BUILD=1): rerun this script without it once a GPU and enough RAM are attached"
+else
+  # mmcv's CUDA ops are compiled for TORCH_CUDA_ARCH_LIST: by default the compute capabilities of the GPUs present
+  # (A100 8.0, L40S 8.9, RTX PRO 6000 / 5090 12.0); set it explicitly when building without a GPU attached.
+  if [ -z "${TORCH_CUDA_ARCH_LIST:-}" ]; then
+    TORCH_CUDA_ARCH_LIST=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | sort -u | paste -sd';' -)
+    [ -n "$TORCH_CUDA_ARCH_LIST" ] || { echo "no GPU visible: set TORCH_CUDA_ARCH_LIST (e.g. 8.0 for A100)"; exit 1; }
+  fi
+  step "mmcv 2.1.0 compiled for compute capability $TORCH_CUDA_ARCH_LIST from the PyPI sdist (takes 10-30 min)"
+  # BUILD_DIR holds pip's temporary build tree (a few GB); on seeta / is too small for it.
+  mkdir -p "$BUILD_DIR"
+  TMPDIR="$BUILD_DIR" MMCV_WITH_OPS=1 FORCE_CUDA=1 TORCH_CUDA_ARCH_LIST="$TORCH_CUDA_ARCH_LIST" MAX_JOBS=$MAX_JOBS \
+    "${PIP[@]}" --no-build-isolation --no-binary mmcv -v mmcv==2.1.0
+fi
 
 step "mmdetection v3.3.0 in $MMDET_DIR (imported through PYTHONPATH, not installed)"
 # Without GitHub access, copy a v3.3.0 checkout to $MMDET_DIR beforehand; it is used as is.
@@ -99,6 +112,10 @@ fi
 step "package freeze"
 "$PY" -m pip freeze > "$ROOT/logs/codino_env_freeze_$(date +%Y%m%d_%H%M%S).txt"
 
+if [ "${SKIP_MMCV_BUILD:-0}" = 1 ]; then
+  echo "setup done except mmcv and the GPU check; log $LOG"
+  exit 0
+fi
 step "environment check"
 cd "$ROOT"
 "$PY" "$CODINO_DIR/check_codino_env.py"
