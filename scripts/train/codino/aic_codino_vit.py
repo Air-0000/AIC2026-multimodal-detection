@@ -181,7 +181,11 @@ def get_abs_pos(abs_pos, has_cls_token, hw):
 @MODELS.register_module()
 class CoDETRViT(BaseModule):
     """Upstream `ViT` with the DETR-augmentation settings of co_dino_5scale_vit_large_coco.py (use_lsj=False: the
-    global blocks compute RoPE for the actual grid, so input sizes may vary). Returns [(B, C, H/16, W/16)]."""
+    global blocks compute RoPE for the actual grid, so input sizes may vary). Returns [(B, C, H/16, W/16)] in FP32.
+
+    autocast_dtype ('bfloat16' / 'float16', default None = FP32) runs the patch embedding and the blocks under CUDA
+    autocast, for speed; not upstream. Only the backbone: mmcv 2.1's deformable attention, RoIAlign and focal-loss
+    kernels in the heads accept float / half only, so whole-model BF16 autocast would fail there."""
 
     def __init__(self,
                  img_size=1024,
@@ -201,11 +205,15 @@ class CoDETRViT(BaseModule):
                  use_lsj=False,
                  pretrain_img_size=224,
                  pretrain_use_cls_token=True,
+                 autocast_dtype=None,
                  init_cfg=None):
         super().__init__(init_cfg=init_cfg)
         if use_lsj or residual_block_indexes:
             raise NotImplementedError('use_lsj and residual blocks are not ported (the released ViT-L detection '
                                       'configs use neither)')
+        if autocast_dtype not in (None, 'bfloat16', 'float16'):
+            raise ValueError(f'autocast_dtype must be None, bfloat16 or float16, got {autocast_dtype!r}')
+        self.autocast_dtype = getattr(torch, autocast_dtype) if autocast_dtype else None
         del img_size  # only sized the LSJ global RoPE upstream
         norm_layer = partial(nn.LayerNorm, eps=1e-6)
         self.pretrain_use_cls_token = pretrain_use_cls_token
@@ -236,14 +244,16 @@ class CoDETRViT(BaseModule):
             nn.init.constant_(m.weight, 1.0)
 
     def forward(self, x):
-        x = self.patch_embed(x)
-        x = x + get_abs_pos(self.pos_embed, self.pretrain_use_cls_token, (x.shape[1], x.shape[2]))
-        for blk in self.blocks:
-            if self.use_act_checkpoint and self.training:
-                x = cp.checkpoint(blk, x, use_reentrant=False)
-            else:
-                x = blk(x)
-        return [self.out_norm(x).permute(0, 3, 1, 2).contiguous()]
+        with torch.autocast('cuda', dtype=self.autocast_dtype or torch.float32,
+                            enabled=self.autocast_dtype is not None and x.is_cuda):
+            x = self.patch_embed(x)
+            x = x + get_abs_pos(self.pos_embed, self.pretrain_use_cls_token, (x.shape[1], x.shape[2]))
+            for blk in self.blocks:
+                if self.use_act_checkpoint and self.training:
+                    x = cp.checkpoint(blk, x, use_reentrant=False)
+                else:
+                    x = blk(x)
+        return [self.out_norm(x.float()).permute(0, 3, 1, 2).contiguous()]
 
 
 class LayerNorm2d(nn.Module):

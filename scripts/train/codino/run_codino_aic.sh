@@ -4,6 +4,9 @@
 # smoke_codino.sh passed. NGPUS (1, 2 or 4) GPUs on this machine, 1 image per GPU, accumulative_counts = 4 / NGPUS
 # so every optimizer step sees 4 images. Pick the GPUs with CUDA_VISIBLE_DEVICES.
 # Refuses an existing WORK_DIR unless RESUME=1 (mmengine then continues from WORK_DIR's last checkpoint).
+# EXTRA_CFG_OPTIONS adds --cfg-options, e.g. the fastest setting measured on one RTX PRO 6000 (0.71 s/iter, 69 GB):
+#   "model.backbone.use_act_checkpoint=False model.query_head.transformer.encoder.with_cp=0
+#    model.backbone.autocast_dtype=bfloat16"
 # Checkpoints hold weights, EMA and AdamW state (Swin-L ~2.7 GB, ViT-L ~5 GB; 2 kept plus best), so on seeta point
 # WORK_DIR at the large /autodl-fs disk. Log: logs/<config>_train.log.
 # Usage: ROOT=/root/autodl-tmp/AIC_clean_v1 MODEL=vit_l NGPUS=4 WORK_DIR=/autodl-fs/data/codino/vit_l_rgb_1800 \
@@ -19,7 +22,8 @@ WORK_DIR=${WORK_DIR:-$ROOT/work_dir/codino/$NAME}
 mkdir -p "$ROOT/logs"
 LOG=$ROOT/logs/${NAME}_train.log
 
-ARGS=(--work-dir "$WORK_DIR" --cfg-options optim_wrapper.accumulative_counts="$ACCUM")
+# shellcheck disable=SC2206  # EXTRA_CFG_OPTIONS is a space-separated list of key=value overrides
+ARGS=(--work-dir "$WORK_DIR" --cfg-options optim_wrapper.accumulative_counts="$ACCUM" ${EXTRA_CFG_OPTIONS:-})
 if [ "${RESUME:-0}" = 1 ]; then
   ARGS+=(--resume)
 elif [ -e "$WORK_DIR" ]; then
@@ -27,5 +31,5 @@ elif [ -e "$WORK_DIR" ]; then
 fi
 
 cd "$ROOT"
-echo "$(date '+%F %T') start $NAME NGPUS=$NGPUS accumulative_counts=$ACCUM CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-all} WORK_DIR=$WORK_DIR RESUME=${RESUME:-0} commit=$(git rev-parse --short HEAD 2>/dev/null || echo n/a)" | tee -a "$LOG"
+echo "$(date '+%F %T') start $NAME NGPUS=$NGPUS accumulative_counts=$ACCUM CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-all} WORK_DIR=$WORK_DIR RESUME=${RESUME:-0} EXTRA_CFG_OPTIONS='${EXTRA_CFG_OPTIONS:-}' commit=$(git rev-parse --short HEAD 2>/dev/null || echo n/a)" | tee -a "$LOG"
 codino_train "$CODINO_DIR/$NAME.py" "${ARGS[@]}" 2>&1 | tee -a "$LOG"

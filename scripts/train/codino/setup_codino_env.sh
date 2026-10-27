@@ -31,9 +31,12 @@ LOG="$ROOT/logs/codino_env_setup_$(date +%Y%m%d_%H%M%S).log"
 exec > >(tee -a "$LOG") 2>&1
 step() { echo; echo "== $(date '+%F %T') $*"; }
 
-if [ -f /etc/network_turbo ]; then set +u; source /etc/network_turbo; set -u; fi
+# AutoDL's academic proxy; NETWORK_TURBO=0 skips it (it slows domestic mirrors such as mirrors.aliyun.com to a crawl).
+if [ -f /etc/network_turbo ] && [ "${NETWORK_TURBO:-1}" = 1 ]; then set +u; source /etc/network_turbo; set -u; fi
 
-command -v g++ >/dev/null || { echo "g++ not found (needed to compile mmcv)"; exit 1; }
+if [ "${SKIP_MMCV_BUILD:-0}" != 1 ]; then
+  command -v g++ >/dev/null || { echo "g++ not found (needed to compile mmcv)"; exit 1; }
+fi
 
 step "conda env $ENV_PREFIX"
 # conda-forge only: newer conda refuses the anaconda default channels until their terms are accepted.
@@ -47,21 +50,24 @@ step "torch 2.7.1 + torchvision 0.22.1 (cu128)"
 if [ -n "${TORCH_FIND_LINKS:-}" ]; then TORCH_SRC=(-f "$TORCH_FIND_LINKS"); else TORCH_SRC=(--index-url "$TORCH_INDEX"); fi
 "${PIP[@]}" torch==2.7.1+cu128 torchvision==0.22.1+cu128 "${TORCH_SRC[@]}"
 
-if [ -n "${CUDA_HOME:-}" ]; then
-  step "CUDA toolkit at $CUDA_HOME"
-else
-  step "CUDA 12.8 toolkit inside the env"
-  "$CONDA" install -y -p "$ENV_PREFIX" --override-channels -c nvidia/label/cuda-12.8.1 -c conda-forge cuda-toolkit
-  CUDA_HOME="$ENV_PREFIX"
-  # NVIDIA's conda packages keep headers and libraries under targets/; torch's extension builder only looks in
-  # $CUDA_HOME/include and lib64.
-  export CPATH="$ENV_PREFIX/targets/x86_64-linux/include:${CPATH:-}"
-  export LIBRARY_PATH="$ENV_PREFIX/targets/x86_64-linux/lib:$ENV_PREFIX/lib:${LIBRARY_PATH:-}"
+# nvcc is only needed to compile mmcv.
+if [ "${SKIP_MMCV_BUILD:-0}" != 1 ]; then
+  if [ -n "${CUDA_HOME:-}" ]; then
+    step "CUDA toolkit at $CUDA_HOME"
+  else
+    step "CUDA 12.8 toolkit inside the env"
+    "$CONDA" install -y -p "$ENV_PREFIX" --override-channels -c nvidia/label/cuda-12.8.1 -c conda-forge cuda-toolkit
+    CUDA_HOME="$ENV_PREFIX"
+    # NVIDIA's conda packages keep headers and libraries under targets/; torch's extension builder only looks in
+    # $CUDA_HOME/include and lib64.
+    export CPATH="$ENV_PREFIX/targets/x86_64-linux/include:${CPATH:-}"
+    export LIBRARY_PATH="$ENV_PREFIX/targets/x86_64-linux/lib:$ENV_PREFIX/lib:${LIBRARY_PATH:-}"
+  fi
+  export CUDA_HOME
+  export PATH="$CUDA_HOME/bin:$PATH"
+  "$CUDA_HOME/bin/nvcc" --version | tail -n 2
+  "$CUDA_HOME/bin/nvcc" --version | grep -q 'release 12\.8' || { echo "need nvcc 12.8 to match torch cu128"; exit 1; }
 fi
-export CUDA_HOME
-export PATH="$CUDA_HOME/bin:$PATH"
-"$CUDA_HOME/bin/nvcc" --version | tail -n 2
-"$CUDA_HOME/bin/nvcc" --version | grep -q 'release 12\.8' || { echo "need nvcc 12.8 to match torch cu128"; exit 1; }
 
 step "build tools and pinned runtime packages"
 # mmcv 2.1.0's setup.py imports pkg_resources (removed in setuptools 81; 69.x fails to import without
