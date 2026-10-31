@@ -1,0 +1,151 @@
+# 2026-10-31 仓库整理：从工作树删除的文件（相对仓库根）。
+# 全部保存在 tag pre-cleanup-20261031（= commit 2c170ef，已推送到 GitHub origin）。
+# 取回单个文件：git checkout pre-cleanup-20261031 -- <path>   只看内容：git show pre-cleanup-20261031:<path>
+# 2026-10-22 及更早删除的文件见同目录 REPO_CLEANUP_20261022_removed.txt（tag pre-cleanup-20261022 = 4d71413）。
+# 说明见同目录 REPO_CLEANUP_LOG.md。
+docs/04_audits_and_ablations/AIC_IR融合攻坚整合报告.html
+scripts/analysis/analyze_channel_interventions.py
+scripts/analysis/analyze_cross_query_attention_trace.py
+scripts/analysis/analyze_cross_query_components.py
+scripts/analysis/analyze_decoder_interventions.py
+scripts/analysis/analyze_encoder_level_interventions.py
+scripts/analysis/analyze_error_modes.py
+scripts/analysis/analyze_ffn_damping.py
+scripts/analysis/analyze_gamma16.py
+scripts/analysis/analyze_normalization_decomposition.py
+scripts/analysis/analyze_normalization_screen.py
+scripts/analysis/analyze_single_image_stability.py
+scripts/analysis/analyze_stem_preblur.py
+scripts/analysis/analyze_translation_directions_fullval.py
+scripts/analysis/analyze_translation_layer_trace.py
+scripts/analysis/analyze_translation_phases.py
+scripts/analysis/analyze_translation_query_lineage.py
+scripts/analysis/analyze_v35_adapted_val.py
+scripts/analysis/audit_encoder_intervention_scores.py
+scripts/analysis/audit_initial_reference_cases.py
+scripts/analysis/audit_initial_reference_groups.py
+scripts/analysis/audit_local_random_masks.py
+scripts/analysis/audit_other_query_height_scope.py
+scripts/analysis/audit_single_query_reference_scope.py
+scripts/analysis/audit_train_labels.py
+scripts/analysis/audit_translation_direction_iou.py
+scripts/analysis/audit_translation_iou_boundary.py
+scripts/analysis/characterize_translation_negative_phases.py
+scripts/analysis/characterize_translation_phases.py
+scripts/analysis/compare_test_predictions.py
+scripts/analysis/compare_translation_candidates.py
+scripts/analysis/plot_boat_reference_counterfactual.py
+scripts/analysis/plot_translation_signed_phases.py
+scripts/analysis/probe_translation_class_margin.py
+scripts/analysis/report_normalization_screen.py
+scripts/analysis/verify_translation_followup_artifacts.py
+scripts/diagnostics/analyze_v36_injection_acceptance.py
+scripts/diagnostics/audit_translation_ffn_normalization.py
+scripts/diagnostics/audit_translation_norm_affine.py
+scripts/diagnostics/check_v36_stem_initialization.py
+scripts/diagnostics/diagnose_v36_error_sources.py
+scripts/diagnostics/diagnose_v36_precision_confusion.py
+scripts/diagnostics/eval_v36_injection_acceptance.py
+scripts/diagnostics/export_light_val_candidates.py
+scripts/diagnostics/export_query_outputs.py
+scripts/diagnostics/export_v35_adapted_val.py
+scripts/diagnostics/intervene_translation_box_ring.py
+scripts/diagnostics/intervene_translation_channels.py
+scripts/diagnostics/intervene_translation_decoder.py
+scripts/diagnostics/intervene_translation_encoder_alignment.py
+scripts/diagnostics/intervene_translation_encoder_levels.py
+scripts/diagnostics/intervene_translation_local_context.py
+scripts/diagnostics/intervene_translation_local_random_controls.py
+scripts/diagnostics/intervene_translation_memory_layers.py
+scripts/diagnostics/intervene_translation_other_query_height.py
+scripts/diagnostics/intervene_translation_query_memory.py
+scripts/diagnostics/intervene_translation_reference_alignment.py
+scripts/diagnostics/intervene_translation_reference_components.py
+scripts/diagnostics/intervene_translation_relu_components.py
+scripts/diagnostics/intervene_translation_sampling_core.py
+scripts/diagnostics/intervene_translation_single_query_geometry.py
+scripts/diagnostics/prepare_v36_injection_stages.py
+scripts/diagnostics/probe_single_image_stability.py
+scripts/diagnostics/probe_translation_directions_fullval.py
+scripts/diagnostics/probe_translation_negative_phases.py
+scripts/diagnostics/probe_translation_padding_controls.py
+scripts/diagnostics/probe_translation_phases.py
+scripts/diagnostics/probe_v36_fusion_residual.py
+scripts/diagnostics/probe_v36_optimizer_step.py
+scripts/diagnostics/probe_v36_residual_vs_input_size.py
+scripts/diagnostics/probe_v36_step.py
+scripts/diagnostics/rebuild_v36_warmstart.py
+scripts/diagnostics/replay_translation_matcher.py
+scripts/diagnostics/replay_v1_nan.py
+scripts/diagnostics/screen_translation_ffn_damping.py
+scripts/diagnostics/screen_translation_gamma16.py
+scripts/diagnostics/screen_translation_normalization.py
+scripts/diagnostics/screen_translation_stem_preblur.py
+scripts/diagnostics/smoke_v36_gpu_step.py
+scripts/diagnostics/smoke_v36_injection_stages.py
+scripts/diagnostics/trace_single_image_translation.py
+scripts/diagnostics/trace_translation_cross_query_attention.py
+scripts/diagnostics/trace_translation_cross_query_components.py
+scripts/eval/eval_v34_zeroshot_val.py
+scripts/eval/run_v36_mechanism_ablation.py
+scripts/eval/sweep_quota_ratios_val.py
+scripts/inference/package_v34_thr10.py
+scripts/inference/package_v34_thr30.py
+scripts/inference/package_v34_v35_nms.py
+scripts/train/run_v36_ablation_remote_queue.py
+scripts/train/run_v36_injection_warmstart_4runs.sh
+scripts/train/run_v36_injection_warmstart_v100_4runs.sh
+scripts/viz/generate_v34_vs_v35_comparison_panels.py
+scripts/viz/visualize_normalization_screen.py
+scripts/viz/visualize_translation_evidence.py
+vendor/DEIMv2/configs/deimv2/v36_injection_warmstart_20261019_attempt1/seed42_control.yml
+vendor/DEIMv2/configs/deimv2/v36_injection_warmstart_20261019_attempt1/seed42_p3p4.yml
+vendor/DEIMv2/configs/deimv2/v36_injection_warmstart_20261019_attempt2/seed42_control.yml
+vendor/DEIMv2/configs/deimv2/v36_injection_warmstart_20261019_attempt2/seed42_p3p4p5.yml
+vendor/DEIMv2/configs/deimv2/v36_injection_warmstart_20261019_attempt2/seed42_p3p4.yml
+vendor/DEIMv2/configs/deimv2/v36_injection_warmstart_20261019/seed42_control.yml
+vendor/DEIMv2/configs/deimv2/v36_injection_warmstart_20261019/seed42_p3p4p5.yml
+vendor/DEIMv2/configs/deimv2/v36_injection_warmstart_20261019/seed42_p3p4.yml
+vendor/DEIMv2/configs/deimv2/v36_injection_warmstart_20261019/seed43_control.yml
+vendor/DEIMv2/configs/deimv2/v36_injection_warmstart_20261019/seed43_p3p4p5.yml
+vendor/DEIMv2/configs/deimv2/v36_injection_warmstart_20261019/seed43_p3p4.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_20261018/aux_only.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_20261018/baseline.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_20261018/combined.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_20261018/fallback.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_20261018/routing.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_bf16_20261018/aux_only.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_bf16_20261018/baseline.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_bf16_20261018/combined.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_bf16_20261018/fallback.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_bf16_20261018/routing.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_ft_20261018/aux_only.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_ft_20261018/baseline.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_ft_20261018/combined.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_ft_20261018/fallback.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_ft_20261018/routing.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_pilot_20261018/aux_only.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_pilot_20261018/baseline.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_pilot_20261018/combined.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_pilot_20261018/fallback.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_pilot_20261018/routing.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_pilot864_20261018/aux_only.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_pilot864_20261018/baseline.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_pilot864_20261018/combined.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_pilot864_20261018/fallback.yml
+vendor/DEIMv2/configs/deimv2/v36_mechanism_pilot864_20261018/routing.yml
+vendor/DEIMv2/example.jpg
+vendor/DEIMv2/figures/deimv2_coco_AP_vs_GFLOPs.png
+vendor/DEIMv2/figures/deimv2_coco_AP_vs_Params.png
+vendor/DEIMv2/hf_models.ipynb
+
+# ---- 附：本地被 gitignore 的过期产物删除（不进 tag、不可回滚；明细见 archive/backups/cleanup_20261031/local_delete_manifest.tsv）----
+# work_dir/audits/v36_injection_warmstart_20261019{,_attempt1,_attempt2}
+# work_dir/{v2x_input_check_20261026,v22_phase3_20261026,v31_infer,test1_three_models,irb0_check_20261026,rfdetr_dataset,dav2_token_cache}
+# work_dir/test_aligned_ir · work_dir/test_lbg_ir · work_dir/archives/*.tar · work_dir/archives/cached_*.pt
+# work_dir/{M3FD_raw,FLIR_raw,LLVIP} · data_aux/{BDD100K,BDD100K_raw,BDD100K_nightify,aic_nightify,aic_valid_{rgb,ir,depth}_black}
+# work_dir/visualizations/{test_align_viz,v23_test_vis_all1000.zip}
+# vendor/DEIMv2/outputs/*（保留 V28-A、V34、V36/V37 summary）· vendor/DEIMv2/ckpts/{best_stg1_weights_only,dfine_x_obj2coco_mm,deimv2_l_coco,deimv2_dinov3_x_coco.safetensors,deimv2_x_for_rdttrack*}
+# vendor/DEIMv2/{NaN.pth,work_dir} · vendor/smoke_rdttrack.log · vendor/DEIMv2/configs/deimv2/*_out/
+# outputs/analysis 旧 discrepancies/UAV/Ball/可视化 · outputs/checkpoints/sovereign_v28_full72ep_*（V28-B） · outputs/reports/{universal_comparison_system,audit_workbench_superres_collision}.html · outputs/*raw*.pt
+# weights/sovereign_v21_* · weights/sovereign_v22_* · weight/deimv2_dinov3_l_coco.pth · weight/hgnetv2/PPHGNetV2_B5_stage1.pth*（与 vendor 侧重复）

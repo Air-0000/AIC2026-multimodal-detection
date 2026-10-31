@@ -2,6 +2,63 @@
 
 > 历次整理的完整记录。`AGENTS.md` 只保留一句指针；本文件按时间倒序。
 
+## 2026-10-31：第二轮清理（已结案实验代码 + 约 87 GB 本地产物）
+
+**起点**：commit `2c170ef`（= 当时 `origin/master`），annotated tag `pre-cleanup-20261031` 指向它，**已推送到 GitHub**（`git ls-remote --tags origin` 可见；其他机器 `git fetch --tags` 后即可取回，不再有 2026-10-22 条目中"tag 只在本地"的限制）。
+**结果**：Git 跟踪文件 451 → 317（删除 135 个文件，新增 1 份本清单）；`scripts/` 168 → 74；`vendor/DEIMv2/configs/deimv2` 67 → 31；`docs/` 41 → 41（删 1 份生成式 HTML、增 1 份清单）。本地被 ignore 的过期实验产物清理约 87 GB（磁盘已用 94% → 84%）。`engine/` 一个文件都没动，`dataset/` 未动。
+> 注：清理提交 rebase 到 `origin/master` 后，远端另有 `7539f1d`（红外数据核查，MODEL_RECORDS §四十八）新增 `scripts/analysis/audit_ir_alignment.py`，最终跟踪文件为 318。
+
+### 为什么清
+
+- 2026-10-22 之后又有一批实验结案：V36 平移 / 归一化 / light 诊断全部为负结果并固化进 `CLEAN_BASELINE.md`；A01（机制 pilot）与 A02（注入位置）已结案并写入 `AIC_TASK_MAP.md`；V34 thr / 去重打包探针只服务当时工作台对比。用户授权"已结案或一次性使用的文件删除，拿不准的靠 tag 取回"。
+- 本地磁盘 94% 满：`work_dir/` 49G、`vendor/DEIMv2/outputs/` 30G、`outputs/` 16G、`data_aux/` 22G 中大量是旧实验检查点、旧分析图与外部数据集。
+
+### 删除了什么（Git 跟踪：134 个代码/配置 + 1 份文档）
+
+| 目录 | 删除数 | 主要内容 |
+|---|---:|---|
+| `scripts/analysis` | 35 | V36 冻结权重的平移 / 归一化 / light / query 诊断与 V35 适配评测 |
+| `scripts/diagnostics` | 47 | 平移干预 / 追踪 / 归一化 30 + A01/A02 消融与事故诊断 17 |
+| `scripts/eval` | 3 | V34 零训练消融、V36 机制消融驱动、路由配额扫描 |
+| `scripts/inference` | 3 | V34 thr0.10 / 0.30 与 V34+V35 NMS 打包探针 |
+| `scripts/train` | 3 | A01/A02 消融队列与注入热启动启动器 |
+| `scripts/viz` | 3 | V34/V35 对比面板、归一化 / 平移证据图 |
+| `vendor/DEIMv2/configs/deimv2` | 36 | `v36_mechanism_*` 5 目录（25）+ `v36_injection_warmstart_20261019*` 3 目录（11） |
+| `vendor/DEIMv2` 顶层 | 4 | `hf_models.ipynb`、`example.jpg`、`figures/*.png`（上游演示资产） |
+| `docs/04_audits_and_ablations` | 1 | `AIC_IR融合攻坚整合报告.html`（生成式 HTML，本次唯一删除的文档） |
+
+完整逐文件清单见 [`REPO_CLEANUP_20261031_removed.txt`](REPO_CLEANUP_20261031_removed.txt)。**未删除**：当前主线三臂 / v2 / 红外绑定 pilot、V23 / F5 / V27 / V28-A / V34–V37 的配置+启动+推理脚本、数据管线、全部 CPU 契约测试、工作台 6 个脚本、框架 `engine/` / `tools/` / `train.py` / 上游 COCO 配置；唯一保留的 `package_*` 是单模型内部去重的 `package_v34_distinct_dedup.py`。
+
+### 本地被 ignore 产物的清理（约 87 GB，不进 tag、不可回滚）
+
+| 类别 | 回收 | 内容 |
+|---|---:|---|
+| 旧实验审计 | ≈13 GB | `work_dir/audits/v36_injection_warmstart_20261019*`（12.9G；warmstart 权重可由保留的 `v36_frozen.pth` + `prepare_v36_injection_stages.py` 再生） |
+| 旧实验检查点 | ≈27 GB | `vendor/DEIMv2/outputs/` 中 V1–V33 旧实验目录（保留 V28-A、V34、V36/V37 summary）；V30 与 `outputs/checkpoints` 的 md5 副本去重 |
+| 外部数据集 | ≈18 GB | `work_dir/{M3FD_raw,FLIR_raw,LLVIP}`、`data_aux/BDD100K*`、`aic_nightify`（赛题禁外部数据、全库 0 引用；9 档夜化验证集 `aic_valid_rgb_night*` 保留） |
+| 旧测试派生数据 | ≈7.6 GB | `work_dir/{test_aligned_ir,test_lbg_ir}`（AGENTS 明示旧配准器产物）、`work_dir/archives` 与 dataset 同源的两个 tar、旧缓存 pt |
+| 过期中间产物 | ≈7 GB | `v2x_input_check_20261026`、`v22_phase3_20261026`、`v31_infer`、`rfdetr_dataset`、`dav2_token_cache` 等 2026-10 一次性审计 |
+| 旧 outputs 分析 | ≈7.2 GB | `outputs/analysis/discrepancies_f5_vs_v23..v28`、UAV / ball 专项、可视化、V28-B（已判退化禁用）检查点、2 份与工作台首页 md5 相同的 HTML |
+| 权重 / 杂物 | ≈2.5 GB | V21/V22 旧权重、重复 hgnetv2 权重、`NaN.pth`、`*_out/`、`__pycache__`、`work_dir` 误落产物 |
+
+保留的关键本地产物：`dataset/`（红线）、`work_dir/{deimv2_dataset,train_lbg_ir,test_ir_like_train,test3_ir_like_train,test1_ir_like_train}`、`outputs/checkpoints/aic_clean_baseline_v1_seeta/best.pth`（当前主线唯一权重）、`outputs/checkpoints/v36_mechanism_20261018/v36_frozen.pth`、`outputs/official_submission_package/`、`work_dir/submissions/`（工作台 registry 引用）、`work_dir/audits/{aic_clean_baseline_v1_20261021,v36_mechanism_20261018}` 等证据目录、`weights/{F5,V23,RealESRGAN}`、`vendor/DEIMv2/ckpts/{dinov3,dfine_x_obj2coco}.pth`、9 档夜化验证集、`logs/`、`archive/`。执行明细与删除前快照：`archive/backups/cleanup_20261031/`（`local_delete_manifest.tsv`、`local_snapshot_{before,after}.txt`）；被删大目录里的轻量文本证据（manifest / json / README）另存 `local_evidence/`。
+
+### 文档层
+
+- 新增本条目与 `REPO_CLEANUP_20261031_removed.txt`；`AGENTS.md` §3/§6/§7/§8 与 `README.md` 更新目录数量、跟踪范围、tag、现状（Phase 3 51.1、pilot 未训练）、data_aux / 权重路径；`CLAUDE.md` §0 区分 macOS 镜像与 Linux 开发机、§5 提交框数；`PROJECT_SPEC.md` 修正 60 框 / 7,000–7,200 旧规、`test_aligned_ir`、`rfdetr_dataset` 示例、tag 取回方式与 scripts 分工表。
+- 历史文档加"已撤回 / 历史快照"标注而不删：`SAFE_POSTPROCESSING_GUIDELINES.md`、`SUBMISSION_CONFIDENCE_THRESHOLD_PRIOR.md`、`SOVEREIGN_V23_DETAILED_TECHNICAL_SPEC.md` §十（WBF 禁止执行）、`AIC_TASK_MAP.md`、`AIC_MASTER_COLLABORATION_REGISTRY.md`、`docs/03_architecture_designs/README.md`；`SUBMISSION_CHECKLIST.md` / `TECHNICAL_REPORT_DRAFT.md` / `QUESTIONS_TO_ORGANIZERS.md` 修正过期指引。
+- 本地的 `docs/archive/{training_records.md,training_records_mAP.md,llvip_dl.md}`（未跟踪、tag 不保护）已移到 `archive/backups/cleanup_20261031/docs_archive_local/`。
+
+### 怎么取回
+
+```bash
+git fetch --tags                                    # 其他机器先取 tag
+git show pre-cleanup-20261031:scripts/analysis/analyze_translation_phases.py
+git checkout pre-cleanup-20261031 -- <path>         # 恢复到工作树
+```
+
+2026-10-22 及更早删除的文件用 `pre-cleanup-20261022`（= `4d71413`）。两个 tag 均已推送到 GitHub。
+
 ## 2026-10-22：删除历史实验文件，去掉文档软链层
 
 **起点**：commit `4d71413`（已在 `origin/master`），本地 annotated tag `pre-cleanup-20261022` 指向它。

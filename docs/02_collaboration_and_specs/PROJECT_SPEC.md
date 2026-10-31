@@ -14,15 +14,15 @@
 ├── docs/                 # 【唯一文档中心】按 5 大核心类别分层管理 (总索引见根目录 README.md)
 │   ├── 01_competition/   # 官方竞赛细则、先验数据统计、格式范例与学术综述
 │   ├── 02_collaboration_and_specs/ # 工程总规、全链路流程总纲、技术中台、全周期编年史与天梯榜
-│   ├── 03_architecture_designs/    # 模型架构演进九阶段 (解耦融合 -> 双流 -> V6蓝图 -> V10小波条带 -> V12顶会合流 -> V13十模块 -> V14异构解耦 -> V20连续流形 -> V23零畸变2048超高清旗舰 官方实测 53.555 锁定前三甲/第四，全速冲击 60+)
+│   ├── 03_architecture_designs/    # 模型架构演进九阶段 (解耦融合 -> 双流 -> V6蓝图 -> V10小波条带 -> V12顶会合流 -> V13十模块 -> V14异构解耦 -> V20连续流形 -> V23零畸变2048超高清旗舰 官方实测 53.555；历史口号与"冲击 60+"不构成承诺，指标口径以 MODEL_RECORDS / CLAUDE §5 为准)
 │   ├── 04_audits_and_ablations/    # 攻坚审计与排雷报告 (红外对齐、权重溯源、CP消融定论)
 │   ├── 05_postprocessing_and_inference/ # 合规安全后处理 (H-Flip共识) 与官方提交质检 SOP
 │   └── archive/          # 历史过时记录归档 (旧跑分表，已被 MODEL_RECORDS.md 替代)
 ├── weight/               # 【唯一权重中心】预训练权重与基础 Backbone checkpoints
 ├── logs/                 # 【唯一日志中心】全部训练、评测与队列运行日志 (*.log)
 ├── dataset/              # 【原始数据集】竞赛原始数据 (train/test，只读，软链接至各处)
-├── work_dir/             # 【运行时产物】deimv2_dataset 训练数据 · test_aligned_ir 缓存 · submissions 提交包 · audits 审计 · visualizations 可视化 · archives 归档 · 外部集
-├── data_aux/             # 【外部辅助数据】BDD100K、暗光/掩码等大容量辅助集 (.gitignore 忽略)
+├── work_dir/             # 【运行时产物】deimv2_dataset 训练数据 · test_ir_like_train 与 test3_ir_like_train 测试红外（Phase2/3，按训练同法）· submissions 提交包 · audits 审计 · visualizations 可视化 · archives 归档 · transfer 迁移清单
+├── data_aux/             # 【外部辅助数据】现仅保留 9 档夜化验证集 aic_valid_rgb_night*（模态鲁棒性评测用，.gitignore 忽略）
 ├── outputs/              # 【分析产物】analysis 分析 · figures 图表 · metrics 指标 JSON · reports 报告 · submissions 提交包 · checkpoints 权重
 ├── scripts/              # 【自动化脚本集】预处理、训练驱动、评测、推理、分析、矩阵生成、公共库
 ├── vendor/               # 【第三方框架与资源】DEIMv2 (核心模型)、Depth-Anything-V2 及外部资料合集
@@ -52,13 +52,13 @@
 | `scripts/train/` | **训练驱动**：纯净基准三臂启动、换卡自检与上线前检查、里程碑版本的启动脚本 | `run_clean_arm.sh`, `preflight_cloud.sh`, `run_clean_baseline_v1_ailab40.sh`, `run_sovereign_v23_oldlabel1800_rtx6000.sh` |
 | `scripts/inference/` | **正式推理与提交包生成** | `predict.py`（统一入口）；里程碑：`generate_sovereign_v23_submissions.py`, `infer_test2_v{27,28,34,35,36}_*.py`, `reproduce_f5_official.py` |
 | `scripts/eval/` | **评测与提交把关**：官方口径评测器、模态鲁棒性剖面、格式校验 | `official_competition_evaluator.py`, `eval_modality_robustness.py`, `eval_submission.py`, `check_submission.py` |
-| `scripts/analysis/` | **配对比较与 V36 平移诊断的分析端** | `compare_detectors_paired.py`, `analyze_translation_*.py` |
-| `scripts/diagnostics/` | **契约测试与诊断探针**：CPU 契约测试、GPU 只读验收、V36 平移干预 / 追踪 | `test_clean_baseline_contract.py`, `audit_clean_baseline.py`, `gpu_selftest.py`, `intervene_translation_*.py` |
+| `scripts/analysis/` | **配对比较与 light 阈值分析** | `compare_detectors_paired.py`, `analyze_light_val_thresholds.py`, `analyze_translation_localization.py` |
+| `scripts/diagnostics/` | **契约测试与诊断探针**：CPU 契约测试、GPU 只读验收、数据管线冒烟 | `test_clean_baseline_contract.py`, `audit_clean_baseline.py`, `gpu_selftest.py`, `smoke_aug_pipeline.py` |
 | `scripts/viz/` | **可视化工作台**（AGENTS.md 红线 11） | `import_submission_to_workstation.py`, `workstation_server.py` |
 | `scripts/lib/` | **跨模块共享库**：夜化变换、去条纹、深度工具、注入 stage 迁移 | `nightify_aic.py`, `destripe_1d.py`, `depth_utils.py`, `injection_stage_migration.py` |
 | `scripts/collect_model_records.py` | **全局总控工具**：重建唯一实验真相源 | `collect_model_records.py` |
 
-> 每个子目录的**入口脚本与职责边界**详见本文 §7 全链路流程与 §8 最小闭环命令清单。V1–V33 时期的配置生成（`scripts/gen/`）、一次性分析与可视化、旧推理 / 后处理脚本已于 2026-10-22 删除，见 [REPO_CLEANUP_LOG.md](REPO_CLEANUP_LOG.md)。
+> 每个子目录的**入口脚本与职责边界**详见本文 §7 全链路流程与 §8 最小闭环命令清单。V1–V33 时期的配置生成（`scripts/gen/`）、一次性分析与可视化、旧推理 / 后处理脚本已于 2026-10-22 删除；2026-10-31 又删除了已结案的 V36 平移/机制诊断、A01/A02 消融配置与 V34 打包探针（见 [REPO_CLEANUP_LOG.md](REPO_CLEANUP_LOG.md)，按 tag `pre-cleanup-20261031` 取回）。
 
 ---
 
@@ -137,18 +137,19 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 生成正式提交预测必须严格执行以下流水线：
 
-1. **Sovereign V23 官方提交包生成与 Compact 压框**：
+1. **Sovereign V23 官方提交包生成与 Compact 压框（历史做法，2026-10-31 标注）**：
    ```bash
    python scripts/inference/generate_sovereign_v23_submissions.py
    ```
-   > **【Compact 压框实战铁律】**:
+   > ⚠️ **以下 Compact 压框规则是 V23 时期的历史做法，已作废**：无标签测试集的总框数不能证明优劣（CLAUDE §5），现行规则是每图 ≤100 框、阈值只在有标注的 200 张验证集上定。保留原文仅为记录 53.555 的提交口径。
+   > **【Compact 压框实战铁律（历史）】**:
    > - 官方 Phase 2 测试集真实目标总数严格为 **7,086 个**（均值 7.09 个/图）；
    > - 提交包总框数必须精准卡位在 **7,000 ~ 7,200 框**（$\tau \approx 0.505$ + 单图最大 60 框截断）；
-   > - 实测 7,169 框一举打破天梯纪录斩获 **53.555 分（锁定前三甲/第四）**，超出或过少均会导致扣分！
+   > - 实测 7,169 框一举打破天梯纪录斩获 **53.555 分**，超出或过少均会导致扣分！
 
 2. **提交格式硬性把关（必须执行）**：
    ```bash
-   python3 scripts/eval/check_submission.py outputs/submissions/submission_sovereign_v23_compact_7150.zip \
+   python3 scripts/eval/check_submission.py work_dir/submissions/clean_v1_phase3_thr048/submission.zip \
      dataset/test/AIC2026_PHASE_2_1000/visible
    ```
    **校验指标**：
@@ -157,8 +158,8 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
    - 坐标在 $[0, 1]$ 范围内，归一化；
    - 置信度降序排列；
    - **CRLF (`\r\n`)** 换行符；
-   - 每图不多于 60 个检测框；
-   - 总框数在 7,000 ~ 7,200 之间；
+   - **每图不多于 100 个检测框**（AGENTS 红线 4；60 框是 V23 Compact 时期做法，已作废）；
+   - 总框数**不作为**提交判据（无标签测试集框数不能证明优劣，阈值只在有标注验证集上定，见 CLAUDE §5）；
    - 无目标图像写空文件。
 
 ---
@@ -183,7 +184,7 @@ flowchart TD
 
 | 阶段 | 入口 | 产物落点 |
 | :--- | :--- | :--- |
-| ① 数据准备 | `scripts/prep/` | `work_dir/deimv2_dataset/`、`work_dir/*_cache`、`data_aux/` |
+| ① 数据准备 | `scripts/prep/` | `work_dir/deimv2_dataset/`、`data_aux/aic_valid_rgb_night*`（夜化验证集） |
 | ② 配置装配 | `vendor/DEIMv2/configs/deimv2/<exp>.yml` | 配置即实验契约（`__include__` 深合并，后者覆盖前者） |
 | ③ 训练 | `scripts/train/run_*.sh`（内部 `cd vendor/DEIMv2`） | `vendor/DEIMv2/outputs/<exp>/`、`logs/<exp>.log` |
 | ④ 评测 | `scripts/eval/official_competition_evaluator.py`、`scripts/eval/eval_modality_robustness.py`、`scripts/analysis/compare_detectors_paired.py` | `outputs/*.json`、`outputs/reports/` |
@@ -221,9 +222,10 @@ export PY=/home/constant/miniconda3/envs/deimv2/bin/python
 export PYTHONPATH="/home/constant/CodeBuddy/Dev/AIC/scripts/lib:/home/constant/CodeBuddy/Dev/AIC/vendor/DEIMv2:${PYTHONPATH:-}"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-# ① 数据准备（首次或数据变更时）：1800/200 划分（seed=42）→ COCO 标注
+# ① 数据准备（当前 1800/200 划分与 COCO 标注已就位；重建方式见 §7.1）
 $PY scripts/prep/prepare_dataset.py
-$PY scripts/prep/yolo_to_coco.py --src work_dir/rfdetr_dataset --dst work_dir/deimv2_dataset
+#    仅当需要从 YOLO 原始标注重建时才用：yolo_to_coco.py --src <yolo_src> --dst work_dir/deimv2_dataset
+#    （旧输入 work_dir/rfdetr_dataset 已于 2026-10-31 清理，不再作为示例路径）
 #    9 档暗光验证集（模态鲁棒性评测用；默认路径是 seeta 节点，换机时传 --src / --dst_root）
 $PY scripts/prep/prep_nightxx_server.py --src work_dir/deimv2_dataset/valid/images --dst_root data_aux
 
