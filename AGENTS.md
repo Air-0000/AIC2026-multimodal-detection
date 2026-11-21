@@ -36,8 +36,8 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 - **本地 GPU 仅 RTX 5060 Ti 15.46 GiB**（开发调试）。远端训练节点：
   - **ailab40（V36 与中断的纯净基准 v1 在此训练）**：⚠️ 两张卡 ECC 均关闭，GPU1 显存静默出错（自检 88/720 次读校验不一致），不要再用它训练；任何新卡开训前先跑 `scripts/train/preflight_cloud.sh`。实验室服务器，Tesla V100 32GB（GPU 0、1；纯净基准用 GPU 1）。项目根 `/home/ailab40/hejianzhong/AIC_CLEAN_BASELINE_20261021`，python 为 `/home/ailab/ssd/bigdata/hejianzhong/_infra/envs/aic2026/bin/python`（**不是** `deimv2` 环境）；启动脚本 `scripts/train/run_clean_baseline_v1_ailab40.sh`。V100（SM_70）上**必须纯 FP32、禁用 cuDNN**——V36 早期 AMP 运行因 FP16 溢出有 92.9% 的步被 NaN-guard 跳过。纯净基准三臂配置现为 `use_amp: true`，在 V100 上会被 `train.py` 拒绝，须加 `-u use_amp=False`（`run_clean_arm.sh` 用 `USE_AMP=0`；两个 ailab40 启动脚本已带上该覆盖；精度规则见 CLAUDE.md §3）。
   - 以下两个 seetacloud 节点路径根均为 `/root/autodl-tmp/AIC`：
-  - **8 卡节点（V28 时期主力）**：`ssh -p 32426 root@connect.westb.seetacloud.com`（`~/.ssh/config` 别名 `seeta8`），8 × RTX PRO 6000 Blackwell。
-  - **96GB 单卡节点（V23 主训练）**：`ssh -p 33715 root@connect.westd.seetacloud.com`（别名 `seeta`），RTX 6000 Ada / RTX PRO 6000。
+  - **8 卡节点（V28 时期主力）**：`ssh -p <port> root@<seetacloud-host>`（`~/.ssh/config` 别名 `seeta8`），8 × RTX PRO 6000 Blackwell。
+  - **96GB 单卡节点（V23 主训练）**：`ssh -p <port> root@<seetacloud-host>`（别名 `seeta`），RTX 6000 Ada / RTX PRO 6000。
   - ⚠️ 容器可能未挂载 GPU（`v28_infer.log` 曾报 `Found no NVIDIA driver`），跑推理前先 `nvidia-smi -L` 确认。
 
 ## 3. 目录职责

@@ -2142,7 +2142,7 @@ D2每query平均翻转80.35/1024，两边均激活220.00；D3为93.64与230.04�
 
 ## 四十一、2026-10-23 纯净基准 v1 迁移至 RTX PRO 6000 Blackwell（96GB）从头重训上线
 
-- **背景与硬件迁移**：因 ailab40 GPU1 显存静默翻转故障（§四十），按 `docs/02_collaboration_and_specs/CLOUD_MIGRATION_RUNBOOK.md` 迁移至全新 SeetaCloud 算力节点（`connect.westd.seetacloud.com:28485`，别名 `seeta`），单卡 96GB NVIDIA RTX PRO 6000 Blackwell Server Edition（97,887 MiB VRAM），驱动 580.82.09，CUDA 13.0，PyTorch `2.12.1+cu130`，自动启用 cuDNN 加速（不同于 Volta SM_70 的强制禁用）。
+- **背景与硬件迁移**：因 ailab40 GPU1 显存静默翻转故障（§四十），按 `docs/02_collaboration_and_specs/CLOUD_MIGRATION_RUNBOOK.md` 迁移至全新 SeetaCloud 算力节点（`<seetacloud-host>:<port>`，别名 `seeta`），单卡 96GB NVIDIA RTX PRO 6000 Blackwell Server Edition（97,887 MiB VRAM），驱动 580.82.09，CUDA 13.0，PyTorch `2.12.1+cu130`，自动启用 cuDNN 加速（不同于 Volta SM_70 的强制禁用）。
 - **代码与数据持久化部署**：
   - 代码基线：独立目录 `/root/autodl-tmp/AIC_clean_v1/`，与本地 `master`（提交 `807971a`）逐位一致，严格修复包含 14 项通用正确性缺陷后的完全展开配置 `aic_clean_baseline_v1.yml`。
   - 数据与权重契约：可见光/深度/标注/预训练权重软链至原始集；对齐红外（2000 图）与 LBG 红外（2000 图）通过校内千兆内网直连（ailab40 -> seeta）完整同步到高可用存储 `/autodl-fs/data/clean_v1/`（余量 2.2 TB）。

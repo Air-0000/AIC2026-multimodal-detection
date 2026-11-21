@@ -118,12 +118,12 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 ### 算力环境与显存预算：
 - **远端 8 卡节点（V28 起主力）**：
-  - 入口：`ssh -p 32426 root@connect.westb.seetacloud.com`（本地 `~/.ssh/config` 记为 `Host seeta8`）
+  - 入口：`ssh -p <port> root@<seetacloud-host>`（本地 `~/.ssh/config` 记为 `Host seeta8`）
   - 硬件：**8 × NVIDIA RTX PRO 6000 Blackwell**；项目根 `/root/autodl-tmp/AIC`
   - 观察状态（2026-10-07）：容器**未挂载 GPU 驱动**（`v28_infer.log` → `Found no NVIDIA driver`），跑推理前需先确认 GPU 已分配
   - `/root/autodl-tmp` NVMe 容量紧张，训练脚本内自带磁盘守护剪枝
 - **远端旗舰超算节点（V23 主训练）**：
-  - 实例：`seeta` (`root@connect.westd.seetacloud.com:33715`)
+  - 实例：`seeta` (`root@<seetacloud-host>:<port>`)
   - 硬件：**NVIDIA RTX 6000 Ada / RTX PRO 6000（96 GB 显存旗舰）**。
   - **Sovereign V23（$1152 \times 2048$ 零畸变超高清）**：
     - `total_batch_size: 8`（物理 Batch 8，无需累积），稳态占用 **85.6 GB / 96 GB（89.2% 满载吞吐）**，预留 10.5 GB 安全缓冲；
