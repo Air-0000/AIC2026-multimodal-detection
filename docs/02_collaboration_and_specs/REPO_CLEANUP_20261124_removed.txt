@@ -60,3 +60,29 @@ logs/s0918_gate_workstation/	~80K (du)	kept
 outputs/analysis/s0918_gate_workstation/	~9.4M (du)	kept
 outputs/reports/mrdetr_2026-11-01/	~10.9M (du)	kept（原报告 + artifacts 本地证据）
 outputs/reports/aic_workstation_export_20261028.html	46933705	kept（由根目录 index.html 移入）
+
+# =====================================================================
+# 收官全清（2026-11-24 ~21:2x，竞赛结束后，不可回滚）
+# 触发：团队获 AIC2026 全国总决赛 国家二等奖（国二），竞赛结束；本地非入库内容整体清理。
+# 依据：MODEL_RECORDS §五十一；执行明细见 archive/backups/cleanup_20261124/
+#       （final_local_cleanup_manifest.tsv、delete_run.log、final_local_cleanup_snapshot_after.txt）。
+# 合计 du -sb ≈ 46.48 GB（df 口径约 44 GiB，磁盘 53% → 48%）。
+path	bytes	action
+dataset	30266883600	deleted（原始三模态数据）
+weights	3219528285	deleted（V23 / F5 / RealESRGAN / DINOv3 等历史权重）
+weight	480304137	deleted（Stage A 权重 + 兼容软链）
+vendor/DEIMv2/ckpts	4191371410	deleted（预训练 / 训练检查点）
+vendor/DEIMv2/weight	133945533	deleted
+vendor/cv-model-improvement-master	637532666	deleted（外部资源合集）
+vendor/Depth-Anything-V2	113783821	deleted
+vendor/DEIMv2/configs/deimv2/nightify_out_midboost	2651814	deleted（旧实验输出）
+outputs	5622876242	deleted（除 official_submission_package/：checkpoints 4.3G、reports 526M、analysis 129M、figures 57M、submissions 21M、metrics、README）
+work_dir	1691810190	deleted（除 submissions/clean_v1_phase3_thr048/：train_lbg_ir、visualizations、audits、submissions 其余 40+ 项等）
+logs	36350980	deleted（全部日志）
+archive	62526153	deleted（除 backups/cleanup_20261124/：历史快照、备份、迁移包等）
+work	16701336	deleted（红外配准探针库）
+# 保留（kept）：
+outputs/official_submission_package	245884908	kept（复赛官方提交包：技术方案 PDF/tex、代码、提交 zip）
+work_dir/submissions/clean_v1_phase3_thr048	1075291	kept（Phase 3 纯净基准 v1 提交包）
+.workbuddy/ .obsidian/	—	kept（用户记忆 / 编辑器配置，非项目数据）
+# 注：删除前已确认这些路径下无 git 跟踪文件；git 仓库、历史与三轮清理 tag 完整保留。

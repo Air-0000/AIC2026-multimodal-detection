@@ -42,6 +42,13 @@
 - `outputs/reports/mrdetr_2026-11-01/`（报告原件 + `artifacts/` + `paper_text.txt`，≈10.9 MB）与 `outputs/reports/aic_workstation_export_20261028.html`（46.9 MB，从根目录移入）。
 - 未动：`dataset/`、`work_dir/{deimv2_dataset,train_lbg_ir,test_ir_like_train,test3_ir_like_train}`、`work_dir/submissions/`、`outputs/official_submission_package/`、主线权重。
 
+### 竞赛收官全清（同日 21:2x，不可回滚）
+
+- **触发**：团队获 AIC2026 全国总决赛 **国家二等奖（国二）**（获奖主力为团队的 Co-DINO 融合主线，见 MODEL_RECORDS §五十一），竞赛结束，本地非入库内容整体清理。
+- **清理范围 ≈46.48 GB（`du -sb`；df 口径约 44 GiB，磁盘 53% → 48%）**：`dataset/` 30.3 GB、`weights/` + `weight/` 3.7 GB、`vendor/DEIMv2/{ckpts,weight}` 4.3 GB、`vendor/cv-model-improvement-master/` 638 MB、`vendor/Depth-Anything-V2/` 114 MB、`outputs/` 5.6 GB（除官方提交包）、`work_dir/` 1.7 GB（除 Phase 3 v1 提交包）、`logs/` 36 MB、`archive/` 62 MB（除清理清单）、`work/` 17 MB。
+- **保留**：`outputs/official_submission_package/`（复赛官方提交包 238 MB）、`work_dir/submissions/clean_v1_phase3_thr048/`（Phase 3 v1 提交包 4.4 MB）、`archive/backups/cleanup_20261124/`（清单 / 删除日志 / 快照）与用户目录 `.workbuddy/`、`.obsidian/`；git 仓库与三轮清理 tag 完整保留。
+- **之后状态**：仓库只剩 git 跟踪文件 + 上述三处证据，进入归档只读状态；逐项清单见 `REPO_CLEANUP_20261124_removed.txt` 末尾「收官全清」段。
+
 ### 怎么取回
 
 ```bash
