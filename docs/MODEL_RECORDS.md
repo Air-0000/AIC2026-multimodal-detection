@@ -2403,3 +2403,11 @@ D2每query平均翻转80.35/1024，两边均激活220.00；D3为93.64与230.04�
   - **Phase 3 门控扫描**（1000 张无标签测试图，`outputs/analysis/s0918_gate_workstation/gate_test_phase3_scan.json`）：最暗图 mean-luma **0.0637**（`shuming_860_00000209`）> hi 0.05 → **triggered 0 / 1000**，即当前阈值下门控在 Phase 3 完全不开。
 - **产物与保留**：检查点 `outputs/checkpoints/s0918_gate_20261101/epoch_4.pth`（911 MiB）；日志 `logs/s0918_gate_workstation/`；分析 `outputs/analysis/s0918_gate_workstation/`；证据归档 `work_dir/audits/s0918_gate_20261102/`（`val_300.json`、`744_gate.py`、等价性日志与压缩包、`outputs_equiv/`）。
 - **状态**：机制 pilot；**无训练收益证据，未用于任何提交**。G = 0 不触发意味着 Phase 3 当前光照下该分支不起作用；若要继续，先解决 300 图评测环境（编译 mmcv 算子 / 统一评测器）与阈值标定，再谈收益。
+
+## 五十一、2026-11-24 竞赛收官：AIC2026 全国总决赛国家二等奖（国二）与本机归档清理
+
+- **奖项**：团队获 **AIC2026（2026 第八届全球校园人工智能算法精英大赛）全国总决赛 国家二等奖（国二）**，2026-11-24 确认。
+- **归属（重要）**：获奖主力是团队的 **Co-DINO 5-scale Swin-L 三模态融合主线**（按固定公式把 RGB / 红外 / 深度融合成 3 通道 PNG 后送入 Co-DINO；外部协作方交流包 `AIC2026_codino_share_20261029_v2`，本仓**不归档其代码与权重**，只有 11 月夜间门控支线脚本在 `codino-rgb-ceiling` 分支）。本仓的 **DEIMv2 / Sovereign V23 线是团队复赛（半决赛）官方提交包所用架构**（`outputs/official_submission_package/`：核心算法 Sovereign V23 TADL，双门限 0.45 / 0.50、单图 cap 60，1,000 图 7,212 框，包内技术方案自述 200 图留出 mAP 0.8964），决赛阶段主线切换为 Co-DINO 融合线。**本记录不把该奖项归为本仓任一模型或支线的成绩**；§四十九（Mr.DETR 评估）与 §五十（Co-DINO 门控 pilot）都未用于获奖提交。
+- **本仓定位**：保留 DEIMv2 主线（V1–V37、纯净基准 v1）、复赛官方提交包、11 月支线记录与三轮清理历史；Co-DINO 融合主线以外部交流包为准，本仓不复制其代码/权重/数据。
+- **本机归档清理（2026-11-24，不可回滚）**：竞赛收官后整体清除非入库内容 ≈**44.6 GB**——`dataset/` 29 GB（原始三模态数据）、`work_dir/` 1.8 GB、`outputs/` 5.3 GB（检查点 / 分析 / 报告 / 可视化等）、`weights/` + `weight/` 3.5 GB、`vendor/DEIMv2/{ckpts,weight}` 4.1 GB（预训练与训练检查点）、`vendor/cv-model-improvement-master/` 616 MB、`vendor/Depth-Anything-V2/` 109 MB、`logs/` 37 MB、`archive/` 72 MB（除清单）、`work/` 17 MB 等。**保留**：git 跟踪文件（325 个）、`outputs/official_submission_package/`（复赛官方提交包，238 MB，含技术方案 PDF / 代码 / 提交件）、`work_dir/submissions/clean_v1_phase3_thr048/`（Phase 3 纯净基准 v1 提交包，4.4 MB）、`archive/backups/cleanup_20261124/`（`final_local_cleanup_manifest.tsv` 与快照）、用户目录 `.workbuddy/`（记忆）与 `.obsidian/`（编辑器配置）。逐项清单：`archive/backups/cleanup_20261124/final_local_cleanup_manifest.tsv`。
+- **状态**：竞赛结束，仓库进入**归档只读**状态；git 历史与三轮清理 tag（`pre-cleanup-20261022` / `-20261031` / `-20261124`）以及收官 tag `final-award-20261124` 完整可追溯。可复现性边界：本机数据与权重已删除，需按 `docs/02_collaboration_and_specs/CLOUD_MIGRATION_RUNBOOK.md` 与 `scripts/prep/` 重新准备才能重训。

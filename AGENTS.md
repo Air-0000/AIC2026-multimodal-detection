@@ -15,6 +15,7 @@
 - **版本现状（2026-10-31）**：官方最高分仍是 **V23 TADL 53.555**（τ=0.45，7,459 框；F5 标杆 58.105）。V23 为**两段式**：Stage A 补标口径 72 轮预训练 → Stage B 旧标注口径 TADL 精调 **21 轮**（单卡约 2h），详见 `docs/MODEL_RECORDS.md` §11.5。此后 V24–V36 均已跑过：**V27 纯净无偏**（val mAP 0.8959 / AP50 0.9638）与 **V28-A 视差觉醒**（val AP75 0.9502）是历史 val 高点；**V28-B 72 轮长跑单调退化（0.888→0.778），`best_stg2` 落在最差轮次，禁止使用**；V29 循环蒸馏、V30 CSSP、V31 Co-ATSS、V32 PIG 有记录；V33 失败结案；**V36**（HGNetv2-B5 六通道 + P2-v10 + DINOv3 教师蒸馏 + Co-ATSS）在 ailab40 完成 50 轮纯 FP32 训练并产出 1000 图提交包。⚠️ V23/V27/V28 与 V34–V36 的验证集输入、标注和来源不同，**不能拼成统一排名**。
 - **当前主线：纯净基准 v1**（`vendor/DEIMv2/configs/deimv2/aic_clean_baseline_v1.yml`，修复 14 项通用正确性缺陷后的完全展开配置），2026-10-22 起在 ailab40 GPU1 跑 50 轮，10-23 在第 6 轮因该卡显存硬件错误中断（`docs/MODEL_RECORDS.md` §四十）；同日按 `docs/02_collaboration_and_specs/CLOUD_MIGRATION_RUNBOOK.md` 迁到 seeta RTX PRO 6000 Blackwell 从头重训（BF16 autocast + TF32，§四十一–四十二），10-24 跑完第 46 轮（epoch 45）后实例被外部停止，没有 `final.pth`，已决定不再续跑；验证集最佳为 epoch 37 的 mAP 55.94（单次运行、在同一 200 张验证集上选点，口径见 §四十四、§四十五）。定义与修复清单见 `docs/02_collaboration_and_specs/CLEAN_BASELINE.md`，任务完成度见同目录 `AIC_TASK_MAP.md`，记录见 `docs/MODEL_RECORDS.md` §三十五。**10-26 决赛测试集（Phase 3）首个官方成绩 51.1**（§四十六；Phase 3 ≠ Phase 2，不能与 53.555 / 58.105 比较）；同日完成 v1 模态鲁棒性剖面与**红外绑定 pilot 配置** `aic_irbind_pilot_ws_v1.yml`（仅配置与热启动契约，未训练，§四十七）。
 - **11 月支线（2026-11-01～02，只评估 + 一次外部框架微调实测）**：**Mr.DETR**（外部 CVPR2025 框架，Route-3 原子单元评估）用 detrex/detectron2 跑了一次 Swin-L **纯 RGB** 微调，AIC 200 图验证 **mAP 43.55**（单 RGB、7 epoch，不能与 DEIMv2 六通道 v1 的 55.94 排名，只能当纯 RGB 上限数据点）；**Co-DINO 夜间亮度门控残差分支**（冻结检测器、只训小门控）是机制 pilot，**无训练收益证据、未用于任何提交**。记录见 `docs/MODEL_RECORDS.md` §四十九 / §五十，报告在 `docs/04_audits_and_ablations/mrdetr_2026-11-01/`。
+- **竞赛收官（2026-11-24）**：团队获 **AIC2026 全国总决赛 国家二等奖（国二）**。获奖主力为团队的 **Co-DINO 5-scale Swin-L 三模态融合主线**（外部协作方交流包，本仓不归档其代码/权重）；本仓是团队的 **DEIMv2 / Sovereign V23** 技术线（V23 为复赛官方提交包所用架构）。11 月两条支线（§四十九 / §五十）**未用于获奖提交**，本仓不把奖项记为自身模型成绩。记录见 `docs/MODEL_RECORDS.md` §五十一。本机非入库数据/权重/产物已整体清理（≈44.6 GB），仓库只保留 git 内容与官方提交包。
 
 ## 2. 环境与运行约定
 
@@ -72,6 +73,8 @@ CODEBUDDY.md -> AGENTS.md                        兼容旧入口（内容已并�
 MODEL_RECORDS.md -> docs/MODEL_RECORDS.md           ★ 唯一实验真相源（仓库里仅剩这两个软链）
 ```
 
+> ⚠️ **2026-11-24 竞赛收官后本机已全清非入库内容**（`dataset/`、`work_dir/`（仅留 Phase 3 v1 提交包）、`outputs/`（仅留官方提交包）、`weights/`、`logs/`、`archive/`（仅留清理清单）、`vendor` 非入库资源）；仓库现只剩 git 跟踪文件，以上目录职责为设计约定，需重跑时按 `scripts/prep/` 重新生成。
+
 ## 4. 红线（务必遵守）
 
 1. **根目录整洁**：禁止在根目录新增临时脚本、日志、权重、图表。临时代码 → `archive/scratch/`，日志 → `logs/<exp>.log`，图表 → `outputs/`（报告 → `outputs/reports/`）。
@@ -123,7 +126,7 @@ $PY scripts/collect_model_records.py
 - **多模态 backbone** 由 config 的 `DEIM.backbone:` 字段选择（**不是 `fusion:`**），另配同名参数块（如 `HGNetv2MultiModal:`）。**主方案 `HGNetv2MultiModal` 在 `vendor/DEIMv2/engine/backbone/hgnetv2_mm.py`**（DCDA 视差对齐 + 3D-Lift + DOG 深度阶跃门控 + 双边池化 + 浅层边缘融合）；`multimodal_backbones.py`（约 2400 行）放的是下一条列出的 `DINOv3STAs*` 历史变体与 CSSA/BiDir/RDT 等融合件。新 backbone 须在 `engine/backbone/__init__.py` 中 import 才会注册。
 - **可选 backbone 变体**（历史/消融）：`DINOv3STAs`(纯 RGB 基线) · `…CSD`(通道互补+CBAM) · `…BiDir`(RGB↔IR 双向交叉注意力) · `…DiffFuse`(模态主导度加权) · `…TriModal`(RGB+heat 共 stem) · `…PureIR`(单红外) · **`…RDTTrack`**(正交去冗余 + Fovea/PromptBlock 注入冻结 RGB，前期主方案) · `…RDT`/`…RDTDiffuse`(RGB-D 对照/差异融合注入) · `…BiDirPaper`(Tang'24 复现)。
 - **历史术语**：**deepir** = `work_dir/deepir_cache/train/*.pt` 6 通道离线缓存 + `CocoDetectionMultiModalCached`（缓存构建脚本已删，数据集类仍在 `engine/`，现存配置都不用它）；**midboost** = 暗光亮度采样聚焦中段（`level: [0.005,0.45]` + log-uniform 过采样）的微调策略。
-- **训练用 COCO 划分**：`work_dir/deimv2_dataset/{train 1800, valid 200}`（seed=42）。标注两个口径：`instances_train.json`（官方老标注，V23 起主线）与 `instances_train_quality1998.json`（质量补标，**会产生官方判定 FP，已弃用**）。
+- **训练用 COCO 划分**：`work_dir/deimv2_dataset/{train 1800, valid 200}`（seed=42；本机已随收官清理删除，可用 `scripts/prep/prepare_dataset.py` + `yolo_to_coco.py` 重生成）。标注两个口径：`instances_train.json`（官方老标注，V23 起主线）与 `instances_train_quality1998.json`（质量补标，**会产生官方判定 FP，已弃用**）。
 - **`interaction_indexes` 三流共用**：RGB 与 aux 的 ViT 层数不等（ViT-L 24 层 + ViT-S 12 层）会越界断言，已由 `_scale_interaction_indexes()` 按 depth 比例缩放；新增 backbone 组合时留意。
 - **桌面合成器抢显存**：Wayland/niri 曾独占 ~12 GiB，导致"只有 13GB 可用"的误解（卡本身 15.46 GiB）。`accum_steps` 就是为此加的。
 - **`.gitignore`** 忽略 `*.pth/*.pt/*.log/*.pkl/*.out`、`/dataset`（只锚定仓库根目录的原始数据，目录或软链都匹配）、`/data_aux/`、`**/work_dir/`、`archive/`、`vendor/Depth-Anything-V2/`。**不要改回不带 `/` 前缀的 `dataset/`**：它会连带忽略 `vendor/DEIMv2/` 下 `engine/data/dataset/`、`configs/dataset/`、`tools/dataset/` 三个代码目录，新建文件被静默忽略（`95b2090` 修过一次，`bc383e2` 又改回，2026-10-22 恢复）。当时补交的 21 个 `configs/dataset/aic_detection_{night*,dndt_*,cp*,nightify}.yml` 只被旧实验 config include，已随它们在同日整理中删除；现存所有 config 的 `__include__` 目标均在库。
@@ -152,6 +155,7 @@ $PY scripts/collect_model_records.py
 
 ## 8. 整理记录
 
+- **2026-11-24（收官）**：竞赛获 **国二（AIC2026 全国总决赛 国家二等奖）**，获奖主力为团队的 Co-DINO 融合主线（外部交流包，本仓不归档）；本仓 V23 线为复赛（半决赛）官方提交包架构。同日整体清理本机非入库产物 ≈**44.6 GB**：`dataset/` 29 GB、`work_dir/` 1.8 GB、`outputs/` 5.3 GB − 官方提交包、`weights/` + `weight/` 3.5 GB、`vendor/DEIMv2/{ckpts,weight}` 4.1 GB、`vendor` 外部合集 0.7 GB、`logs/` 37 MB、`archive/` 72 MB − 清理清单、`work/` 17 MB。保留 git 跟踪文件（325）、`outputs/official_submission_package/`（复赛官方包 238 MB）、`work_dir/submissions/clean_v1_phase3_thr048/`（Phase 3 v1 提交包 4.4 MB）、`archive/backups/cleanup_20261124/`（final_local_cleanup_manifest.tsv）与用户目录 `.workbuddy/` / `.obsidian/`。此后仓库进入归档只读状态；记录见 `MODEL_RECORDS.md` §五十一。
 - **2026-11-24**：第三轮清理（11 月支线实验入库 + 一次性产物归档）。Git 跟踪文件 318 → 325（**本轮未删除任何 git 跟踪文件**）：新增 `docs/04_audits_and_ablations/mrdetr_2026-11-01/` 6 份报告与 `REPO_CLEANUP_20261124_removed.txt` 本清单，`MODEL_RECORDS.md` 新增 §四十九 / §五十（11 月支线）；分支 `codino-rgb-ceiling` 新增 24 个 Co-DINO 门控脚本 / 配置 / README；同时清理约 69.3 MB 本地一次性产物（框架源码 / wheels / tarball / 解压快照 / smoke 快照），根目录 `index.html`（46.9 MB）移到 `outputs/reports/aic_workstation_export_20261028.html`，保留 744 `epoch_4.pth`（911 MiB）、日志、分析产物与 mrdetr 证据（`dataset/` 与主线权重未动）。清理前完整快照 tag `pre-cleanup-20261124`（= `6e56b74`）；依据与本地清理明细见 `REPO_CLEANUP_LOG.md`，逐文件清单 `REPO_CLEANUP_20261124_removed.txt`（同目录）。
 - **2026-10-31**：第二轮清理。Git 跟踪文件 451 → 317（删 135、增 1 份清单）：删除 134 个已结案代码/配置（scripts 94：V36 平移/归一化/light 诊断 65、A01/A02 消融 17、eval/inference/train/viz 12；configs 36：v36_mechanism 25 + injection_warmstart 11；vendor 上游演示资产 4）与 1 份生成式 HTML 审计报告；`scripts/` 168→74、`configs/deimv2/` 67→31；同时清理约 87 GB 过期本地实验产物（旧检查点/旧 outputs 分析/外部数据集/旧测试派生数据等，`dataset/` 与主线权重未动）。清理前完整快照 tag `pre-cleanup-20261031`（= `2c170ef`）**已推送到 GitHub**；逐文件删除清单 `REPO_CLEANUP_20261031_removed.txt`（同目录），依据与本地清理明细见 `REPO_CLEANUP_LOG.md`。
 - **2026-10-22**：删除 1,356 个历史实验文件（V1–V33 配置 / 启动 / 分析 / 可视化脚本、禁用的集成后处理），去掉文档软链层，V20 / V23 规范归入 `docs/03_architecture_designs/`。保留与删除的依据、各目录数量、取回方法见 `docs/02_collaboration_and_specs/REPO_CLEANUP_LOG.md`；逐文件清单 `REPO_CLEANUP_20261022_removed.txt`（同目录）。

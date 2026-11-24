@@ -4,6 +4,7 @@
 [![Framework](https://img.shields.io/badge/Framework-DEIMv2%20%7C%20D--FINE-blue.svg)](vendor/DEIMv2)
 [![Flagship](https://img.shields.io/badge/Flagship-Sovereign%20V23%20(1152x2048%20Zero--Distort)-brightgreen.svg)](docs/03_architecture_designs/SOVEREIGN_V23_CORE_SPEC.md)
 [![Official Best](https://img.shields.io/badge/Official%20Phase%202-53.555%20(best%20submitted)-gold.svg)](docs/MODEL_RECORDS.md)
+[![Award](https://img.shields.io/badge/Award-AIC2026%20National%202nd%20Prize%20(%E5%9B%BD%E4%BA%8C)-red.svg)](docs/MODEL_RECORDS.md)
 [![Hardware](https://img.shields.io/badge/Hardware-RTX%20PRO%206000%2096GB-orange.svg)](docs/02_collaboration_and_specs/PROJECT_SPEC.md)
 [![Repo](https://img.shields.io/badge/Repo-3rd%20cleanup%20%282026--11--24%29-lightgrey.svg)](docs/02_collaboration_and_specs/REPO_CLEANUP_LOG.md)
 [![Branch](https://img.shields.io/badge/Branch-codino--rgb--ceiling%20%28Co--DINO%20gate%29-blueviolet.svg)](https://github.com/Air-0000/AIC2026-multimodal-detection/tree/codino-rgb-ceiling)
@@ -19,15 +20,18 @@
 | :--- | :--- |
 | **任务** | 三模态 12 类检测；提交为逐图 `.txt`（`class cx cy w h conf`，归一化，CRLF，≤100 框） |
 | **12 类**（官方 class_id 0–11 顺序） | person, boat, animal, seat, sign, bicycle, car, ball, light, garbage can, uav, tricycle |
-| **数据** | 训练 2,000 组（官方统计 14,432 框、7.22 框/图）；测试两组各 1,000 组**无标签**：Phase 2 旧布局 `dataset/test/{visible,depth,infrared}`、Phase 3 `dataset/test/AIC2026_PHASE_3_1000/`；官方先验 7,086 框 / 7.09 框每图（Phase 2） |
+| **数据** | 训练 2,000 组（官方统计 14,432 框、7.22 框/图）；测试两组各 1,000 组**无标签**：Phase 2 旧布局 `dataset/test/{visible,depth,infrared}`、Phase 3 `dataset/test/AIC2026_PHASE_3_1000/`；官方先验 7,086 框 / 7.09 框每图（Phase 2）。**本机原始数据已于 2026-11-24 竞赛收官后清理，git 不含数据** |
 | **框架** | **DEIMv2**（DINOv3-ViT / HGNetv2-X + HybridEncoder + D-FINE 式解码器），`vendor/DEIMv2/` |
 | **官方最高分** | **Sovereign V23 TADL**：Phase 2 实测 **53.555**（τ=0.45，7,459 框）；历史参照标杆 F5 = 58.105；决赛 Phase 3 上纯净基准 v1 首个官方成绩 **51.1**（不同测试集，不可横比）。截至 2026-11-24 无新增官方提交 |
-| **最新进展** | 当前主线仍是**纯净基准 v1**（`vendor/DEIMv2/configs/deimv2/aic_clean_baseline_v1.yml`）：seeta 训练停在 epoch 45、验证集最佳 epoch 37（mAP 55.94），Phase 3 官方 **51.1**（MODEL_RECORDS §四十六）；10-26 完成模态鲁棒性剖面与红外绑定 pilot 配置（§四十七，仅配置未训练）；11-01～02 两条支线（§四十九 / §五十）只做评估与机制 pilot，**未改变主线、未用于提交**。V24–V37 的演进与现状以 [`AGENTS.md`](AGENTS.md) §1 为准 |
-| **首选可用权重** | 本机：`weights/sovereign_v23_best_stg2_ep71.pth`（V23，官方最高分）、`weights/sovereign_v23_tadl_best_stg2.pth`（TADL 变体）、`weight/sovereign_v23_best_stg1_e33.pth`（Stage A）、`weights/F5.pth`（标杆 58.105）、`outputs/checkpoints/aic_clean_baseline_v1_seeta/best.pth`（当前主线，Phase 3 提交所用）、`outputs/checkpoints/s0918_gate_20261101/epoch_4.pth`（11 月 Co-DINO 门控 pilot，911 MiB）。V27 / V28-A 权重本机已不存在（历史台账在远端） |
+| **竞赛成绩** | **AIC2026 全国总决赛 国家二等奖（国二）**（2026-11-24）。团队奖项：获奖主力为团队的 **Co-DINO 5-scale Swin-L 三模态融合主线**（外部协作方交流包，本仓不归档其代码/权重）；本仓是团队的 **DEIMv2 / Sovereign V23** 技术线（V23 为复赛官方提交包所用架构）。**本仓不把该奖项记为自身模型成绩** |
+| **最新进展** | 当前主线仍是**纯净基准 v1**（`vendor/DEIMv2/configs/deimv2/aic_clean_baseline_v1.yml`）：seeta 训练停在 epoch 45、验证集最佳 epoch 37（mAP 55.94），Phase 3 官方 **51.1**（MODEL_RECORDS §四十六）；10-26 完成模态鲁棒性剖面与红外绑定 pilot 配置（§四十七，仅配置未训练）；11-01～02 两条支线（§四十九 / §五十）只做评估与机制 pilot，**未改变主线、未用于提交**；**2026-11-24 竞赛收官（团队获国二，见下）**。V24–V37 的演进与现状以 [`AGENTS.md`](AGENTS.md) §1 为准 |
+| **历史权重清单**（本机已于 2026-11-24 清理，路径仅作追溯） | `weights/sovereign_v23_best_stg2_ep71.pth`（V23，官方最高分）、`weights/sovereign_v23_tadl_best_stg2.pth`（TADL 变体）、`weight/sovereign_v23_best_stg1_e33.pth`（Stage A）、`weights/F5.pth`（标杆 58.105）、`outputs/checkpoints/aic_clean_baseline_v1_seeta/best.pth`（v1 主线，Phase 3 提交所用）、`outputs/checkpoints/s0918_gate_20261101/epoch_4.pth`（11 月 Co-DINO 门控 pilot，911 MiB）。V27 / V28-A 权重本机从未长期保留（历史台账在远端） |
 | **环境** | conda `deimv2`（训练 / 评测 / 推理）；本地 RTX 5060 Ti 调试，远端 `seeta` RTX PRO 6000 96GB 训练 |
 
 ### 近期变更（2026-11-24）
 
+- **竞赛收官（2026-11-24）**：团队获 **AIC2026 全国总决赛 国家二等奖（国二）**。获奖主力为团队的 **Co-DINO 5-scale Swin-L 三模态融合主线**（外部协作方交流包，本仓未归档其权重/代码）；本仓的 **DEIMv2 / Sovereign V23** 线是团队复赛（半决赛）官方提交包所用架构（V23 TADL，1,000 图 7,212 框，包见 `outputs/official_submission_package/`），决赛阶段主线切换为 Co-DINO；本仓 11 月两条支线（§四十九 / §五十）均未用于获奖提交。**本仓不把该奖项记为自身模型成绩**。
+- **收官本地清理（2026-11-24）**：非入库内容整体清理 ≈**44.6 GB**（`dataset/` 29 GB、`work_dir/` 1.8 GB、`outputs/` 除官方提交包、`weights/`+`weight/` 3.5 GB、`vendor/DEIMv2/ckpts/` 4.0 GB、`vendor` 外部合集 0.7 GB、`logs/`、`archive/`、`work/` 等）。保留 git 跟踪文件、`outputs/official_submission_package/`（复赛官方包 238 MB）、`work_dir/submissions/clean_v1_phase3_thr048/`（Phase 3 v1 提交包 4.4 MB）与 `archive/backups/cleanup_20261124/`（清单）；`dataset/`、权重与实验产物不再在本机，详见 MODEL_RECORDS §五十一。
 - **第三轮仓库清理完成**：Git 跟踪文件 **318 → 325**（本轮不删跟踪文件），本地一次性产物清理 ≈**69.3 MB**，根目录 `index.html`（46.9 MB）移入 `outputs/reports/`；清理前快照 tag `pre-cleanup-20261124`（= `6e56b74`）已推送 GitHub。依据、清单与取回方式见 [`REPO_CLEANUP_LOG.md`](docs/02_collaboration_and_specs/REPO_CLEANUP_LOG.md)。
 - **11 月支线入库**：Mr.DETR / Mr.DETR++ 拆解评估 6 份报告 → [`docs/04_audits_and_ablations/mrdetr_2026-11-01/`](docs/04_audits_and_ablations/mrdetr_2026-11-01/00_REPORT.md)；Co-DINO「冻结检测器 + 夜间亮度门控残差分支」脚本 24 个 → 分支 `codino-rgb-ceiling` 的 `scripts/train/codino/swinl_rgb_full/` 与 `scripts/train/codino/aic_mm/`（含 README）。
 - **两个 11 月数据点（都不是主线成绩）**：Mr.DETR-Align Swin-L 仅 RGB 微调在 AIC 200 图上 **mAP 43.55**（7 epoch，不能与六通道 v1 的 55.94 排名）；Co-DINO 门控 pilot 契约全部通过（正常光与底座逐位一致、只训练分支、Phase 3 门控触发 0/1000），但**无训练收益证据、未用于提交**。记录见 [`MODEL_RECORDS.md`](docs/MODEL_RECORDS.md) §四十九 / §五十。
@@ -78,6 +82,8 @@ $PY scripts/eval/check_submission.py <SUBMISSION_DIR> dataset/test/AIC2026_PHASE
 ```
 
 > 训练派生数据（1800 / 200 划分）与夜化验证集不在 git 里：分别用 `scripts/prep/prepare_dataset.py` + `scripts/prep/yolo_to_coco.py`、`scripts/prep/prep_nightxx_server.py` 重新生成。
+>
+> ⚠️ 本机 `dataset/`、权重与实验产物已于 2026-11-24 竞赛收官后整体清理；在全新环境复现需先准备数据与权重。
 
 ---
 
@@ -106,6 +112,8 @@ AGENTS.md        环境 / 红线 / 命令速查        MODEL_RECORDS.md  实验�
 CLAUDE.md        补充约定（精度 / 测试 / 坑点）  CODEBUDDY.md      旧入口（软链 → AGENTS.md）
 ```
 
+> 2026-11-24 竞赛收官后本机已全清非入库内容（≈44.6 GB）：现在只剩 git 跟踪文件 + `outputs/official_submission_package/`（复赛官方提交包）+ `work_dir/submissions/clean_v1_phase3_thr048/`（Phase 3 v1 提交包）+ `archive/backups/cleanup_20261124/`（清理清单）。
+
 ---
 
 ## 六、分支与 tag
@@ -116,6 +124,7 @@ CLAUDE.md        补充约定（精度 / 测试 / 坑点）  CODEBUDDY.md      �
 | `codino-rgb-ceiling` | Co-DINO 支线归档：10 月 Co-DINO 环境 / 配置 / 推理脚本 + 11 月夜间门控 G0 / G1 代码（24 文件 + README）；底座权重不在本仓、**未用于提交** |
 | `master_backup_20261022` | 2026-10-22 清理前备份（仅本地，未推送） |
 | tag `pre-cleanup-20261022` / `pre-cleanup-20261031` / `pre-cleanup-20261124` | 三轮清理前快照（分别 = `4d71413` / `2c170ef` / `6e56b74`），均已推送 GitHub；旧文件用对应 tag 取回 |
+| tag `final-award-20261124` | 竞赛收官快照（国二记录 + 本机清理说明），已推送 GitHub |
 
 ```bash
 git fetch --tags
