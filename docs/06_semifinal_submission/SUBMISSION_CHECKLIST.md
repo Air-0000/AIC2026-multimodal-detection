@@ -1,7 +1,7 @@
 # 半决赛提交清单（代码 / 模型 / 环境 / 结果 / 报告）
 
 > 依据：竞赛细则§十三。半决赛须提交完整算法代码（数据预处理、训练、推理）、测试结果文件、模型文件（下载链接）与加载说明及运行环境、PDF 技术报告；模型须能在指定测试环境中运行并输出结果。
-> 状态：☐ 未开始　◐ 进行中　☑ 完成。截止日期见 `docs/02_collaboration_and_specs/AIC_TASK_MAP.md` 排期（截止前约 5 天冻结）。
+> 状态：☐ 未开始　◐ 进行中　☑ 完成。截止日期以组委会通知为准（`AIC_TASK_MAP.md` 仅为 2026-10-21 的历史排期，不再作为截止日期来源；原计划截止前约 5 天冻结）。
 
 ## A. 待向组委会确认（越早越好）
 
@@ -26,7 +26,7 @@
 
 ## C. 测试集预处理
 
-- ☑ 测试集配准红外与 LBG 红外按训练同法生成（MODEL_RECORDS §三十九）：训练数据的生成器已确证为 `batch_generate_server_ir_lbg.py`（2000/2000 逐字节复现）；用 `scripts/prep/gen_ir_like_train.py` 生成了 `work_dir/test_ir_like_train/{infrared_aligned,lbg_ir}`。**不要再用** `work_dir/test_aligned_ir`（旧 v1 配准器）与 `work_dir/test_lbg_ir`，两者与训练 1000/1000 不一致。最终提交代码须包含该生成步骤。
+- ☑ 测试集配准红外与 LBG 红外按训练同法生成（MODEL_RECORDS §三十九）：训练数据的生成器已确证为 `batch_generate_server_ir_lbg.py`（2000/2000 逐字节复现）；用 `scripts/prep/gen_ir_like_train.py` 生成了 `work_dir/test_ir_like_train/{infrared_aligned,lbg_ir}`（Phase 3 用 `work_dir/test3_ir_like_train/`）。**不要再用** `work_dir/test_aligned_ir`（旧 v1 配准器）与 `work_dir/test_lbg_ir`（两者已于 2026-10-31 清理），它们与训练 1000/1000 不一致。最终提交代码须包含该生成步骤。
 - ☐ 深度使用与训练一致的来源：纯净 v1 训练使用原始 `depth`（raw16），不是 `depth_p0`。
 - ☐ 量化历史测试输入不一致的影响：在验证集上用 v1 配准器 + `prep_ir_localbg.py` 生成同类输入，对比推理（需 GPU）。
 

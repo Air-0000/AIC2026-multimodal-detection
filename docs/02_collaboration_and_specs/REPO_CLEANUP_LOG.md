@@ -2,6 +2,113 @@
 
 > 历次整理的完整记录。`AGENTS.md` 只保留一句指针；本文件按时间倒序。
 
+## 2026-11-24：第三轮清理（11 月支线实验入库 + 一次性产物归档）
+
+**起点**：commit `6e56b74`（= 当时 `origin/master`），annotated tag `pre-cleanup-20261124` 指向它。
+**结果**：Git 跟踪文件 318 → 325（本轮**未删除任何 git 跟踪文件**；新增 mrdetr 报告 6 份与本清单，`MODEL_RECORDS.md` / 本文件 / `AGENTS.md` 为改写）；分支 `codino-rgb-ceiling` 新增 24 个 Co-DINO 门控脚本 / 配置 / README。本地被 ignore 的 11 月一次性产物清理 ≈69.3 MB；根目录 `index.html`（46.9 MB 生成式工作台导出）移到 `outputs/reports/aic_workstation_export_20261028.html`；保留 744 `epoch_4.pth`（911 MiB）、日志、分析产物与 mrdetr 证据。`engine/` 一个文件都没动，`dataset/`、训练输入软链与提交包未动。
+
+### 为什么清 / 为什么入库
+
+- 11 月 01–02 的两条支线（Mr.DETR 评估 + Swin-L 纯 RGB 微调；Co-DINO 夜间亮度门控 pilot）只落在被 gitignore 的 `work_dir/`、`outputs/`、`logs/` 里，仓库里既没有代码也没有记录；本机是唯一副本，不入库就会随时间丢失。
+- 支线留下的一次性中间产物——下载的 onedl-mmdetection 源码树、缓存 wheels、源码 tarball、解压快照、重复代码快照——只在搭建与等价性验收时有用，可重下 / 可重新生成；根目录 `index.html` 是生成式工作台导出，不该占根目录。
+- 沿用前两轮的原则：已结案或一次性使用、拿不准的靠 tag 取回。
+
+### 入库内容（11 月支线）
+
+- `docs/04_audits_and_ablations/mrdetr_2026-11-01/`：Mr.DETR / Mr.DETR++ 拆解评估 6 份报告（00 总报告、01 代码级拆解、02 论文与配方、03 迁移方案、04 环境搭建、05 Swin-L 纯 RGB 微调结果）。原始论文文本与 metrics / 预测 json 作为本地证据留在 `outputs/reports/mrdetr_2026-11-01/`，**不入库**。
+- `docs/MODEL_RECORDS.md` **§四十九**（Mr.DETR 评估结论 + Swin-L 纯 RGB 微调实测：AIC 200 图验证 mAP 43.55，单 RGB、7 epoch，不能与 v1 六通道 55.94 排名）与 **§五十**（Co-DINO 夜间亮度门控 pilot：机制、契约、744 训练与评测口径，无有效成绩）。
+- 分支 `codino-rgb-ceiling`（worktree，24 个文件）：`scripts/train/codino/swinl_rgb_full/` 与 `scripts/train/codino/aic_mm/`，含 G0 / G1 两代门控实现、配置生成器、契约与验收脚本、评测 / 指纹脚本、README。**不入库**：底座权重、`val.json` 标注、预测 json、onedl-mmdetection 源码、wheels / tarball、解压快照。
+
+### 本地被 ignore 产物的清理（≈69.3 MB，不进 tag、不可回滚）
+
+| 类别 | 回收 | 内容 |
+|---|---:|---|
+| 框架源码 | ≈37.3 MB | `work_dir/s0918_gate_20261102/onedl-mmdetection-3.5.1/`（下载的源码树，可重下） |
+| wheels | ≈16 MB | `work_dir/s0918_gate_20261102/wheels/`（缓存的 onedl_mmcv 等 wheel） |
+| 打包副本 | 12.9 MB | `work_dir/s0918_gate_20261102/mmdet.tar.gz`（12,910,609 B） |
+| 解压源码快照 | ≈7.7 MB | `work_dir/s0918_gate_20261102/source_equivalence_20261102/{before,after}/`（压缩包保留） |
+| package smoke | ≈3.9 MB | `work_dir/s0918_gate_20261102/package_inference_smoke/`（重复代码快照 + smoke 预测） |
+| 杂项 / 坏占位 | ≈0.2 MB | `setup*.log`、`install_framework.log`、`gpu_*.pid`、`run_cpu.sh`、入库完成后的 `{scripts,vendor}/` 拷贝、坏软链 `vendor/deimv2_dinov3_l_coco.pth` |
+
+> 合计取清理前 `du` 实测的第一批 69,232,655 B（≈69.2 MB）；入库完成后补删 `scripts/`、`vendor/` 中间拷贝 114,501 B，最终 `du -sb` 实测 69,347,156 B ≈69.3 MB。逐文件字节数与处置见 [`REPO_CLEANUP_20261124_removed.txt`](REPO_CLEANUP_20261124_removed.txt)。
+
+### 保留了什么（供复核）
+
+- `outputs/checkpoints/s0918_gate_20261101/epoch_4.pth`（955,233,051 B，sha256 `3cf15f3a211975227ae8eadab151d1428f834ed1fd2d3269e4b491c854d5e907`）：唯一一次 744 训练产物。
+- `work_dir/audits/s0918_gate_20261102/`（≈3.7 MB）：`val_300.json`、`744_gate.py`、等价性日志与压缩包、`outputs_equiv/`。
+- `logs/s0918_gate_workstation/`（≈80 KB）：GPU 1 图 pilot 与 300 图链路评测日志。
+- `outputs/analysis/s0918_gate_workstation/`（≈9.4 MB）：1 图 pilot 指标、300 图 night01 预测、Phase 3 门控扫描。
+- `outputs/reports/mrdetr_2026-11-01/`（报告原件 + `artifacts/` + `paper_text.txt`，≈10.9 MB）与 `outputs/reports/aic_workstation_export_20261028.html`（46.9 MB，从根目录移入）。
+- 未动：`dataset/`、`work_dir/{deimv2_dataset,train_lbg_ir,test_ir_like_train,test3_ir_like_train}`、`work_dir/submissions/`、`outputs/official_submission_package/`、主线权重。
+
+### 怎么取回
+
+```bash
+git fetch --tags                                  # 其他机器先取 tag
+git show pre-cleanup-20261124:docs/MODEL_RECORDS.md
+git checkout pre-cleanup-20261124 -- <path>       # 恢复到工作树
+git checkout codino-rgb-ceiling -- scripts/train/codino/swinl_rgb_full/README.md   # 11 月支线代码
+```
+
+本地未入库证据：`work_dir/audits/s0918_gate_20261102/`（等价性 / 训练证据压缩包）；被删的框架源码 / wheels / tarball 按需重新下载。更早两轮删除的文件用 `pre-cleanup-20261031`（= `2c170ef`）/ `pre-cleanup-20261022`（= `4d71413`）。
+
+## 2026-10-31：第二轮清理（已结案实验代码 + 约 87 GB 本地产物）
+
+**起点**：commit `2c170ef`（= 当时 `origin/master`），annotated tag `pre-cleanup-20261031` 指向它，**已推送到 GitHub**（`git ls-remote --tags origin` 可见；其他机器 `git fetch --tags` 后即可取回，不再有 2026-10-22 条目中"tag 只在本地"的限制）。
+**结果**：Git 跟踪文件 451 → 317（删除 135 个文件，新增 1 份本清单）；`scripts/` 168 → 74；`vendor/DEIMv2/configs/deimv2` 67 → 31；`docs/` 41 → 41（删 1 份生成式 HTML、增 1 份清单）。本地被 ignore 的过期实验产物清理约 87 GB（磁盘已用 94% → 84%）。`engine/` 一个文件都没动，`dataset/` 未动。
+> 注：清理提交 rebase 到 `origin/master` 后，远端另有 `7539f1d`（红外数据核查，MODEL_RECORDS §四十八）新增 `scripts/analysis/audit_ir_alignment.py`，最终跟踪文件为 318。
+
+### 为什么清
+
+- 2026-10-22 之后又有一批实验结案：V36 平移 / 归一化 / light 诊断全部为负结果并固化进 `CLEAN_BASELINE.md`；A01（机制 pilot）与 A02（注入位置）已结案并写入 `AIC_TASK_MAP.md`；V34 thr / 去重打包探针只服务当时工作台对比。用户授权"已结案或一次性使用的文件删除，拿不准的靠 tag 取回"。
+- 本地磁盘 94% 满：`work_dir/` 49G、`vendor/DEIMv2/outputs/` 30G、`outputs/` 16G、`data_aux/` 22G 中大量是旧实验检查点、旧分析图与外部数据集。
+
+### 删除了什么（Git 跟踪：134 个代码/配置 + 1 份文档）
+
+| 目录 | 删除数 | 主要内容 |
+|---|---:|---|
+| `scripts/analysis` | 35 | V36 冻结权重的平移 / 归一化 / light / query 诊断与 V35 适配评测 |
+| `scripts/diagnostics` | 47 | 平移干预 / 追踪 / 归一化 30 + A01/A02 消融与事故诊断 17 |
+| `scripts/eval` | 3 | V34 零训练消融、V36 机制消融驱动、路由配额扫描 |
+| `scripts/inference` | 3 | V34 thr0.10 / 0.30 与 V34+V35 NMS 打包探针 |
+| `scripts/train` | 3 | A01/A02 消融队列与注入热启动启动器 |
+| `scripts/viz` | 3 | V34/V35 对比面板、归一化 / 平移证据图 |
+| `vendor/DEIMv2/configs/deimv2` | 36 | `v36_mechanism_*` 5 目录（25）+ `v36_injection_warmstart_20261019*` 3 目录（11） |
+| `vendor/DEIMv2` 顶层 | 4 | `hf_models.ipynb`、`example.jpg`、`figures/*.png`（上游演示资产） |
+| `docs/04_audits_and_ablations` | 1 | `AIC_IR融合攻坚整合报告.html`（生成式 HTML，本次唯一删除的文档） |
+
+完整逐文件清单见 [`REPO_CLEANUP_20261031_removed.txt`](REPO_CLEANUP_20261031_removed.txt)。**未删除**：当前主线三臂 / v2 / 红外绑定 pilot、V23 / F5 / V27 / V28-A / V34–V37 的配置+启动+推理脚本、数据管线、全部 CPU 契约测试、工作台 6 个脚本、框架 `engine/` / `tools/` / `train.py` / 上游 COCO 配置；唯一保留的 `package_*` 是单模型内部去重的 `package_v34_distinct_dedup.py`。
+
+### 本地被 ignore 产物的清理（约 87 GB，不进 tag、不可回滚）
+
+| 类别 | 回收 | 内容 |
+|---|---:|---|
+| 旧实验审计 | ≈13 GB | `work_dir/audits/v36_injection_warmstart_20261019*`（12.9G；warmstart 权重可由保留的 `v36_frozen.pth` + `prepare_v36_injection_stages.py` 再生） |
+| 旧实验检查点 | ≈27 GB | `vendor/DEIMv2/outputs/` 中 V1–V33 旧实验目录（保留 V28-A、V34、V36/V37 summary）；V30 与 `outputs/checkpoints` 的 md5 副本去重 |
+| 外部数据集 | ≈18 GB | `work_dir/{M3FD_raw,FLIR_raw,LLVIP}`、`data_aux/BDD100K*`、`aic_nightify`（赛题禁外部数据、全库 0 引用；9 档夜化验证集 `aic_valid_rgb_night*` 保留） |
+| 旧测试派生数据 | ≈7.6 GB | `work_dir/{test_aligned_ir,test_lbg_ir}`（AGENTS 明示旧配准器产物）、`work_dir/archives` 与 dataset 同源的两个 tar、旧缓存 pt |
+| 过期中间产物 | ≈7 GB | `v2x_input_check_20261026`、`v22_phase3_20261026`、`v31_infer`、`rfdetr_dataset`、`dav2_token_cache` 等 2026-10 一次性审计 |
+| 旧 outputs 分析 | ≈7.2 GB | `outputs/analysis/discrepancies_f5_vs_v23..v28`、UAV / ball 专项、可视化、V28-B（已判退化禁用）检查点、2 份与工作台首页 md5 相同的 HTML |
+| 权重 / 杂物 | ≈2.5 GB | V21/V22 旧权重、重复 hgnetv2 权重、`NaN.pth`、`*_out/`、`__pycache__`、`work_dir` 误落产物 |
+
+保留的关键本地产物：`dataset/`（红线）、`work_dir/{deimv2_dataset,train_lbg_ir,test_ir_like_train,test3_ir_like_train,test1_ir_like_train}`、`outputs/checkpoints/aic_clean_baseline_v1_seeta/best.pth`（当前主线唯一权重）、`outputs/checkpoints/v36_mechanism_20261018/v36_frozen.pth`、`outputs/official_submission_package/`、`work_dir/submissions/`（工作台 registry 引用）、`work_dir/audits/{aic_clean_baseline_v1_20261021,v36_mechanism_20261018}` 等证据目录、`weights/{F5,V23,RealESRGAN}`、`vendor/DEIMv2/ckpts/{dinov3,dfine_x_obj2coco}.pth`、9 档夜化验证集、`logs/`、`archive/`。执行明细与删除前快照：`archive/backups/cleanup_20261031/`（`local_delete_manifest.tsv`、`local_snapshot_{before,after}.txt`）；被删大目录里的轻量文本证据（manifest / json / README）另存 `local_evidence/`。
+
+### 文档层
+
+- 新增本条目与 `REPO_CLEANUP_20261031_removed.txt`；`AGENTS.md` §3/§6/§7/§8 与 `README.md` 更新目录数量、跟踪范围、tag、现状（Phase 3 51.1、pilot 未训练）、data_aux / 权重路径；`CLAUDE.md` §0 区分 macOS 镜像与 Linux 开发机、§5 提交框数；`PROJECT_SPEC.md` 修正 60 框 / 7,000–7,200 旧规、`test_aligned_ir`、`rfdetr_dataset` 示例、tag 取回方式与 scripts 分工表。
+- 历史文档加"已撤回 / 历史快照"标注而不删：`SAFE_POSTPROCESSING_GUIDELINES.md`、`SUBMISSION_CONFIDENCE_THRESHOLD_PRIOR.md`、`SOVEREIGN_V23_DETAILED_TECHNICAL_SPEC.md` §十（WBF 禁止执行）、`AIC_TASK_MAP.md`、`AIC_MASTER_COLLABORATION_REGISTRY.md`、`docs/03_architecture_designs/README.md`；`SUBMISSION_CHECKLIST.md` / `TECHNICAL_REPORT_DRAFT.md` / `QUESTIONS_TO_ORGANIZERS.md` 修正过期指引。
+- 本地的 `docs/archive/{training_records.md,training_records_mAP.md,llvip_dl.md}`（未跟踪、tag 不保护）已移到 `archive/backups/cleanup_20261031/docs_archive_local/`。
+
+### 怎么取回
+
+```bash
+git fetch --tags                                    # 其他机器先取 tag
+git show pre-cleanup-20261031:scripts/analysis/analyze_translation_phases.py
+git checkout pre-cleanup-20261031 -- <path>         # 恢复到工作树
+```
+
+2026-10-22 及更早删除的文件用 `pre-cleanup-20261022`（= `4d71413`）。两个 tag 均已推送到 GitHub。
+
 ## 2026-10-22：删除历史实验文件，去掉文档软链层
 
 **起点**：commit `4d71413`（已在 `origin/master`），本地 annotated tag `pre-cleanup-20261022` 指向它。

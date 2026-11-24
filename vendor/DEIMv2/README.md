@@ -59,10 +59,7 @@
 </p>
 
 
-<p align="center">
-  <img src="./figures/deimv2_coco_AP_vs_Params.png" alt="Image 1" width="49%">
-  <img src="./figures/deimv2_coco_AP_vs_GFLOPs.png" alt="Image 2" width="49%">
-</p>
+<!-- 示例图 figures/*.png 与 example.jpg 已于 2026-10-31 本地清理，需要时从 tag pre-cleanup-20261031 取回 -->
 
 </details>
 
@@ -109,7 +106,7 @@
 
 ### 2.0 Using Models from Hugging Face
 
-We currently release our models on Hugging Face! Here's a simple example. You can see detailed configs and more examples in [hf_models.ipynb](./hf_models.ipynb).
+We currently release our models on Hugging Face! Here's a simple example.（示例 notebook `hf_models.ipynb` 已于 2026-10-31 本地清理，需要时从 tag pre-cleanup-20261031 取回。）
 
 <details>
 <summary> Simple example </summary>

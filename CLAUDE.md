@@ -8,9 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 0. 这个 checkout 是什么
 
-- `~/Desktop/Project/AIC2026-multimodal-detection` 是 macOS 上的 **git 镜像**：只有 `vendor/DEIMv2/`、`scripts/`、`docs/`；没有 `dataset/ work_dir/ outputs/ weights/ logs/ archive/`，本机也没有 torch / conda 环境。这里只能读改代码与文档，**不能训练、推理或跑测试**——需要运行时，给出在 Linux 开发机或远端节点执行的命令。
+- **macOS 镜像 checkout**（`~/Desktop/Project/AIC2026-multimodal-detection`）：只有 `vendor/DEIMv2/`、`scripts/`、`docs/`；没有 `dataset/ work_dir/ outputs/ weights/ logs/ archive/`，本机也没有 torch / conda 环境。这里只能读改代码与文档，**不能训练、推理或跑测试**——需要运行时，给出在 Linux 开发机或远端节点执行的命令。
+- **Linux 开发机 checkout**（`/home/constant/CodeBuddy/Dev/AIC`，本文件当前所在环境）：有完整 `dataset/ work_dir/ outputs/ weights/ logs/ archive/`、RTX 5060 Ti、conda `deimv2` 与 torch/CUDA，可直接训练、推理与跑 CPU 契约测试。两处是同一个 git 仓库；代码/文档改动以 git 同步，数据与产物只在本机。
 - 脚本与文档里的 `ROOT = "/home/constant/CodeBuddy/Dev/AIC"`、`/root/autodl-tmp/AIC`、`/home/ailab40/...` 等绝对路径指 Linux 机器，**不要把它们"修"成本机路径**。
-- 2026-10-22 起仓库只保留主线、里程碑（V23 / F5 / V27 / V28-A / V34–V37）与框架；`MODEL_RECORDS.md` 等历史叙述里提到但仓库里找不到的脚本 / 配置，查 `docs/02_collaboration_and_specs/REPO_CLEANUP_20261022_removed.txt`，用 `git show pre-cleanup-20261022:<path>`（无 tag 时用 `4d71413`）取回，不要凭记录重写。
+- 2026-10-22 与 2026-10-31 两轮清理后，仓库只保留主线、里程碑（V23 / F5 / V27 / V28-A / V34–V37）与框架；`MODEL_RECORDS.md` 等历史叙述里提到但仓库里找不到的脚本 / 配置，查 `docs/02_collaboration_and_specs/REPO_CLEANUP_20261022_removed.txt` 与 `REPO_CLEANUP_20261031_removed.txt`，用 `git show pre-cleanup-20261031:<path>`（更早的历史用 `pre-cleanup-20261022:<path>` / `4d71413:<path>`）取回，不要凭记录重写。两个 tag 均已推送到 GitHub（`git fetch --tags` 可取）。
 
 ## 1. 工作顺序（用户定下的规则）
 
@@ -55,5 +56,5 @@ CUDA_VISIBLE_DEVICES='' $PY scripts/diagnostics/test_clean_baseline_contract.py 
 ## 5. 其他坑点
 
 - **`MODEL_RECORDS.md` 的写法**：`collect_model_records.py` 只重写 `<!-- AUTO_GENERATED_TABLES_START/END -->` 之间的表格，保留其后的手写章节（写前自动备份到 `archive/backups/`，手写部分字符数回退会硬断言中止）。手写结论加在 END 标记之后，不要手改自动表格。
-- **提交框数**：`check_submission.py` 强制每图 ≤100 框。`PROJECT_SPEC.md` §6 的"每图 ≤60 / 总数 7,000–7,200"是 V23 时期的做法；无标签测试集的总框数不能证明优劣，阈值只在有标签的 200 张验证集上定。
+- **提交框数**：`check_submission.py` 强制每图 ≤100 框。`PROJECT_SPEC.md` §6 的"每图 ≤60 / 总数 7,000–7,200"是 V23 Compact 时期的历史做法（2026-10-31 已在原处标注为历史）；无标签测试集的总框数不能证明优劣，阈值只在有标签的 200 张验证集上定。
 - **结论措辞**：历史文档中大量"必涨 / 根治 / 实锤"式叙述已被撤回。写记录时区分完整训练实测、零训练 / pilot、诊断观察与模拟数据；一次功能验收不等于可复现或有收益。

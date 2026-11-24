@@ -11,9 +11,10 @@
 
 - **12 类固定顺序**（class_id 0–11）：person, boat, animal, seat, sign, bicycle, car, ball, light, garbage can, uav, tricycle
 - **单一主干框架**：**DEIMv2**（DINOv3-ViT / HGNetv2-X Backbone + HybridEncoder + D-FINE/RT-DETR 式解码器），vendored 在 `vendor/DEIMv2/`。RF-DETR 路线已废弃。
-- **数据**：`dataset/train/` 2000 张（visible/infrared/infrared_aligned/depth/labels）；`dataset/test/AIC2026_PHASE_2_1000/` 1000 张**无标签**。
-- **版本现状（2026-10-22）**：官方最高分仍是 **V23 TADL 53.555**（τ=0.45，7,459 框；F5 标杆 58.105）。V23 为**两段式**：Stage A 补标口径 72 轮预训练 → Stage B 旧标注口径 TADL 精调 **21 轮**（单卡约 2h），详见 `docs/MODEL_RECORDS.md` §11.5。此后 V24–V36 均已跑过：**V27 纯净无偏**（val mAP 0.8959 / AP50 0.9638）与 **V28-A 视差觉醒**（val AP75 0.9502）是历史 val 高点；**V28-B 72 轮长跑单调退化（0.888→0.778），`best_stg2` 落在最差轮次，禁止使用**；V29 循环蒸馏、V30 CSSP、V31 Co-ATSS、V32 PIG 有记录；V33 失败结案；**V36**（HGNetv2-B5 六通道 + P2-v10 + DINOv3 教师蒸馏 + Co-ATSS）在 ailab40 完成 50 轮纯 FP32 训练并产出 1000 图提交包。⚠️ V23/V27/V28 与 V34–V36 的验证集输入、标注和来源不同，**不能拼成统一排名**。
-- **当前主线：纯净基准 v1**（`vendor/DEIMv2/configs/deimv2/aic_clean_baseline_v1.yml`，修复 14 项通用正确性缺陷后的完全展开配置），2026-10-22 起在 ailab40 GPU1 跑 50 轮，10-23 在第 6 轮因该卡显存硬件错误中断（`docs/MODEL_RECORDS.md` §四十）；同日按 `docs/02_collaboration_and_specs/CLOUD_MIGRATION_RUNBOOK.md` 迁到 seeta RTX PRO 6000 Blackwell 从头重训（BF16 autocast + TF32，§四十一–四十二），10-24 跑完第 46 轮（epoch 45）后实例被外部停止，没有 `final.pth`，已决定不再续跑；验证集最佳为 epoch 37 的 mAP 55.94（单次运行、在同一 200 张验证集上选点，口径见 §四十四、§四十五）。定义与修复清单见 `docs/02_collaboration_and_specs/CLEAN_BASELINE.md`，任务完成度见同目录 `AIC_TASK_MAP.md`，记录见 `docs/MODEL_RECORDS.md` §三十五。
+- **数据**：`dataset/train/` 2000 张（visible/infrared/infrared_aligned/depth/labels）；`dataset/test/AIC2026_PHASE_2_1000/` 复赛 1000 张**无标签**；`dataset/test/AIC2026_PHASE_3_1000/` 决赛 1000 张**无标签**（Phase 3 与 Phase 2 不可比）。
+- **版本现状（2026-10-31）**：官方最高分仍是 **V23 TADL 53.555**（τ=0.45，7,459 框；F5 标杆 58.105）。V23 为**两段式**：Stage A 补标口径 72 轮预训练 → Stage B 旧标注口径 TADL 精调 **21 轮**（单卡约 2h），详见 `docs/MODEL_RECORDS.md` §11.5。此后 V24–V36 均已跑过：**V27 纯净无偏**（val mAP 0.8959 / AP50 0.9638）与 **V28-A 视差觉醒**（val AP75 0.9502）是历史 val 高点；**V28-B 72 轮长跑单调退化（0.888→0.778），`best_stg2` 落在最差轮次，禁止使用**；V29 循环蒸馏、V30 CSSP、V31 Co-ATSS、V32 PIG 有记录；V33 失败结案；**V36**（HGNetv2-B5 六通道 + P2-v10 + DINOv3 教师蒸馏 + Co-ATSS）在 ailab40 完成 50 轮纯 FP32 训练并产出 1000 图提交包。⚠️ V23/V27/V28 与 V34–V36 的验证集输入、标注和来源不同，**不能拼成统一排名**。
+- **当前主线：纯净基准 v1**（`vendor/DEIMv2/configs/deimv2/aic_clean_baseline_v1.yml`，修复 14 项通用正确性缺陷后的完全展开配置），2026-10-22 起在 ailab40 GPU1 跑 50 轮，10-23 在第 6 轮因该卡显存硬件错误中断（`docs/MODEL_RECORDS.md` §四十）；同日按 `docs/02_collaboration_and_specs/CLOUD_MIGRATION_RUNBOOK.md` 迁到 seeta RTX PRO 6000 Blackwell 从头重训（BF16 autocast + TF32，§四十一–四十二），10-24 跑完第 46 轮（epoch 45）后实例被外部停止，没有 `final.pth`，已决定不再续跑；验证集最佳为 epoch 37 的 mAP 55.94（单次运行、在同一 200 张验证集上选点，口径见 §四十四、§四十五）。定义与修复清单见 `docs/02_collaboration_and_specs/CLEAN_BASELINE.md`，任务完成度见同目录 `AIC_TASK_MAP.md`，记录见 `docs/MODEL_RECORDS.md` §三十五。**10-26 决赛测试集（Phase 3）首个官方成绩 51.1**（§四十六；Phase 3 ≠ Phase 2，不能与 53.555 / 58.105 比较）；同日完成 v1 模态鲁棒性剖面与**红外绑定 pilot 配置** `aic_irbind_pilot_ws_v1.yml`（仅配置与热启动契约，未训练，§四十七）。
+- **11 月支线（2026-11-01～02，只评估 + 一次外部框架微调实测）**：**Mr.DETR**（外部 CVPR2025 框架，Route-3 原子单元评估）用 detrex/detectron2 跑了一次 Swin-L **纯 RGB** 微调，AIC 200 图验证 **mAP 43.55**（单 RGB、7 epoch，不能与 DEIMv2 六通道 v1 的 55.94 排名，只能当纯 RGB 上限数据点）；**Co-DINO 夜间亮度门控残差分支**（冻结检测器、只训小门控）是机制 pilot，**无训练收益证据、未用于任何提交**。记录见 `docs/MODEL_RECORDS.md` §四十九 / §五十，报告在 `docs/04_audits_and_ablations/mrdetr_2026-11-01/`。
 
 ## 2. 环境与运行约定
 
@@ -36,8 +37,8 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 - **本地 GPU 仅 RTX 5060 Ti 15.46 GiB**（开发调试）。远端训练节点：
   - **ailab40（V36 与中断的纯净基准 v1 在此训练）**：⚠️ 两张卡 ECC 均关闭，GPU1 显存静默出错（自检 88/720 次读校验不一致），不要再用它训练；任何新卡开训前先跑 `scripts/train/preflight_cloud.sh`。实验室服务器，Tesla V100 32GB（GPU 0、1；纯净基准用 GPU 1）。项目根 `/home/ailab40/hejianzhong/AIC_CLEAN_BASELINE_20261021`，python 为 `/home/ailab/ssd/bigdata/hejianzhong/_infra/envs/aic2026/bin/python`（**不是** `deimv2` 环境）；启动脚本 `scripts/train/run_clean_baseline_v1_ailab40.sh`。V100（SM_70）上**必须纯 FP32、禁用 cuDNN**——V36 早期 AMP 运行因 FP16 溢出有 92.9% 的步被 NaN-guard 跳过。纯净基准三臂配置现为 `use_amp: true`，在 V100 上会被 `train.py` 拒绝，须加 `-u use_amp=False`（`run_clean_arm.sh` 用 `USE_AMP=0`；两个 ailab40 启动脚本已带上该覆盖；精度规则见 CLAUDE.md §3）。
   - 以下两个 seetacloud 节点路径根均为 `/root/autodl-tmp/AIC`：
-  - **8 卡节点（V28 时期主力）**：`ssh -p 32426 root@connect.westb.seetacloud.com`（`~/.ssh/config` 别名 `seeta8`），8 × RTX PRO 6000 Blackwell。
-  - **96GB 单卡节点（V23 主训练）**：`ssh -p 33715 root@connect.westd.seetacloud.com`（别名 `seeta`），RTX 6000 Ada / RTX PRO 6000。
+  - **8 卡节点（V28 时期主力）**：`ssh -p <port> root@<seetacloud-host>`（`~/.ssh/config` 别名 `seeta8`），8 × RTX PRO 6000 Blackwell。
+  - **96GB 单卡节点（V23 主训练）**：`ssh -p <port> root@<seetacloud-host>`（别名 `seeta`），RTX 6000 Ada / RTX PRO 6000。
   - ⚠️ 容器可能未挂载 GPU（`v28_infer.log` 曾报 `Found no NVIDIA driver`），跑推理前先 `nvidia-smi -L` 确认。
 
 ## 3. 目录职责
@@ -51,12 +52,14 @@ vendor/DEIMv2/   核心框架：train.py、engine/、configs/、outputs/（训�
                  configs/deimv2/ 只留纯净基准三臂、里程碑（V23 / F5 / V27 / V28-A / V34–V37）与上游 COCO 配置
 vendor/Depth-Anything-V2/  深度补全代码与权重
 vendor/cv-model-improvement-master/  外部资源合集（仅参考，不参与流程）
-scripts/         prep(9) / train(21) / eval(10) / inference(13) / analysis(35) / viz(9) / lib(4)
-                 / diagnostics(58) / collect_model_records.py；历史实验脚本已于 2026-10-22 删除（见 §8）
+scripts/         prep(10) / train(19) / eval(7) / inference(10) / analysis(4) / viz(6) / lib(4)
+                 / diagnostics(14) / collect_model_records.py；历史实验脚本已于 2026-10-22 与 2026-10-31 两轮删除（见 §8）
 dataset/         原始数据（只读软链，git 忽略）
-work_dir/        运行时产物（已分层）：deimv2_dataset 训练数据 · test_ir_like_train/ 测试红外（按训练同法，§三十九；旧 test_aligned_ir/test_lbg_ir 勿再用）
-                 · submissions/ 提交包 · audits/ 审计 · visualizations/ 可视化 · archives/ 归档 · 外部集(LLVIP/M3FD_raw/FLIR_raw)
-data_aux/        外部辅助数据（BDD100K、夜化、black 变体，git 忽略）
+work_dir/        运行时产物（已分层）：deimv2_dataset 训练数据 · test_ir_like_train/ 与 test3_ir_like_train/ 测试红外
+                 （按训练同法，§三十九；旧 test_aligned_ir/test_lbg_ir 已于 2026-10-31 删除）
+                 · submissions/ 提交包 · audits/ 审计 · visualizations/ 可视化 · archives/ 归档 · transfer/ 迁移清单
+data_aux/        外部辅助数据（现仅保留 9 档夜化验证集 aic_valid_rgb_night{50…0005}，供模态鲁棒性评测；
+                 BDD100K/FLIR/LLVIP、aic_nightify 与 black 变体已于 2026-10-31 清理；git 忽略）
 outputs/         分析产物（已分层）：analysis/ · figures/ · metrics/ · reports/ · submissions/ · checkpoints/
                  · official_submission_package/（官方提交包，勿动）
 weight/ weights/ 权重中心（根目录保留软链兼容旧配置）
@@ -124,8 +127,8 @@ $PY scripts/collect_model_records.py
 - **`interaction_indexes` 三流共用**：RGB 与 aux 的 ViT 层数不等（ViT-L 24 层 + ViT-S 12 层）会越界断言，已由 `_scale_interaction_indexes()` 按 depth 比例缩放；新增 backbone 组合时留意。
 - **桌面合成器抢显存**：Wayland/niri 曾独占 ~12 GiB，导致"只有 13GB 可用"的误解（卡本身 15.46 GiB）。`accum_steps` 就是为此加的。
 - **`.gitignore`** 忽略 `*.pth/*.pt/*.log/*.pkl/*.out`、`/dataset`（只锚定仓库根目录的原始数据，目录或软链都匹配）、`/data_aux/`、`**/work_dir/`、`archive/`、`vendor/Depth-Anything-V2/`。**不要改回不带 `/` 前缀的 `dataset/`**：它会连带忽略 `vendor/DEIMv2/` 下 `engine/data/dataset/`、`configs/dataset/`、`tools/dataset/` 三个代码目录，新建文件被静默忽略（`95b2090` 修过一次，`bc383e2` 又改回，2026-10-22 恢复）。当时补交的 21 个 `configs/dataset/aic_detection_{night*,dndt_*,cp*,nightify}.yml` 只被旧实验 config include，已随它们在同日整理中删除；现存所有 config 的 `__include__` 目标均在库。
-- **git 跟踪范围**：约 440 个跟踪文件（`vendor/DEIMv2` ~235、`scripts/` ~160、`docs/` ~40），可用 git 追溯与回滚；2026-10-22 之前的全部历史文件在 tag `pre-cleanup-20261022`（= `4d71413`）。`dataset/`、`work_dir/`、`outputs/`、`logs/`、`archive/` 与权重仍被 gitignore，对它们的破坏性操作前仍要先备份到 `archive/backups/`。
-- **旧脚本去哪了**：依赖 `rfdetr` 环境的 `predict_*` / `tta_*`、V1–V33 的启动 / 分析 / 可视化脚本都已删除，清单见 `docs/02_collaboration_and_specs/REPO_CLEANUP_20261022_removed.txt`。推理用 `scripts/inference/predict.py`；里程碑版本仍用各自的 `scripts/inference/infer_test2_v*.py`。
+- **git 跟踪范围**：约 325 个跟踪文件（`vendor/DEIMv2` ~196、`scripts/` 75、`docs/` 48），可用 git 追溯与回滚；三轮清理前的完整历史分别在 tag `pre-cleanup-20261022`（= `4d71413`，已推 GitHub）、`pre-cleanup-20261031`（= `2c170ef`，已推 GitHub）与 `pre-cleanup-20261124`（= `6e56b74`）。`dataset/`、`work_dir/`、`outputs/`、`logs/`、`archive/` 与权重仍被 gitignore，对它们的破坏性操作前仍要先备份到 `archive/backups/`；2026-10-31 已清理约 87 GB 过期本地实验产物（见 REPO_CLEANUP_LOG）。
+- **旧脚本去哪了**：依赖 `rfdetr` 环境的 `predict_*` / `tta_*`、V1–V33 的启动 / 分析 / 可视化脚本，以及 2026-10-31 删除的 V36 平移/机制诊断与已结案消融脚本，清单见 `docs/02_collaboration_and_specs/REPO_CLEANUP_20261022_removed.txt` 与同目录 `REPO_CLEANUP_20261031_removed.txt`，按 tag 取回。推理用 `scripts/inference/predict.py`；里程碑版本仍用各自的 `scripts/inference/infer_test2_v*.py`。
 
 ## 7. 我该看哪篇文档
 
@@ -133,9 +136,11 @@ $PY scripts/collect_model_records.py
 |---|---|
 | **工程规范 + 全链路流程 + 数据契约 + 排错** | `docs/02_collaboration_and_specs/PROJECT_SPEC.md` ★ |
 | 文档总索引 / 项目门面 | `README.md`（根目录） |
-| 实验成绩单一真相源 | `docs/MODEL_RECORDS.md`（表A 训练模型总览，表B 暗光评测，第十一~十三节 V20~V28 演进总账） |
-| V23 旗舰架构（官方最高分） | `docs/03_architecture_designs/SOVEREIGN_V23_CORE_SPEC.md` + `SOVEREIGN_V23_DETAILED_TECHNICAL_SPEC.md`（同目录） |
-| 架构演进九阶段 | `docs/03_architecture_designs/`（01→09 即阅读顺序，README 有总表） |
+| 实验成绩单一真相源 | `docs/MODEL_RECORDS.md`（表A 训练模型总览，表B 暗光评测，V20~V37 + 纯净基准 v1 演进总账） |
+| V23 旗舰架构（官方最高分） | `docs/03_architecture_designs/SOVEREIGN_V23_CORE_SPEC.md` + `SOVEREIGN_V23_DETAILED_TECHNICAL_SPEC.md`（同目录；§十 WBF 计划已废弃，禁止执行） |
+| 架构演进九阶段 | `docs/03_architecture_designs/`（01→08 按编号阅读，第 9 部为 `SOVEREIGN_V23_*`，README 有总表） |
+| 当前主线定义 / 任务完成度 | `docs/02_collaboration_and_specs/CLEAN_BASELINE.md` · `AIC_TASK_MAP.md`（后者为 2026-10-21 历史快照） |
+| 全周期技术综述（历史，与架构白皮书互补） | `docs/02_collaboration_and_specs/AIC_RAW_DATA_PROCESSING_AND_COMPLETE_MODEL_IMPROVEMENTS_MASTER.md` |
 | 全周期演进史 / 天梯榜 | `docs/02_collaboration_and_specs/AIC_FULL_CONVERSATION_CHRONICLE.md` |
 | 数据预处理 / 对齐 / 深度优化中台 | `docs/02_collaboration_and_specs/AIC_MASTER_COLLABORATION_REGISTRY.md` |
 | 提交前把关 / 后处理准则 | `docs/05_postprocessing_and_inference/SAFE_POSTPROCESSING_GUIDELINES.md` |
@@ -147,5 +152,7 @@ $PY scripts/collect_model_records.py
 
 ## 8. 整理记录
 
+- **2026-11-24**：第三轮清理（11 月支线实验入库 + 一次性产物归档）。Git 跟踪文件 318 → 325（**本轮未删除任何 git 跟踪文件**）：新增 `docs/04_audits_and_ablations/mrdetr_2026-11-01/` 6 份报告与 `REPO_CLEANUP_20261124_removed.txt` 本清单，`MODEL_RECORDS.md` 新增 §四十九 / §五十（11 月支线）；分支 `codino-rgb-ceiling` 新增 24 个 Co-DINO 门控脚本 / 配置 / README；同时清理约 69.3 MB 本地一次性产物（框架源码 / wheels / tarball / 解压快照 / smoke 快照），根目录 `index.html`（46.9 MB）移到 `outputs/reports/aic_workstation_export_20261028.html`，保留 744 `epoch_4.pth`（911 MiB）、日志、分析产物与 mrdetr 证据（`dataset/` 与主线权重未动）。清理前完整快照 tag `pre-cleanup-20261124`（= `6e56b74`）；依据与本地清理明细见 `REPO_CLEANUP_LOG.md`，逐文件清单 `REPO_CLEANUP_20261124_removed.txt`（同目录）。
+- **2026-10-31**：第二轮清理。Git 跟踪文件 451 → 317（删 135、增 1 份清单）：删除 134 个已结案代码/配置（scripts 94：V36 平移/归一化/light 诊断 65、A01/A02 消融 17、eval/inference/train/viz 12；configs 36：v36_mechanism 25 + injection_warmstart 11；vendor 上游演示资产 4）与 1 份生成式 HTML 审计报告；`scripts/` 168→74、`configs/deimv2/` 67→31；同时清理约 87 GB 过期本地实验产物（旧检查点/旧 outputs 分析/外部数据集/旧测试派生数据等，`dataset/` 与主线权重未动）。清理前完整快照 tag `pre-cleanup-20261031`（= `2c170ef`）**已推送到 GitHub**；逐文件删除清单 `REPO_CLEANUP_20261031_removed.txt`（同目录），依据与本地清理明细见 `REPO_CLEANUP_LOG.md`。
 - **2026-10-22**：删除 1,356 个历史实验文件（V1–V33 配置 / 启动 / 分析 / 可视化脚本、禁用的集成后处理），去掉文档软链层，V20 / V23 规范归入 `docs/03_architecture_designs/`。保留与删除的依据、各目录数量、取回方法见 `docs/02_collaboration_and_specs/REPO_CLEANUP_LOG.md`；逐文件清单 `REPO_CLEANUP_20261022_removed.txt`（同目录）。
 - **2026-10-07**：根目录 / `work_dir` / `outputs` 位置归位与文档归纳（只移动不改流程），原表格已移入同一份 `REPO_CLEANUP_LOG.md`。

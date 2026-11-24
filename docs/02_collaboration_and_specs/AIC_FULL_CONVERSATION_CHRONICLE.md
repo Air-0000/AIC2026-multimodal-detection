@@ -57,7 +57,7 @@
 ### 1.2 计算与存储环境演化
 - **本地环境**：NVIDIA GeForce RTX 5060 Ti (15.5GB VRAM)，用于前期轻量级探索与算法原型验证。
 - **远端超算节点**：
-  - 实例：`seeta` (IP: `116.172.66.188:34670`，网络接口绑定 `-o BindInterface=wlp7s0`)
+  - 实例：`seeta` (IP: `<server-ip>:<port>`，网络接口绑定 `-o BindInterface=wlp7s0`)
   - GPU：NVIDIA RTX PRO 6000 Blackwell (96GB 显存，单卡满血旗舰)
   - CPU：208 核高性能多线程计算节点
   - 显存/内存加速：`/dev/shm/aic_cache` 全模态 RAM 内存盘高速缓存（全量载入 `visible`, `train_aligned_ir`, `train_lbg_ir`, `depth_p0`），训练 I/O 耗时彻底归零。在 Sovereign V12 阶段启用 `total_batch_size: 24`，8 轮完整训练仅用时 15 分 55 秒，显存利用率稳定在 70.2GB / 96GB。
@@ -578,7 +578,7 @@ graph TD
 ### 1. 用户核心指令
 > **“先不研究这个，只考虑怎么准，模型能力怎么强，先不管比赛成绩”**  
 > **“3D 物理空间法向量门控，多模态多维物理相干性验证，内生几何方差平滑不是本来就有吗，做支柱三：端到端纯净无偏训练”**  
-> **“ssh -p 33715 root@connect.westd.seetacloud.com 开机了”**
+> **“ssh -p <port> root@<seetacloud-host> 开机了”**
 
 ### 2. 纯净架构工程设计与落地
 - **零人工干预与原生平衡**：
