@@ -18,6 +18,7 @@
 - `docs/04_audits_and_ablations/mrdetr_2026-11-01/`：Mr.DETR / Mr.DETR++ 拆解评估 6 份报告（00 总报告、01 代码级拆解、02 论文与配方、03 迁移方案、04 环境搭建、05 Swin-L 纯 RGB 微调结果）。原始论文文本与 metrics / 预测 json 作为本地证据留在 `outputs/reports/mrdetr_2026-11-01/`，**不入库**。
 - `docs/MODEL_RECORDS.md` **§四十九**（Mr.DETR 评估结论 + Swin-L 纯 RGB 微调实测：AIC 200 图验证 mAP 43.55，单 RGB、7 epoch，不能与 v1 六通道 55.94 排名）与 **§五十**（Co-DINO 夜间亮度门控 pilot：机制、契约、744 训练与评测口径，无有效成绩）。
 - 分支 `codino-rgb-ceiling`（worktree，24 个文件）：`scripts/train/codino/swinl_rgb_full/` 与 `scripts/train/codino/aic_mm/`，含 G0 / G1 两代门控实现、配置生成器、契约与验收脚本、评测 / 指纹脚本、README。**不入库**：底座权重、`val.json` 标注、预测 json、onedl-mmdetection 源码、wheels / tarball、解压快照。
+- **分支 tip 脱敏同步**：该分支基底是 2026-10-31 的旧状态（早于 11-21 把云主机 SSH 地址 / 端口从 master 文档隐去的提交），归档后 tip 上仍能看到旧 AGENTS / PROJECT_SPEC / 编年史里的真实主机与端口。因此把已脱敏的 `origin/master` 合并进分支（merge commit `e130b7b`），让分支 tip 的文档与主线一致；分支与主线的历史对象（以及 `pre-cleanup-*` tag）保持原样、不改写。
 
 ### 本地被 ignore 产物的清理（≈69.3 MB，不进 tag、不可回滚）
 
