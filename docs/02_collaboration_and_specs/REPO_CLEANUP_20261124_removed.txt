@@ -1,0 +1,62 @@
+# 2026-11-24 第三轮清理：本地（被 gitignore）产物的删除 / 移动 / 归档清单（路径相对仓库根）。
+#
+# 本轮未删除任何 git 跟踪文件；master 的变更全部是新增或改写（说明见同目录 REPO_CLEANUP_LOG.md 2026-11-24 条）。
+# 11 月支线代码已入库到分支 codino-rgb-ceiling（24 个文件），不在本清单内。
+# 执行明细与清理前后快照：archive/backups/cleanup_20261124/（local_delete_manifest.tsv、
+# local_snapshot_{before,after}.txt）；清理前完整快照 tag pre-cleanup-20261124（= commit 6e56b74）。
+# 列含义：path <TAB> bytes <TAB> action
+#   文件为清理时 stat 精确字节；目录为清理前 du -sh 的磁盘占用（~，四舍五入到 0.1 MB），
+#   因此分项目录大小之和与最终 du -sb 合计（69,347,156 B ≈ 69.3 MB）不是同一口径。
+#
+# ---- 1. 删除：下载的框架源码与依赖缓存（可重下）----
+work_dir/s0918_gate_20261102/onedl-mmdetection-3.5.1/	~37.3M (du)	deleted
+work_dir/s0918_gate_20261102/wheels/	~16M (du)	deleted
+work_dir/s0918_gate_20261102/mmdet.tar.gz	12910609	deleted
+
+# ---- 2. 删除：解压源码快照（等价性压缩包已归档）----
+work_dir/s0918_gate_20261102/source_equivalence_20261102/before/	~3.8M (du)	deleted
+work_dir/s0918_gate_20261102/source_equivalence_20261102/after/	~3.9M (du)	deleted
+work_dir/s0918_gate_20261102/source_equivalence_20261102/	0	deleted（before/after 清空后的空目录）
+
+# ---- 3. 删除：重复代码快照与 smoke 预测（≈3.9 MB）----
+work_dir/s0918_gate_20261102/package_inference_smoke/	~3.9M (du)	deleted
+
+# ---- 4. 删除：一次性日志 / pid / 断链占位（文件合计 10,181 B + 31 B）----
+work_dir/s0918_gate_20261102/setup.log	1083	deleted
+work_dir/s0918_gate_20261102/setup_fast.log	7191	deleted
+work_dir/s0918_gate_20261102/install_framework.log	1227	deleted
+work_dir/s0918_gate_20261102/gpu_pilot.pid	7	deleted
+work_dir/s0918_gate_20261102/gpu_eval.pid	7	deleted
+work_dir/s0918_gate_20261102/run_cpu.sh	666	deleted
+vendor/deimv2_dinov3_l_coco.pth	31	deleted（坏占位：指向不存在的 weight/deimv2_dinov3_l_coco.pth 的断链软链，INVENTORY 记为 0 字节）
+
+# ---- 5. 删除：入库完成后的中间代码拷贝（源已在分支 codino-rgb-ceiling）----
+work_dir/s0918_gate_20261102/scripts/	107654	deleted
+work_dir/s0918_gate_20261102/vendor/	6847	deleted
+
+# ---- 6. 移动：根目录生成式工作台导出（46.9 MB，保留）----
+index.html	46933705	moved to outputs/reports/aic_workstation_export_20261028.html
+
+# ---- 7. 归档：2026-11-02 Co-DINO 门控等价性 / 训练证据 → work_dir/audits/s0918_gate_20261102/ ----
+# 来源：val.json、744_gate.py、equivalence_sources.tar.gz、inference_smoke.tar.gz、workstation_runtime.tar.gz
+# 来自 work_dir/s0918_gate_20261102/；gpu_equivalence.json、before.log、after.log 是 2026-11-02 等价性验收输出；
+# output_before/output_after 来自 work_dir/s0918_gate_20261102/source_equivalence_20261102/。
+work_dir/audits/s0918_gate_20261102/val_300.json	621239	archived（源 work_dir/s0918_gate_20261102/val.json）
+work_dir/audits/s0918_gate_20261102/744_gate.py	31302	archived（源 work_dir/s0918_gate_20261102/744_gate.py）
+work_dir/audits/s0918_gate_20261102/equivalence_sources.tar.gz	1918586	archived（源 work_dir/s0918_gate_20261102/equivalence_sources.tar.gz）
+work_dir/audits/s0918_gate_20261102/inference_smoke.tar.gz	967814	archived（源 work_dir/s0918_gate_20261102/inference_smoke.tar.gz）
+work_dir/audits/s0918_gate_20261102/workstation_runtime.tar.gz	52974	archived（源 work_dir/s0918_gate_20261102/workstation_runtime.tar.gz）
+work_dir/audits/s0918_gate_20261102/gpu_equivalence.json	941	archived（2026-11-02 等价性验收输出）
+work_dir/audits/s0918_gate_20261102/before.log	12170	archived（2026-11-02 等价性验收输出）
+work_dir/audits/s0918_gate_20261102/after.log	12168	archived（2026-11-02 等价性验收输出）
+work_dir/audits/s0918_gate_20261102/outputs_equiv/output_before	77395	archived（源 work_dir/s0918_gate_20261102/source_equivalence_20261102/output_before）
+work_dir/audits/s0918_gate_20261102/outputs_equiv/output_after	77393	archived（源 work_dir/s0918_gate_20261102/source_equivalence_20261102/output_after）
+# 归档证据合计 3,771,982 B ≈ 3.7 MB（不再被 git 管理，见 REPO_CLEANUP_LOG.md 保留清单）。
+
+# ---- 8. 保留（未删除，供复核与取回；不计入本清单的删除合计）----
+outputs/checkpoints/s0918_gate_20261101/epoch_4.pth	955233051	kept（sha256 3cf15f3a211975227ae8eadab151d1428f834ed1fd2d3269e4b491c854d5e907）
+work_dir/audits/s0918_gate_20261102/	~3.7M (du)	kept（等价性 / 训练证据归档目录）
+logs/s0918_gate_workstation/	~80K (du)	kept
+outputs/analysis/s0918_gate_workstation/	~9.4M (du)	kept
+outputs/reports/mrdetr_2026-11-01/	~10.9M (du)	kept（原报告 + artifacts 本地证据）
+outputs/reports/aic_workstation_export_20261028.html	46933705	kept（由根目录 index.html 移入）
