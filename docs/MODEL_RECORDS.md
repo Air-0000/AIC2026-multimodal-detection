@@ -2340,3 +2340,66 @@ D2每query平均翻转80.35/1024，两边均激活220.00；D3为93.64与230.04�
 - **测试集 Phase 3（只读图像）**：num6 638 张纯热像（覆盖中位 0.89，99.7% 有黑边）、num8 67 张纯热像；seq 119、seq_suppl 18、hehe 14、shuming 144 张泄漏（泄漏中位 0.49–0.72，shuming 97.9% ≥ 0.2），合计约 292 张（29%）。
 - **结论**：在能判断的纯热像中，热信号与 RGB 框大体对齐（中位约 9 px、无系统偏差，少数偏半个框），"红外未对齐所以无用"不成立。红外数据的主要问题是：约一半训练图（测试集约 29%）的红外文件混入了 RGB，这部分红外通道部分是 RGB 的复制；num6 画面边缘约 12% 没有红外；白天多数目标在红外中几乎没有热对比。叠加 §四十七 的结构与训练问题（红外只经一个零初始化小门注入步长 16 / 32、门的学习率 5e-6、训练从不压暗 RGB），共同解释红外贡献小。
 - **未做**：视差（远近不同导致的错位）未检验；泄漏文件中热成分的对齐未测；去除泄漏（从红外中减去 RGB 成分）未尝试。
+
+## 四十九、2026-11-01 Mr.DETR / Mr.DETR++ 拆解评估与 Swin-L 纯 RGB 在 AIC 的微调（外部框架，训练实测）
+
+- **性质**：外部方法评估（只读代码与论文、零训练）+ 一次外部框架（detrex / detectron2）微调实测。**未接入本仓 DEIMv2 主线、未产出提交包、未提交**；评估结论是"可迁移性判断"，微调结果是"纯 RGB 上限数据点"，两者都不是主线成绩。
+- **评估对象**：CVPR 2025 **Mr.DETR**（v4 = Mr.DETR++，arXiv 2412.10028v4）。方法把 DETR 训练当作 **o2o + o2m 多任务**：同一套 backbone / encoder 之上训练期多跑几条 decoder 路线（o2o 主路、独立 FFN 的辅助路、指令自注意力的辅助路），推理只保留 o2o 主路。论文 COCO R50 12ep 900q：47.6 → 50.7（Mr.DETR，+3.1）→ 51.8（++，+4.2）；Route-3（指令自注意力单路）单独 +2.8。以上均为论文口径、**全篇单 seed 无方差**，只能当机制上限，不能当本项目可拿到的收益。
+- **唯一推荐试的原子单元**：**Route-3 移植** = 训练期第二条 o2m 解码路线 + self-attn 里 10 个 instruction token，两者**不可拆**：只加第二遍 decoder 而组件全共享，等价于论文 TABLE I(2) 的 `Share All`（41.6，−6.0 AP）。新增参数约 **33,792**（6 层 ×(2×10×256 + 2×256)，按论文实现"每层各一份"），**推理零改动**（训练期开关 `use_o2m_route`，默认 false）。**合规**：训练多路、推理单路 = 同一 checkpoint / 单次前向 / 无跨模型输出合并，属单模型单结构，不违反赛题第十一条"禁止不同结构或不同训练阶段模型的简单集成"。
+- **判定要求**：本项目是 300 query、D-FINE 底座、已带 Co-ATSS 密集监督与蒸馏、1800 张训练图，同机制增益可能显著缩水——**必须按 20ep 短预算 pilot 判定，不能承诺涨点**；阳性后还要 50 ep 复跑才能进提交候选。主判据：配对按图 bootstrap 的 ΔwAP ≥ +0.4 pp 且 95% CI 不含 0，同时 mAP 不低于对照 −0.5 pp、AP75 不低于对照 −2.5 pp、step 中位耗时增幅 ≤25%；证伪：ΔwAP ≤ 0 或 CI 跨 0、mAP 掉 >1 pp、`loss_tadl_o2m` 占总 loss >30%。
+- **不建议做**（理由见报告）：route-aware MoE（+0.3 AP 换 +31% 训练时间，且是唯一改推理图/checkpoint 数值面的项）、encoder scale-aware MoE（我们的 encoder 仅 1 层且仅 P5，机制位错位）、900 query 的 o2m 路、零新参数"全共享"接法（含接线 `matcher.py` 里无人调用的 o2m 死代码）、搬 DAC rank loss / VFL 换 TADL（与 TADL 语义冲突）、推理期多路平均 / NMS / WBF（不合规）、DN 与 o2m 路线同开（归因归零）。
+- **报告与证据**：6 份 md 已入 `docs/04_audits_and_ablations/mrdetr_2026-11-01/`（00 总报告、01 代码级拆解、02 论文与配方、03 迁移方案、04 环境搭建、05 Swin-L 微调结果）；原始论文文本 `paper_text.txt` 与 `artifacts/`（`aic_swinl_metrics.json` 1.5 MB、`aic_swinl_val_predictions.json` 9 MB）是本地证据，留在 `outputs/reports/mrdetr_2026-11-01/`，**不入库**。
+
+### 训练实测：Mr.DETR-Align\* Swin-L（COCO 61.8）在 AIC 12 类数据上的纯 RGB 微调
+
+- **权重与初始化**：官方 COCO 权重 `MrDETR_align_swinl_12ep_900q_objects365_processed.pth`（HF 官方，903,827,174 B，md5 `a2ad7c3979a78bcd28e4c885fb4e4c85`）；热启动 **784 个 key 中 753 个加载成功，31 个 80→12 类形状不符的 key（30 个分类头 + `label_enc`）被自动跳过并重初始化**，0 missing。
+
+| 项 | 值 |
+|---|---|
+| 框架 | detrex 0.3.0 + detectron2 0.6（源码 pin `9604f59`），PyTorch 2.12.1+cu130，Python 3.12 |
+| 模型 | Swin-L backbone + 5-scale ChannelMapper + 6 层 Deformable-DETR encoder/decoder + **900 query** + two-stage + box refine；Mr.DETR 三路训练（o2o 主路 / o2m 指令自注意力路 / sep 独立 FFN 路），推理取 o2o 主路输出 |
+| 数据 | AIC 官方训练集 **1800 图训练 / 200 图验证**，12 类；**仅 RGB（3 通道）**（原仓库不支持 6 通道） |
+| 训练 | batch 2 + 梯度累积 8（等效 16）；lr 5e-5（backbone 5e-6、reference_points / sampling_offsets 5e-6），AdamW wd 5e-2；FP16 AMP；**7 epoch = 6300 iter**；LR 在 80% / 95% 处各降一次 |
+| 分辨率 | 训练短边 480–1152（步长 64）、长边封顶 **1792**；验证短边 1152、长边封顶 1792 |
+| 硬件与耗时 | 1× RTX PRO 6000 Blackwell 96 GB；~0.83 s/iter、~25 min/epoch、**1 h 37 min**、峰值显存 ~33 GB |
+| 截止约束 | 原计划 12 epoch / 长边 2048；为满足当日 20:00 截止改为 7 epoch / 1792 |
+
+- **200 图 AIC 验证集结果**：
+
+| 指标 | mAP | AP50 | AP75 | APs | APm | APl |
+|---|---:|---:|---:|---:|---:|---:|
+| epoch 7（最终） | **43.55** | 66.89 | 45.60 | 21.98 | 38.19 | 59.30 |
+
+| 验证点 | iter | mAP |
+|---|---:|---:|
+| epoch 2 | 1800 | 19.68 |
+| epoch 4 | 3600 | 36.78 |
+| epoch 6 | 5400 | 43.47 |
+| epoch 7（最终） | 6300 | **43.55** |
+
+- **弱项**：sign 26.99、garbage can 28.20；tricycle 0.00（验证集仅 2 个实例，属小样本噪声，不能据此判定该类别能力）。曲线末段已趋平（43.47 → 43.55），说明 7 epoch 基本到位。
+- **口径声明（重要）**：**不能与 DEIMv2 纯净基准 v1 的 55.94 直接排名**——v1 是六通道（RGB+IR+depth）、输入 1440×2560、50 epoch、本项目自有评测脚本；本实验是单 RGB 通道、长边 1792、7 epoch、detrex/detectron2 评测器。差距主要来自模态与训练预算，**只能当纯 RGB 上限数据点**。
+- **产物位置**：报告 `docs/04_audits_and_ablations/mrdetr_2026-11-01/`（入库）；本地证据 `outputs/reports/mrdetr_2026-11-01/`（报告原件 + `artifacts/` + `paper_text.txt`，不入库）；远端权重 `/root/aic_run/aic_swinl_12ep/model_final.pth`（2.6 GB，另备份 `/autodl-fs/data/mrdetr/run/aic_swinl_final/model_final.pth`），中间 checkpoint 每 1800 iter 一份。
+- **状态**：评估 + 一次外部框架微调实测；未接入主线、未训练本项目可提交权重、**未提交**。
+
+## 五十、2026-10-30～2026-11-02 Co-DINO 支线：冻结检测器的夜间亮度门控残差分支（机制 pilot，无有效成绩）
+
+- **性质**：机制 pilot。只做"冻结检测器 + 训练一个小门控残差分支"的可行性、等价性契约与链路验证；**无训练收益证据，未用于任何提交，未接入主线**。底座是外部协作方权重（本地没有），本仓只归档门控 / 验证代码与本地证据。
+- **底座来源**：外部协作方 Co-DINO 5-scale Swin-L 三模态融合主线（交流包 `AIC2026_codino_share_20261029_v2`）的 **s0918 底座 epoch_12**——三模态按固定公式融合成 3 通道 PNG，作为冻结检测器的输入。**本地没有该权重**；本仓不归档底座权重、val 标注、预测 json、框架源码、wheels 与解压快照。
+- **机制**：冻结全部检测器参数（`requires_grad=False`、无 EMA，权重逐位不变），**只训练 `data_preprocessor.fuse.*`**：5 层卷积、hidden 32、末层零初始化，训练从"纯基线"起步。输入 9 通道 = 原融合 BGR（基线输入）+ 热 / 窗 / 深度 3 通道 + 原始 RGB；前向只加一个亮度偏移：
+  - `rgb' = baseline + 255 · G · S · net(Y, T, W, D, V, G)`；
+  - `G` 是图像级亮度门：全图 mean-luma ≤ 0.02 时为 1、≥ 0.05 时为 0，中间平滑过渡；`S` 是由热窗通道腐蚀 + 羽化得到的空间软权重；`net` 是 5 层卷积；
+  - **推理时 G = 0 直接返回原输入且不调用 net**，正常光下检测器输入与输出与原底座逐位一致（契约实测）；
+  - 训练期用 `RandomNight744` 夜间仿真：prob 1.0、亮度 level 0.003–0.08（log-uniform）、photon 70、read 0.012；只压暗可见光通道，**热 / 深通道不动**。
+- **两代设计**：
+  - **G0（2026-10-30，纯 RGB Swin-L 底座版）**：底座为自己训练的纯 RGB Swin-L Co-DINO（`codino_aic_full_rgb_s20260918.py`；`run_swinl_rgb_full.sh` 12 epoch、seed 20260918、lr 1e-4、FP16 AMP），门控输入 6 通道（BGR + 热 + 热窗 + 深度）。链路 `chain_nightgate.sh`：纯 RGB 模型 Phase 3 raw TXT → 门控微调（split A 1700/300、4 epoch）→ 门控 Phase 3 TXT 与纯 RGB 逐字节比较 → split-A 300 图 probe（normal / night01 / night005，含 aux 置零）。本仓**没有 G0 的训练产物与结果记录**，只保留代码与配置。
+  - **G1「744」（2026-11-01/02，冻结 s0918 融合底座 9 通道版）**：底座换成外部 s0918 融合底座并冻结，输入改 9 通道；配套链路评测（`eval_744_cpu.py`、`run_744_cpu_local.sh`、`chain_744_cpu_local.sh`）、checkpoint 指纹校验（`verify_744_checkpoint.py`）、注意力 CPU 分块（`cpu_attention_chunks.py`）与 checkpoint 对比（`compare_ckpts.py`）脚本；Phase 3 门控扫描结果留在本地 `outputs/analysis/s0918_gate_workstation/`。
+  - **脚本归档位置**：分支 `codino-rgb-ceiling` 的 `scripts/train/codino/swinl_rgb_full/`（两代实现、配置生成器、契约 / 验收脚本、启动脚本与 README）与 `scripts/train/codino/aic_mm/`（`ir_signal.py`、`night.py`）；**master 主线不含这些文件**。
+- **契约结果（2026-11-01，GPU 实跑，`check_744_gate.py`）**：12 张原图融合像素 SHA256 与基线一致；3 张图上 `bboxes / scores / labels` 逐位一致；仅 `data_preprocessor.fuse.*` 可训练；24 图 smoke 训练后**除分支外全部张量逐位不变**（`CONTRACT_PASS`）。
+- **744 训练（G1）**：部署根 `/root/744_gate`（onedl-mmdetection 3.5.1 + mmengine 0.10.12，`run_744_gate.sh` 断言 torch 2.10.0 并做 GPU self-test / train.json sha256 校验）；冻结底座 `teammate_s0918/epoch_12.pth`；`max_epochs=4`、`val_interval=5` 且 `val_cfg` 置空（中途不验证）；batch 1、num_workers 2、persistent_workers；lr 1e-3（warmup 200 iter 从 0.001× 起 + cosine 到 5e-5）；split A 1700 张训练图。产物 `epoch_4.pth` 已拷回本地：`outputs/checkpoints/s0918_gate_20261101/epoch_4.pth`，**955,233,051 B，sha256 `3cf15f3a211975227ae8eadab151d1428f834ed1fd2d3269e4b491c854d5e907`**（本地复核一致）；`verify_744_checkpoint.py` 断言检测器张量逐位不变、分支参数有限且已训练。
+- **评测口径与结果（都不是有效成绩）**：
+  - **GPU 1 图 pilot**（`outputs/analysis/s0918_gate_workstation/gpu_pilot/`、`work_dir/audits/s0918_gate_20261102/gpu_equivalence.json`）：normal AP 0.40 / AP50 1.00，但只有 1 张图，**无意义**；night01 及其变体（基线 / aux 置零）AP 全 0.00；normal 与门控关的预测逐位一致。
+  - **300 图 night01 链路评测**（本地 RTX 5060 Ti；脚本 `eval_744_cpu.py`，本机以 `--device cuda:0` 运行，日志 `DEVICE_MODEL_LOADED cuda:0`；输出 `outputs/analysis/s0918_gate_workstation/gpu_val300_night01/metrics.json`）：门控开 AP 0.0879 / AP50 0.1574 / AP75 0.0846；门控关（基线）AP 0.0592 / AP50 0.1115 / AP75 0.0491。但 mmcv 自定义 CUDA 算子 LineNMS 未编译、`faster_coco_eval` 未安装，评测环境与训练 / 官方环境不一致；合成夜化 level 0.01 比 Phase 3 最暗图还暗一个量级，且为单次运行、无配对显著性——**只能证明链路跑通，不能当成绩**。即使门控开在此条件下高于门控关，该差别也只出现在合成夜化分布上，而比赛测试集上门控从不触发（见下条），因此**不构成可用的训练收益证据**。
+  - **Phase 3 门控扫描**（1000 张无标签测试图，`outputs/analysis/s0918_gate_workstation/gate_test_phase3_scan.json`）：最暗图 mean-luma **0.0637**（`shuming_860_00000209`）> hi 0.05 → **triggered 0 / 1000**，即当前阈值下门控在 Phase 3 完全不开。
+- **产物与保留**：检查点 `outputs/checkpoints/s0918_gate_20261101/epoch_4.pth`（911 MiB）；日志 `logs/s0918_gate_workstation/`；分析 `outputs/analysis/s0918_gate_workstation/`；证据归档 `work_dir/audits/s0918_gate_20261102/`（`val_300.json`、`744_gate.py`、等价性日志与压缩包、`outputs_equiv/`）。
+- **状态**：机制 pilot；**无训练收益证据，未用于任何提交**。G = 0 不触发意味着 Phase 3 当前光照下该分支不起作用；若要继续，先解决 300 图评测环境（编译 mmcv 算子 / 统一评测器）与阈值标定，再谈收益。

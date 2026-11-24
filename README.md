@@ -34,20 +34,20 @@
 | :--- | :--- | :--- |
 | **动手干活**（环境 / 命令 / 红线 / 坑点） | [`AGENTS.md`](AGENTS.md) | Agent 与开发者速查，先读这个 |
 | **工程规范 + 全链路流程** | [`docs/02_collaboration_and_specs/PROJECT_SPEC.md`](docs/02_collaboration_and_specs/PROJECT_SPEC.md) | 目录职责、脚本分工、数据契约、六阶段流程、排错索引 |
-| **查成绩 / 权重来源** | [`docs/MODEL_RECORDS.md`](docs/MODEL_RECORDS.md) | 唯一实验真相源：表A 训练模型、表B 暗光评测、V20~V37 + 纯净基准 v1（§三十五–四十七）总账 |
+| **查成绩 / 权重来源** | [`docs/MODEL_RECORDS.md`](docs/MODEL_RECORDS.md) | 唯一实验真相源：表A 训练模型、表B 暗光评测、V20~V37 + 纯净基准 v1 + 11 月支线（§三十五–五十）总账 |
 | **V23 旗舰架构（官方最高分）** | [`SOVEREIGN_V23_CORE_SPEC.md`](docs/03_architecture_designs/SOVEREIGN_V23_CORE_SPEC.md) · [`SOVEREIGN_V23_DETAILED_TECHNICAL_SPEC.md`](docs/03_architecture_designs/SOVEREIGN_V23_DETAILED_TECHNICAL_SPEC.md) | V23 核心规范 + 全链路白皮书 |
 | **上一代旗舰** | [`SOVEREIGN_V20_CORE_SPEC.md`](docs/03_architecture_designs/SOVEREIGN_V20_CORE_SPEC.md) · [`SOVEREIGN_V20_DETAILED_TECHNICAL_SPEC.md`](docs/03_architecture_designs/SOVEREIGN_V20_DETAILED_TECHNICAL_SPEC.md) | V20 连续流形合流（AP75 0.6577 历史极值） |
 | **架构演进全九阶段** | [`docs/03_architecture_designs/`](docs/03_architecture_designs/) | README 总表即阅读顺序：表征解耦 → 双流 → V6 → V10 → V12 → V13 → V14 → V20 → V23（01–08 按编号，第 9 部为 `SOVEREIGN_V23_*`；V20 / V23 规范文件也在本目录） |
 | **全周期技术综述（历史）** | [`AIC_RAW_DATA_PROCESSING_AND_COMPLETE_MODEL_IMPROVEMENTS_MASTER.md`](docs/02_collaboration_and_specs/AIC_RAW_DATA_PROCESSING_AND_COMPLETE_MODEL_IMPROVEMENTS_MASTER.md) | 数据全流程 + 模型改进的整合视角，与架构白皮书互补 |
 | **全周期历程 / 天梯榜** | [`docs/02_collaboration_and_specs/AIC_FULL_CONVERSATION_CHRONICLE.md`](docs/02_collaboration_and_specs/AIC_FULL_CONVERSATION_CHRONICLE.md) | 从零到登顶的决策与突破复盘 |
 | **数据预处理 / 对齐 / 深度中台 / 配置字典** | [`docs/02_collaboration_and_specs/AIC_MASTER_COLLABORATION_REGISTRY.md`](docs/02_collaboration_and_specs/AIC_MASTER_COLLABORATION_REGISTRY.md) | 技术中台总册 |
-| **攻坚审计与消融定论** | [`docs/04_audits_and_ablations/`](docs/04_audits_and_ablations/) | 红外对齐审计、权重溯源、CP 增强废止定论 |
+| **攻坚审计与消融定论** | [`docs/04_audits_and_ablations/`](docs/04_audits_and_ablations/) | 红外对齐审计、权重溯源、CP 增强废止定论、Mr.DETR++ 评估与纯 RGB 上限实测（`mrdetr_2026-11-01/`） |
 | **后处理 / 提交合规** | [`docs/05_postprocessing_and_inference/SAFE_POSTPROCESSING_GUIDELINES.md`](docs/05_postprocessing_and_inference/SAFE_POSTPROCESSING_GUIDELINES.md) | 内生化范式、H-Flip 共识、红线禁令 |
 | **测试集先验（门限设定依据）** | [`docs/01_competition/SUBMISSION_CONFIDENCE_THRESHOLD_PRIOR.md`](docs/01_competition/SUBMISSION_CONFIDENCE_THRESHOLD_PRIOR.md) | 7,086 目标 / 7.09 密度 / 尺寸分布 |
 | **官方赛题材料** | [`docs/01_competition/`](docs/01_competition/) | 竞赛细则 PDF、提交格式范例、综述 |
 | **半决赛提交** | [`docs/06_semifinal_submission/`](docs/06_semifinal_submission/) | 技术报告草稿骨架、代码 / 模型 / 环境提交清单与已知风险 |
 | **纯净基准 / 任务地图** | [`docs/02_collaboration_and_specs/CLEAN_BASELINE.md`](docs/02_collaboration_and_specs/CLEAN_BASELINE.md) · [`AIC_TASK_MAP.md`](docs/02_collaboration_and_specs/AIC_TASK_MAP.md) | 当前主线的定义、14 项修复与任务完成度 |
-| **仓库整理 / 找已删旧文件** | [`docs/02_collaboration_and_specs/REPO_CLEANUP_LOG.md`](docs/02_collaboration_and_specs/REPO_CLEANUP_LOG.md) | 2026-10-22（1,356 文件）与 2026-10-31（134 文件 + 约 87 GB 本地产物）两轮清理的依据、清单与 tag 取回方法 |
+| **仓库整理 / 找已删旧文件** | [`docs/02_collaboration_and_specs/REPO_CLEANUP_LOG.md`](docs/02_collaboration_and_specs/REPO_CLEANUP_LOG.md) | 2026-10-22（1,356 文件）、2026-10-31（134 文件 + 约 87 GB 本地产物）、2026-11-24（11 月支线入库 + 约 69 MB 本地产物）三轮清理的依据、清单与 tag 取回方法 |
 
 ---
 
