@@ -26,7 +26,7 @@
 | **竞赛成绩** | **AIC2026 全国总决赛 国家二等奖（国二）**（2026-11-24）。团队奖项：获奖主力为团队的 **Co-DINO 5-scale Swin-L 三模态融合主线**（外部协作方交流包，本仓不归档其代码/权重）；本仓是团队的 **DEIMv2 / Sovereign V23** 技术线（V23 为复赛官方提交包所用架构）。**本仓不把该奖项记为自身模型成绩** |
 | **最新进展** | 当前主线仍是**纯净基准 v1**（`vendor/DEIMv2/configs/deimv2/aic_clean_baseline_v1.yml`）：seeta 训练停在 epoch 45、验证集最佳 epoch 37（mAP 55.94），Phase 3 官方 **51.1**（MODEL_RECORDS §四十六）；10-26 完成模态鲁棒性剖面与红外绑定 pilot 配置（§四十七，仅配置未训练）；11-01～02 两条支线（§四十九 / §五十）只做评估与机制 pilot，**未改变主线、未用于提交**；**2026-11-24 竞赛收官（团队获国二，见下）**。V24–V37 的演进与现状以 [`AGENTS.md`](AGENTS.md) §1 为准 |
 | **历史权重清单**（本机已于 2026-11-24 清理，路径仅作追溯） | `weights/sovereign_v23_best_stg2_ep71.pth`（V23，官方最高分）、`weights/sovereign_v23_tadl_best_stg2.pth`（TADL 变体）、`weight/sovereign_v23_best_stg1_e33.pth`（Stage A）、`weights/F5.pth`（标杆 58.105）、`outputs/checkpoints/aic_clean_baseline_v1_seeta/best.pth`（v1 主线，Phase 3 提交所用）、`outputs/checkpoints/s0918_gate_20261101/epoch_4.pth`（11 月 Co-DINO 门控 pilot，911 MiB）。V27 / V28-A 权重本机从未长期保留（历史台账在远端） |
-| **环境** | conda `deimv2`（训练 / 评测 / 推理）；本地 RTX 5060 Ti 调试，远端 `seeta` RTX PRO 6000 96GB 训练 |
+| **环境** | conda `deimv2`（训练 / 评测 / 推理；本机环境已于 2026-11-25 清理）；本地 RTX 5060 Ti 调试，远端 `seeta` RTX PRO 6000 96GB 训练 |
 
 ### 近期变更（2026-11-24）
 

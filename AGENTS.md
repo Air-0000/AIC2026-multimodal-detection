@@ -33,6 +33,8 @@ export PYTHONPATH="/home/constant/CodeBuddy/Dev/AIC/scripts/lib:/home/constant/C
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 ```
 
+> 本机三个项目环境（`deimv2` / `aic-2` / `codino`，≈21.0 GB）已于 **2026-11-25** 清理；上表为环境约定，重建规格见本地 `archive/backups/cleanup_20261125_conda/`。
+
 - **训练入口** `vendor/DEIMv2/train.py` —— **必须 `cd vendor/DEIMv2` 执行**，`-c` 配置路径与 `output_dir` 都相对该目录（`configs/deimv2/<exp>.yml`）。
 - **推理/分析脚本** —— 从仓库根目录驱动；较早的脚本顶部硬编码 `ROOT = "/home/constant/CodeBuddy/Dev/AIC"`，较新的按 `Path(__file__).parents[2]` 定位仓库根。多数推理 / 评测 / 诊断脚本加载配置时会 `os.chdir(vendor/DEIMv2)`，chdir 后相对路径含义变化，传路径参数时用绝对路径或按脚本说明。
 - **本地 GPU 仅 RTX 5060 Ti 15.46 GiB**（开发调试）。远端训练节点：
@@ -155,7 +157,7 @@ $PY scripts/collect_model_records.py
 
 ## 8. 整理记录
 
-- **2026-11-24（收官）**：竞赛获 **国二（AIC2026 全国总决赛 国家二等奖）**，获奖主力为团队的 Co-DINO 融合主线（外部交流包，本仓不归档）；本仓 V23 线为复赛（半决赛）官方提交包架构。同日整体清理本机非入库产物 ≈**44.6 GB**：`dataset/` 29 GB、`work_dir/` 1.8 GB、`outputs/` 5.3 GB − 官方提交包、`weights/` + `weight/` 3.5 GB、`vendor/DEIMv2/{ckpts,weight}` 4.1 GB、`vendor` 外部合集 0.7 GB、`logs/` 37 MB、`archive/` 72 MB − 清理清单、`work/` 17 MB。保留 git 跟踪文件（325）、`outputs/official_submission_package/`（复赛官方包 238 MB）、`work_dir/submissions/clean_v1_phase3_thr048/`（Phase 3 v1 提交包 4.4 MB）、`archive/backups/cleanup_20261124/`（final_local_cleanup_manifest.tsv）与用户目录 `.workbuddy/` / `.obsidian/`。此后仓库进入归档只读状态；记录见 `MODEL_RECORDS.md` §五十一。
+- **2026-11-24（收官）**：竞赛获 **国二（AIC2026 全国总决赛 国家二等奖）**，获奖主力为团队的 Co-DINO 融合主线（外部交流包，本仓不归档）；本仓 V23 线为复赛（半决赛）官方提交包架构。同日整体清理本机非入库产物 ≈**44.6 GB**：`dataset/` 29 GB、`work_dir/` 1.8 GB、`outputs/` 5.3 GB − 官方提交包、`weights/` + `weight/` 3.5 GB、`vendor/DEIMv2/{ckpts,weight}` 4.1 GB、`vendor` 外部合集 0.7 GB、`logs/` 37 MB、`archive/` 72 MB − 清理清单、`work/` 17 MB。保留 git 跟踪文件（325）、`outputs/official_submission_package/`（复赛官方包 238 MB）、`work_dir/submissions/clean_v1_phase3_thr048/`（Phase 3 v1 提交包 4.4 MB）、`archive/backups/cleanup_20261124/`（final_local_cleanup_manifest.tsv）与用户目录 `.workbuddy/` / `.obsidian/`。此后仓库进入归档只读状态；2026-11-25 再删除本机三个项目 conda 环境（`deimv2` / `aic-2` / `codino`，≈21.0 GB，规格备份在 `archive/backups/cleanup_20261125_conda/`）。记录见 `MODEL_RECORDS.md` §五十一。
 - **2026-11-24**：第三轮清理（11 月支线实验入库 + 一次性产物归档）。Git 跟踪文件 318 → 325（**本轮未删除任何 git 跟踪文件**）：新增 `docs/04_audits_and_ablations/mrdetr_2026-11-01/` 6 份报告与 `REPO_CLEANUP_20261124_removed.txt` 本清单，`MODEL_RECORDS.md` 新增 §四十九 / §五十（11 月支线）；分支 `codino-rgb-ceiling` 新增 24 个 Co-DINO 门控脚本 / 配置 / README；同时清理约 69.3 MB 本地一次性产物（框架源码 / wheels / tarball / 解压快照 / smoke 快照），根目录 `index.html`（46.9 MB）移到 `outputs/reports/aic_workstation_export_20261028.html`，保留 744 `epoch_4.pth`（911 MiB）、日志、分析产物与 mrdetr 证据（`dataset/` 与主线权重未动）。清理前完整快照 tag `pre-cleanup-20261124`（= `6e56b74`）；依据与本地清理明细见 `REPO_CLEANUP_LOG.md`，逐文件清单 `REPO_CLEANUP_20261124_removed.txt`（同目录）。
 - **2026-10-31**：第二轮清理。Git 跟踪文件 451 → 317（删 135、增 1 份清单）：删除 134 个已结案代码/配置（scripts 94：V36 平移/归一化/light 诊断 65、A01/A02 消融 17、eval/inference/train/viz 12；configs 36：v36_mechanism 25 + injection_warmstart 11；vendor 上游演示资产 4）与 1 份生成式 HTML 审计报告；`scripts/` 168→74、`configs/deimv2/` 67→31；同时清理约 87 GB 过期本地实验产物（旧检查点/旧 outputs 分析/外部数据集/旧测试派生数据等，`dataset/` 与主线权重未动）。清理前完整快照 tag `pre-cleanup-20261031`（= `2c170ef`）**已推送到 GitHub**；逐文件删除清单 `REPO_CLEANUP_20261031_removed.txt`（同目录），依据与本地清理明细见 `REPO_CLEANUP_LOG.md`。
 - **2026-10-22**：删除 1,356 个历史实验文件（V1–V33 配置 / 启动 / 分析 / 可视化脚本、禁用的集成后处理），去掉文档软链层，V20 / V23 规范归入 `docs/03_architecture_designs/`。保留与删除的依据、各目录数量、取回方法见 `docs/02_collaboration_and_specs/REPO_CLEANUP_LOG.md`；逐文件清单 `REPO_CLEANUP_20261022_removed.txt`（同目录）。
